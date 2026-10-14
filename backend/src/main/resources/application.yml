@@ -24,6 +24,11 @@ spring:
 
 server:
   port: 8080
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
 
 asset:
   admin:
@@ -34,3 +39,10 @@ app:
   public-base-url: ${ASSET_PUBLIC_BASE_URL:}
   asset-images:
     directory: ${ASSET_IMAGE_DIRECTORY:./data/asset-images}
+  dingtalk-login:
+    enabled: ${DINGTALK_LOGIN_ENABLED:false}
+    client-id: ${DINGTALK_LOGIN_CLIENT_ID:}
+    client-secret: ${DINGTALK_LOGIN_CLIENT_SECRET:}
+    redirect-uri: ${DINGTALK_LOGIN_REDIRECT_URI:}
+    state-ttl-seconds: ${DINGTALK_LOGIN_STATE_TTL_SECONDS:600}
+    timeout-seconds: ${DINGTALK_LOGIN_TIMEOUT_SECONDS:10}

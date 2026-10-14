@@ -70,6 +70,8 @@ export const api = {
   getAsset: (id: number) => request<Asset>(`/api/assets/${id}`),
   getPublicAsset: (qrToken: string) => request<PublicAsset>(`/api/public/assets/${encodeURIComponent(qrToken)}`),
   me: () => request<AuthUser>('/api/auth/me'),
+  dingtalkStatus: () => request<{ enabled: boolean; bound: boolean }>('/api/v1/auth/dingtalk/status'),
+  bindDingtalk: () => mutate<{ authorizationUrl: string }>('/api/v1/auth/dingtalk/bind', { method: 'POST' }),
   login: (username: string, password: string) =>
     mutate<AuthUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: async () => {

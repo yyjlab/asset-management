@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { api } from '../api'
 
 interface Props {
   loading: boolean
@@ -9,6 +10,12 @@ interface Props {
 export function LoginPage({ loading, error, onLogin }: Props) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [dingtalkEnabled, setDingtalkEnabled] = useState(false)
+  useEffect(() => {
+    let active = true
+    api.dingtalkStatus().then(status => { if (active) setDingtalkEnabled(status.enabled) }).catch(() => {})
+    return () => { active = false }
+  }, [])
 
   return <main className="login-page">
     <section className="login-card">
@@ -21,6 +28,10 @@ export function LoginPage({ loading, error, onLogin }: Props) {
           <span>{loading ? '正在登录…' : '登录系统'}</span><b aria-hidden="true">↗</b>
         </button>
       </form>
+      {dingtalkEnabled && <div className="dingtalk-login">
+        <button className="button primary" disabled={loading} onClick={() => { window.location.assign('/api/v1/auth/dingtalk/login') }}>钉钉登录</button>
+        <small>首次使用请先用账号密码登录，点击头像绑定钉钉。</small>
+      </div>}
     </section>
   </main>
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AuthUser } from '../types'
 import { CloseIcon, TrashIcon } from './Icons'
+import { DingTalkBinding } from './DingTalkBinding'
 
 const CROP_SIZE = 220
 const OUTPUT_SIZE = 512
@@ -184,6 +185,7 @@ export function AvatarEditor({ user, revision, busy, onClose, onUpload, onDelete
       <input ref={inputRef} className="avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseFile(event.target.files?.[0])} />
       <button className="button avatar-choose" disabled={working} onClick={() => inputRef.current?.click()}>{file ? '重新选择图片' : '选择图片'}</button>
       <small>支持 JPG、PNG、WebP，最大 2MB；保存结果与上方预览一致。</small>
+      <DingTalkBinding />
       <div className="modal-actions avatar-actions">
         {user.hasAvatar && <button className="button avatar-remove" disabled={working} onClick={() => void onDelete()}><TrashIcon />删除头像</button>}
         <button className="button ghost" disabled={working} onClick={onClose}>取消</button>

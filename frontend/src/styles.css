@@ -403,6 +403,9 @@ input, select, textarea { font-size: 14px; }
 .login-submit b { width: 40px; height: 40px; display: grid; place-items: center; color: #121316; background: #fff; border-radius: 50%; font-size: 18px; }
 .login-submit:hover:not(:disabled) { background: #2f66ff; }
 .login-submit:disabled { opacity: .48; cursor: not-allowed; }
+.dingtalk-login, .dingtalk-binding { display: grid; gap: 10px; margin-top: 20px; }
+.dingtalk-login small, .dingtalk-binding small { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.dingtalk-login .button { width: 100%; min-height: 46px; justify-content: center; }
 
 /* User management */
 .user-page { animation: reveal .5s var(--curve) both; }
@@ -1033,7 +1036,7 @@ body { font-size: 15px; }
 .topbar-actions > .avatar-button { width: 38px; height: 38px; padding: 0; overflow: hidden; border: 0; color: #fff; background: linear-gradient(135deg,#79a7ff,#3768dc); }
 .avatar-button img,.user-avatar img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center; }
 .avatar-button:focus-visible { outline: 3px solid rgba(93,135,255,.2); outline-offset: 3px; }
-.avatar-editor { width: min(520px,100%); padding: 28px; position: relative; text-align: center; background: #fff; border-radius: 22px; box-shadow: 0 30px 90px rgba(29,48,78,.24); animation: confirm-in .42s cubic-bezier(.32,.72,0,1); }
+.avatar-editor { width: min(520px,100%); max-height: calc(100dvh - 48px); overflow-y: auto; padding: 28px; position: relative; text-align: center; background: #fff; border-radius: 22px; box-shadow: 0 30px 90px rgba(29,48,78,.24); animation: confirm-in .42s cubic-bezier(.32,.72,0,1); }
 .avatar-editor h2 { margin: 0; color: #20314a; font-size: 23px; font-weight: 800; }
 .avatar-editor > p { margin: 7px 0 18px; color: #8491a4; font-size: 12px; }
 .avatar-crop-stage { box-sizing: content-box; width: 220px; height: 220px; margin: 0 auto 14px; position: relative; overflow: hidden; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg,#79a7ff,#3768dc); border: 6px solid #fff; border-radius: 50%; box-shadow: 0 16px 42px rgba(54,86,139,.2),0 0 0 1px rgba(75,103,144,.12); user-select: none; touch-action: none; }

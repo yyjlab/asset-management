@@ -106,6 +106,15 @@ export default function App() {
   }, [search])
 
   useEffect(() => {
+    const url = new URL(window.location.href)
+    const dingtalkError = url.searchParams.get('dingtalkError')
+    const bound = url.searchParams.get('dingtalk') === 'bound'
+    if (dingtalkError || bound) {
+      if (dingtalkError) { setLoginError(dingtalkError); notify(dingtalkError, 'error') }
+      else notify('钉钉绑定成功，下次可直接使用钉钉登录')
+      url.searchParams.delete('dingtalkError'); url.searchParams.delete('dingtalk')
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+    }
     api.me().then(setAuthUser).catch((error) => {
       if (!(error instanceof ApiError) || error.status !== 401) setLoginError(error instanceof Error ? error.message : '无法连接服务器')
     }).finally(() => setAuthChecking(false))
