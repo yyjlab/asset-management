@@ -10,7 +10,8 @@ RUN mvn -B -ntp clean package -DskipTests
 FROM eclipse-temurin:21.0.11_10-jre-alpine-3.23
 WORKDIR /app
 
-RUN apk add --no-cache fontconfig font-noto-cjk \
+RUN sed -i 's#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories \
+    && apk add --no-cache fontconfig font-noto-cjk \
     && addgroup -S asset \
     && adduser -S asset -G asset \
     && mkdir -p /app/data/asset-images \
