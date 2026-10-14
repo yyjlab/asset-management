@@ -1,8 +1,0 @@
-interface:
-  display_name: "SS 管理列表 UI 重构"
-  short_description: "高度复刻统一管理列表视觉，同时保护原有业务逻辑与交互行为"
-  brand_color: "#245f9f"
-  default_prompt: "Use $ss-admin-list-ui-refactor to refactor the specified Vue 2 management list page UI while preserving its business behavior."
-
-policy:
-  allow_implicit_invocation: false
