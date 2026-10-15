@@ -1,0 +1,61 @@
+# 独立 WUD：只管理 WUD 本身，不包含或依赖任何业务系统。
+# 建议放到 /opt/wud/compose.wud.yaml，同目录的 .env 填写以下三项：
+# WUD_BIND_IP=服务器内网IP
+# WUD_SWR_USER=具有目标镜像仓库读取权限的SWR用户名
+# WUD_SWR_PASSWORD='对应的有效SWR密码'
+# 真实凭据不要提交到仓库；默认复用现有 wud_data 和其中的管理员账号。
+#
+# 只读校验：在 /opt/wud 执行 docker compose -p wud -f compose.wud.yaml config --quiet
+# 首次接管前须确认旧 WUD 的容器名、状态和挂载，不能让两套 WUD 同时使用 wud_data。
+# 确认接管条件后，只启动 WUD：docker compose -p wud -f compose.wud.yaml up -d --no-build --pull never --wait --wait-timeout 180 wud
+# 不执行业务系统的 up/down，也不要加 --remove-orphans。
+#
+# 日常：每分钟监测本机运行中的容器，默认不自动更新任何业务。
+# 接入某个 Compose 项目时，只需要：
+# 1. 在下方 volumes 中按原绝对路径挂载该项目目录（读写，用于写回标签和备份）。
+# 2. 在目标服务自己的 Compose labels 中增加：
+#      wud.trigger.dockercompose.shared.enabled: "true"
+#    多文件项目还需用 wud.compose.file 指定实际保存 image 地址的那份文件；
+#    自动探测只选择第一个 Compose 文件，不会合并多个文件或解析 image 中的环境变量。
+# 3. 按该项目需要设置 wud.tag.include / wud.tag.transform 等标签，再更新对应容器。
+#    标签和挂载都就绪后会自动更新，不必每次手动触发；数据库不要开启更新标签。
+# 暂停自动更新：在 WUD 的 .env 设置 WUD_AUTO_UPDATE=false，再单独重建 WUD。
+# Docker socket 具有宿主机管理权限，业务目录可写；仅限可信管理员使用，勿开放公网。
+# 健康检查失败可回滚容器和 Compose 配置，但不能回滚数据库内容。
+name: wud
+
+services:
+  wud:
+    image: ghcr.io/getwud/wud:9.4.1
+    container_name: wud
+    restart: unless-stopped
+    ports:
+      - "${WUD_BIND_IP:?请在.env中设置WUD_BIND_IP为服务器内网IP}:3000:3000"
+    environment:
+      TZ: Asia/Shanghai
+      WUD_WATCHER_LOCAL_CRON: "* * * * *"
+      WUD_WATCHER_LOCAL_JITTER: "1000"
+      WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "true"
+      WUD_REGISTRY_CUSTOM_SWR_URL: https://swr.cn-south-1.myhuaweicloud.com
+      WUD_REGISTRY_CUSTOM_SWR_LOGIN: ${WUD_SWR_USER:?请在.env中设置WUD_SWR_USER}
+      WUD_REGISTRY_CUSTOM_SWR_PASSWORD: ${WUD_SWR_PASSWORD:?请在.env中设置WUD_SWR_PASSWORD}
+      # 不设置固定 FILE，按每个容器的 Compose 标签或 wud.compose.file 选择项目文件。
+      WUD_TRIGGER_DOCKERCOMPOSE_SHARED_AUTO: "${WUD_AUTO_UPDATE:-true}"
+      WUD_TRIGGER_DOCKERCOMPOSE_SHARED_INCLUDEBYDEFAULT: "false"
+      WUD_TRIGGER_DOCKERCOMPOSE_SHARED_BACKUP: "true"
+      WUD_TRIGGER_DOCKERCOMPOSE_SHARED_PRUNE: "false"
+      WUD_TRIGGER_DOCKERCOMPOSE_SHARED_ROLLBACK: "true"
+      WUD_TRIGGER_DOCKERCOMPOSE_SHARED_ROLLBACKWINDOW: "180000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - wud_data:/store
+      # 后续接入项目时，在这里逐个增加其目录；不要挂载宿主机根目录或业务数据卷。
+      # 例如：- /opt/你的项目:/opt/你的项目
+    labels:
+      wud.watch: "false"
+
+# 只复用当前已存在的 WUD 卷，缺失时报错，不新建空卷或重置账号。
+volumes:
+  wud_data:
+    external: true
+    name: wud_data
