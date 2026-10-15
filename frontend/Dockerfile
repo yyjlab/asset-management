@@ -1,4 +1,4 @@
-FROM node:24.19.0-alpine3.24 AS build
+FROM node:24.19.0-bookworm-slim AS build
 WORKDIR /workspace
 
 RUN npm install --global pnpm@10.34.7
