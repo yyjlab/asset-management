@@ -35,6 +35,7 @@ export interface Asset {
   currentValue: number | null
   checkedOut: boolean
   assignedTo: string | null
+  assignedUserId: number | null
   imageUrl: string | null
   imageUrls: string[]
   notes: string | null
@@ -71,6 +72,7 @@ export interface AssetPayload {
   currentValue: number | null
   checkedOut: boolean
   assignedTo: string
+  assignedUserId?: number | null
   imageUrl: string
   imageUrls: string[]
   notes: string
@@ -163,10 +165,22 @@ export interface Summary {
 
 export type AssetFilter = 'all' | 'available' | 'checkedOut' | 'maintenance' | 'scrapped'
 
-export type Permission = 'ASSET_VIEW' | 'ASSET_CREATE' | 'ASSET_EDIT' | 'ASSET_DELETE' | 'ASSET_RETURN'
+export type Permission = 'ASSET_VIEW' | 'ASSET_CREATE' | 'ASSET_EDIT' | 'ASSET_DELETE' | 'ASSET_RETURN' | 'ASSET_CHECKOUT' | 'ASSET_IMPORT' | 'ASSET_EXPORT'
+export type DataScope = 'SELF' | 'DEPARTMENT' | 'ALL'
+export interface AccessPayload { permissions: Permission[]; dataScope: DataScope; departments: string[]; enabled: boolean }
+export interface Assignee { id: number; username: string; displayName: string }
+export interface DashboardOverview {
+  total: number; computerCount: number; displayCount: number; available: number; checkedOut: number; maintenance: number; scrapped: number
+  configurationRate: number; completeComputers: number; missingImages: number; missingDepartments: number; unboundDisplays: number
+  cpu: RankedItem[]; memory: RankedItem[]; storage: RankedItem[]; departments: RankedItem[]; locations: RankedItem[]
+}
+export interface RankedItem { label: string; count: number; percent: number }
 export type UserRole = 'SUPER_ADMIN' | 'USER'
 
 export interface AuthUser {
+  displayName: string
+  dataScope: DataScope
+  departments: string[]
   id: number
   username: string
   role: UserRole
@@ -176,6 +190,10 @@ export interface AuthUser {
 }
 
 export interface ManagedUser {
+  displayName: string
+  dingtalkBound: boolean
+  dataScope: DataScope
+  departments: string[]
   id: number
   username: string
   role: UserRole

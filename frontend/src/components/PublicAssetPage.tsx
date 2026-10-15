@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api } from '../api'
+import { ApiError, api } from '../api'
 import type { AuthUser, PublicAsset } from '../types'
 import { BoxesIcon, CheckIcon, CloseIcon, ReturnIcon, UserIcon } from './Icons'
 
@@ -20,6 +20,7 @@ export function PublicAssetPage({ qrToken }: Props) {
   const [error, setError] = useState('')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [needsLogin, setNeedsLogin] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [username, setUsername] = useState('')
@@ -34,7 +35,7 @@ export function PublicAssetPage({ qrToken }: Props) {
 
   useEffect(() => {
     refreshAsset()
-      .catch((reason) => setError(reason instanceof Error ? reason.message : '无法读取资产档案'))
+      .catch((reason) => { setNeedsLogin(reason instanceof ApiError && reason.status === 401); setError(reason instanceof Error ? reason.message : '无法读取资产档案') })
     api.me().then(setAuthUser).catch(() => setAuthUser(null)).finally(() => setAuthReady(true))
   }, [qrToken])
 
@@ -94,7 +95,7 @@ export function PublicAssetPage({ qrToken }: Props) {
     }
   }
 
-  if (error) return <main className="public-asset-state"><div><BoxesIcon /><h1>无法打开资产档案</h1><p>{error}</p><small>请确认二维码完整，或联系资产管理员。</small></div></main>
+  if (error) return <main className="public-asset-state"><div><BoxesIcon /><h1>{needsLogin ? '请登录后查看资产档案' : '无法打开资产档案'}</h1><p>{error}</p>{needsLogin ? <a className="button primary" href={`/?qr=${encodeURIComponent(qrToken)}`}>前往登录</a> : <small>请确认有此资产的查看权限，或联系资产管理员。</small>}</div></main>
   if (!asset) return <main className="public-asset-state"><div><span className="spinner" /><h1>正在读取设备信息</h1><p>请稍候…</p></div></main>
 
   const deviceFields = asset.assetProfile === 'COMPUTER' ? [

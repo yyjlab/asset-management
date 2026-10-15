@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Asset, AssetPayload, AssetProfile, CustomParameter, LookupType, LookupValue, RelatedDevice } from '../types'
+import type { Assignee, Asset, AssetPayload, AssetProfile, CustomParameter, LookupType, LookupValue, RelatedDevice } from '../types'
 import { lookupLabels } from '../types'
 import { DragHandleIcon, PlusIcon, SaveIcon, TrashIcon, UploadIcon } from './Icons'
 import { EditableCombobox } from './EditableCombobox'
@@ -10,6 +10,8 @@ interface Props {
   clone?: boolean
   lookups: LookupValue[]
   bindableAssets: Asset[]
+  assignees: Assignee[]
+  canAssign: boolean
   saving: boolean
   createdLookup: LookupValue | null
   onCancel: () => void
@@ -22,7 +24,7 @@ const emptyPayload = (): AssetPayload => ({
   assetTag: '', name: '', ownershipDepartment: '', cpu: '', memory: '', storage: '', graphicsCard: '', manufacturerSerialNumber: '',
   screenSize: '', displayResolution: '', displayInterface: '', orderNumber: '',
   companyId: null, modelId: null, modelName: '', categoryId: null, statusId: null, locationId: null,
-  purchasePrice: null, currentValue: null, checkedOut: false, assignedTo: '',
+  purchasePrice: null, currentValue: null, checkedOut: false, assignedTo: '', assignedUserId: null,
   imageUrl: '', imageUrls: [], notes: '', boundDisplayIds: [], boundComputerId: null, relatedDevices: [], accessories: [], customParameters: [],
 })
 
@@ -41,6 +43,7 @@ function fromAsset(asset: Asset | null, clone = false): AssetPayload {
     companyId: asset.company.id, modelId: asset.model.id, modelName: asset.model.name, categoryId: asset.category.id, statusId: asset.status.id,
     locationId: asset.location.id, purchasePrice: asset.purchasePrice, currentValue: asset.currentValue,
     checkedOut: clone ? false : asset.checkedOut || statusMeansCheckedOut, assignedTo: clone ? '' : asset.assignedTo || '',
+    assignedUserId: clone ? null : asset.assignedUserId,
     imageUrl: asset.imageUrls?.[0] || asset.imageUrl || '',
     imageUrls: asset.imageUrls?.length ? [...asset.imageUrls] : asset.imageUrl ? [asset.imageUrl] : [],
     notes: asset.notes || '',
@@ -136,7 +139,7 @@ async function prepareImage(file: File) {
   throw new Error('照片压缩后仍然过大，请降低相机分辨率后重试')
 }
 
-export function AssetForm({ asset, clone = false, lookups, bindableAssets, saving, createdLookup, onCancel, onSave, onNewLookup, onDeleteLookup }: Props) {
+export function AssetForm({ asset, clone = false, lookups, bindableAssets, assignees, canAssign, saving, createdLookup, onCancel, onSave, onNewLookup, onDeleteLookup }: Props) {
   const [form, setForm] = useState<AssetPayload>(() => {
     const initial = fromAsset(asset, clone)
     if (clone) initial.statusId = lookups.find((item) => item.type === 'STATUS' && ['当前可用', '可领用'].includes(item.name))?.id ?? null
@@ -243,7 +246,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, savin
           <label><span>资产状态 *</span><LookupField type="STATUS" required value={form.statusId} values={lookups} onChange={(v) => {
             const nextStatus = lookups.find((item) => item.id === v)
             const checkedOut = Boolean(nextStatus && (nextStatus.name.includes('在用') || nextStatus.name.includes('领出')))
-            setForm((current) => ({ ...current, statusId: v, checkedOut, assignedTo: checkedOut ? current.assignedTo : '' }))
+            setForm((current) => ({ ...current, statusId: v, checkedOut, assignedTo: checkedOut ? current.assignedTo : '', assignedUserId: checkedOut ? current.assignedUserId : null }))
           }} /></label>
         </div>
       </section>
@@ -334,7 +337,11 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, savin
         <div className="form-row-grid value-use-grid">
           <label><span>采购价格（元）</span><input min="0" step="0.01" type="number" value={form.purchasePrice ?? ''} onChange={(e) => set('purchasePrice', e.target.value === '' ? null : Number(e.target.value))} placeholder="0.00" /></label>
           <label><span>当前价值（元）</span><input min="0" step="0.01" type="number" value={form.currentValue ?? ''} onChange={(e) => set('currentValue', e.target.value === '' ? null : Number(e.target.value))} placeholder="0.00" /></label>
-          <label><span>领用人</span><input disabled={!form.checkedOut} required={form.checkedOut} maxLength={120} value={form.assignedTo} onChange={(e) => set('assignedTo', e.target.value)} placeholder={form.checkedOut ? '请输入领用人' : '当前未领用'} /></label>
+          <label><span>领用人</span><input disabled={!form.checkedOut || !canAssign || Boolean(form.assignedUserId)} required={form.checkedOut} maxLength={120} value={form.assignedTo} onChange={(e) => set('assignedTo', e.target.value)} placeholder={form.checkedOut ? '请输入领用人或选择关联账号' : '当前未领用'} /></label>
+          {canAssign && <label><span>关联领用账号（用于“仅本人”权限）</span><select disabled={!form.checkedOut} value={form.assignedUserId ?? ''} onChange={event => {
+            const account = assignees.find(user => user.id === Number(event.target.value))
+            setForm(current => ({ ...current, assignedUserId: account?.id ?? null, assignedTo: account?.displayName ?? current.assignedTo }))
+          }}><option value="">不关联账号，保留领用人文字</option>{assignees.map(user => <option key={user.id} value={user.id}>{user.displayName}（{user.username}）</option>)}</select></label>}
         </div>
       </section>
 

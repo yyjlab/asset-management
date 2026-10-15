@@ -53,6 +53,7 @@ class AssetApiTest {
     @Autowired AssetRepository assetRepository;
     @Autowired com.acme.assetmanagement.audit.AuditLogRepository auditLogRepository;
     @Autowired jakarta.persistence.EntityManager entityManager;
+    @Autowired com.acme.assetmanagement.user.UserRepository users;
 
     @Test
     void categoryTemplateRemembersNamesAndOrderWithoutChangingOtherAssets() throws Exception {
@@ -140,11 +141,11 @@ class AssetApiTest {
                 .andExpect(status().isCreated());
         var clone = assetRepository.findByAssetTagIgnoreCase("960000000002").orElseThrow();
         mockMvc.perform(delete("/api/assets/{id}", original.getId()).with(assetUser()).with(csrf())).andExpect(status().isNoContent());
-        mockMvc.perform(get(reference)).andExpect(status().isOk());
+        mockMvc.perform(get(reference).with(assetUser())).andExpect(status().isOk());
         mockMvc.perform(delete("/api/assets/{id}", clone.getId()).with(assetUser()).with(csrf())).andExpect(status().isNoContent());
-        mockMvc.perform(get(reference)).andExpect(status().isNotFound());
+        mockMvc.perform(get(reference).with(assetUser())).andExpect(status().isNotFound());
         mockMvc.perform(post("/api/assets").with(assetUser()).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(second))
-                .andExpect(status().isConflict());
+                .andExpect(status().isNotFound());
         assertFalse(assetRepository.existsByAssetTagIgnoreCase("960000000002"));
         assertFalse(java.nio.file.Files.exists(java.nio.file.Path.of(System.getProperty("java.io.tmpdir"),
                 "asset-management-test-images", reference.substring(reference.lastIndexOf('/') + 1))));
@@ -181,12 +182,14 @@ class AssetApiTest {
     }
 
     @Test
-    void qrAssetRecordIsPublicReadOnlyAndHidesSensitiveFields() throws Exception {
+    void qrAssetRecordRequiresAuthenticationAndHidesSensitiveFields() throws Exception {
         var asset = assetRepository.findAll().stream()
                 .filter(item -> "202609010001".equals(item.getAssetTag()))
                 .findFirst().orElseThrow();
 
         mockMvc.perform(get("/api/public/assets/{qrToken}", asset.getQrToken()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/public/assets/{qrToken}", asset.getQrToken()).with(assetUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assetTag").value("202609010001"))
                 .andExpect(jsonPath("$.computerModel").isNotEmpty())
@@ -197,7 +200,7 @@ class AssetApiTest {
                 .andExpect(jsonPath("$.notes").doesNotExist())
                 .andExpect(jsonPath("$.qrToken").doesNotExist());
 
-        mockMvc.perform(get("/api/public/assets/not-a-real-token"))
+        mockMvc.perform(get("/api/public/assets/not-a-real-token").with(assetUser()))
                 .andExpect(status().isNotFound());
 
         mockMvc.perform(get("/api/assets"))
@@ -239,7 +242,7 @@ class AssetApiTest {
                 .andExpect(jsonPath("$.qrBaseUrl").value("http://asset.example.test"))
                 .andExpect(jsonPath("$.source").value("DATABASE"));
 
-        String assets = mockMvc.perform(get("/api/assets").with(assetUser()))
+        String assets = mockMvc.perform(get("/api/assets/1").with(assetUser()))
                 .andReturn().getResponse().getContentAsString();
         String qrToken = assets.replaceFirst("(?s).*?\\\"qrToken\\\":\\\"([^\\\"]+)\\\".*", "$1");
         byte[] png = mockMvc.perform(get("/api/assets/1/qr").with(assetUser()))
@@ -394,7 +397,7 @@ class AssetApiTest {
         String storedImageUrl = assetRepository.findById(assetId).orElseThrow().getImageUrls().getFirst();
         assertTrue(storedImageUrl.startsWith("/api/public/asset-images/"));
         assertFalse(storedImageUrl.startsWith("data:"));
-        mockMvc.perform(get(storedImageUrl))
+        mockMvc.perform(get(storedImageUrl).with(assetUser()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG));
 
@@ -679,13 +682,13 @@ class AssetApiTest {
         assertEquals(before, assetRepository.count());
     }
 
-    private static RequestPostProcessor assetUser() {
-        return user("asset-tester").authorities(
-                new SimpleGrantedAuthority("ASSET_VIEW"),
-                new SimpleGrantedAuthority("ASSET_CREATE"),
-                new SimpleGrantedAuthority("ASSET_EDIT"),
-                new SimpleGrantedAuthority("ASSET_DELETE"),
-                new SimpleGrantedAuthority("ASSET_RETURN"));
+    private RequestPostProcessor assetUser() {
+        var account = users.findByUsernameIgnoreCase("asset-tester").orElseGet(() -> {
+            var created = new com.acme.assetmanagement.user.UserAccount();
+            created.setUsername("asset-tester"); created.setDisplayName("测试用户"); created.setPasswordHash("test-hash");
+            return users.saveAndFlush(created);
+        });
+        return user(com.acme.assetmanagement.security.AccountPrincipal.from(account));
     }
 
     private static RequestPostProcessor adminUser() {

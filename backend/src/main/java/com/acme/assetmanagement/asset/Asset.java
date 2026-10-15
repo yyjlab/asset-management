@@ -88,6 +88,9 @@ public class Asset {
     @Column(length = 120)
     private String assignedTo;
 
+    // Stable association; do not infer account ownership from legacy display names.
+    private Long assignedUserId;
+
     @Column(nullable = false)
     private boolean requestable;
 
@@ -195,6 +198,8 @@ public class Asset {
     public boolean isCheckedOut() { return checkedOut; }
     public void setCheckedOut(boolean checkedOut) { this.checkedOut = checkedOut; }
     public String getAssignedTo() { return assignedTo; }
+    public Long getAssignedUserId() { return assignedUserId; }
+    public void setAssignedUserId(Long id) { this.assignedUserId = id; }
     public void setAssignedTo(String assignedTo) { this.assignedTo = assignedTo; }
     public boolean isRequestable() { return requestable; }
     public void setRequestable(boolean requestable) { this.requestable = requestable; }

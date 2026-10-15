@@ -48,11 +48,19 @@ docker compose up -d --build --wait
 
 在后端容器运行环境设置 `.env.example` 中的六个 `DINGTALK_LOGIN_*` 变量并启用登录；仅构建镜像不会自动带入这些配置。密钥不要写入 Dockerfile 或代码仓库。
 
-让钉钉应用管理员添加与 `DINGTALK_LOGIN_REDIRECT_URI` 完全一致的回调地址：`http://asset.wfq.com/api/v1/auth/dingtalk/callback`。浏览器须能访问该内网地址及 `login.dingtalk.com`，后端须能访问 `api.dingtalk.com`；正式使用建议 HTTPS。外层反向代理也应关闭该回调路径的访问日志，避免记录临时授权码。
+让钉钉应用管理员添加与 `DINGTALK_LOGIN_REDIRECT_URI` 完全一致的回调地址：`http://asset.wfq.com/api/v1/auth/dingtalk/callback`。浏览器须能访问该内网地址及 `login.dingtalk.com`，后端须能访问 `api.dingtalk.com` 和 `oapi.dingtalk.com`；正式使用建议 HTTPS。外层反向代理也应关闭该回调路径的访问日志，避免记录临时授权码。
 
-首次用现有账号密码登录，点击右上角头像 → “绑定我的钉钉”，完成授权后即可使用登录页的“钉钉登录”。不会自动创建账号、按姓名匹配或增加权限；绑定记录只新增到用户表，不删除资产数据。同一个钉钉身份只能绑定一个账号，暂不提供换绑功能。
+本企业员工首次钉钉登录后自动创建普通账号，中文姓名转小写拼音，重名追加数字；默认只查看本人资产，不开放新增、修改、导入或导出。首次建号会用企业应用凭据核验内部成员身份并读取企业通讯录姓名；应用须有根据 unionId 查询 userid、读取成员详情的权限及相应通讯录可见范围。外部联系人及核验失败者不能自动建号。钉钉应用名称保持不变。
 
-回调 state 与当前浏览器会话绑定，有效期默认10分钟且只能使用一次。未绑定、取消授权、会话过期及服务超时会返回提示。真实钉钉授权与内网部署需要现场联调，自动测试不能代替该验证。
+已有本地账号应先用账号密码登录，点击头像 → “绑定我的钉钉”，避免另建账号。不会按姓名自动合并；一个钉钉身份只能关联一个账号。没有设置过权限的老账号保持原有权限。
+
+回调 state 与当前浏览器会话绑定，有效期默认10分钟且只能使用一次。取消授权、成员核验失败、会话过期及服务超时会返回提示。真实钉钉授权与内网部署需要现场联调，自动测试不能代替该验证。
+
+### 用户权限
+
+超级管理员在“用户”页面统一管理本地及钉钉账号，可筛选“钉钉用户”，设置资产操作权限、仅本人 / 指定部门 / 全部资产范围及停用状态。驾驶舱汇总统计对所有登录用户开放，明细和最近更新只展示授权资产；日志、系统设置及用户管理仍仅超级管理员可用。
+
+“仅本人”依赖资产编辑页中的“关联领用账号”。原来的领用人文字保留，不会按同名自动关联；管理员确认后手动关联。资产图片、扫码详情、标签和导出均校验数据范围，扫码查看现在需要登录。批量 CSV 导入只允许有导入、新增及分配领用人权限且范围为“全部资产”的账号。权限修改在下一次请求生效，停用不删除资产。
 
 ### 数据保留
 
@@ -76,7 +84,7 @@ docker compose up -d --build --wait
 - 构建任务设置字符串参数 `COMPONENT`（后端填 `backend`，前端填 `frontend`）、`REGISTRY_HOST`（例如 `swr.cn-south-1.myhuaweicloud.com`）、`IMAGE_REPOSITORY`（完整镜像仓库路径，不含标签；两个任务分别使用后端、前端仓库）。通过 Jenkins Credentials Binding 注入 `REGISTRY_USER`、`REGISTRY_PASSWORD`，不要把密码直接写进 Shell。
 - 部署服务器按上面的手动部署前提准备 Docker、Compose 和 `/opt/asset-management`，保留项目的 `compose.yaml` 与服务器自己的 `.env`。首次先创建数据库及管理员配置；更新前备份数据，不覆盖已有 `.env`。钉钉变量也填写在服务器 `.env`，不作为镜像构建参数。
 
-仅在部署服务器 `/opt/asset-management` 新建 `compose.jenkins.yaml`，内容如下；它只指定前后端镜像，不改变数据库、网络及数据卷：
+仅在部署服务器 `/opt/asset-management` 新建 `compose.jenkins.yaml`；它只指定前后端镜像，不改变数据库、网络及数据卷。下面的变量写法用于后文的自动部署任务；当前手动发布可直接使用“日常镜像更新”中的固定地址写法，两种写法选择一种即可：
 
 ```yaml
 services:
@@ -85,6 +93,43 @@ services:
   web:
     image: "${FRONTEND_IMAGE:?请设置完整前端镜像地址及标签}"
 ```
+
+### 日常镜像更新（当前手动发布方式）
+
+Jenkins 构建并推送成功后，在**资产部署服务器**操作，不是在 Jenkins 构建服务器操作。以下沿用现有项目名 `asset-management` 和目录 `/opt/asset-management`；更新前先备份数据库和图片，保留旧镜像与原配置。
+
+平时只修改 `compose.jenkins.yaml` 中需要更新的镜像标签，`compose.yaml` 和 `.env` 不动。下面是镜像地址示例，标签以 Jenkins 实际推送成功的版本为准：
+
+```yaml
+services:
+  backend:
+    image: swr.cn-south-1.myhuaweicloud.com/recovery-uat/be-asset:test8
+  web:
+    image: swr.cn-south-1.myhuaweicloud.com/recovery-uat/fe-asset:test7
+```
+
+只更新前端就改 `web.image` 的标签，后端标签保持原样；只更新后端则相反。前后端任务的构建编号独立，不要求标签一致。只有端口、环境变量或挂载等部署配置发生变化时，才调整原 `compose.yaml` 或 `.env`。
+
+部署服务器当前用户须已登录对应的私有镜像仓库且有拉取权限；同一仓库域名的前后端镜像不必分别登录，凭据失效后需重新登录。登录密钥不要写入文档或仓库。
+
+修改标签后，执行以下命令检查配置、拉取镜像并更新前后端；任一步失败就停止，不在服务器重新编译：
+
+```bash
+cd /opt/asset-management &&
+docker compose -p asset-management -f compose.yaml -f compose.jenkins.yaml config --quiet &&
+docker compose -p asset-management -f compose.yaml -f compose.jenkins.yaml pull backend web &&
+docker compose -p asset-management -f compose.yaml -f compose.jenkins.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 backend web
+```
+
+`--no-deps` 限定只更新指定的前后端服务，不启动或重建 MySQL；未变更镜像及配置的服务通常不会重建。原数据库卷 `asset-management_mysql_data`、图片卷 `asset-management_asset_images` 继续复用，不执行 `down` 或 `down -v`。
+
+更新后用以下只读命令查看状态，再访问原资产网址检查登录、资产列表和图片。更换容器会短暂中断访问；这更新的是真实系统，不是隔离测试环境。
+
+```bash
+docker compose -p asset-management -f /opt/asset-management/compose.yaml -f /opt/asset-management/compose.jenkins.yaml ps
+```
+
+后续接入 Jenkins 自动部署时，使用上面的变量写法，由部署任务传入镜像地址及标签，便不需要每次手动改文件和运行命令。
 
 ### 前后端构建任务
 

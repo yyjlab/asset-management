@@ -9,6 +9,28 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AssetRepository extends JpaRepository<Asset, Long> {
+    @EntityGraph(attributePaths = {"company", "model", "category", "status", "location"})
+    @Query("""
+            select a from Asset a where
+            (:all = true or (:self = true and a.assignedUserId = :userId)
+              or (:department = true and a.ownershipDepartment in :departments))
+            and (:search = '' or lower(a.assetTag) like lower(concat('%', :search, '%'))
+              or lower(a.name) like lower(concat('%', :search, '%'))
+              or lower(coalesce(a.cpu, '')) like lower(concat('%', :search, '%'))
+              or lower(coalesce(a.memory, '')) like lower(concat('%', :search, '%'))
+              or lower(coalesce(a.storage, '')) like lower(concat('%', :search, '%'))
+              or lower(coalesce(a.graphicsCard, '')) like lower(concat('%', :search, '%'))
+              or lower(coalesce(a.manufacturerSerialNumber, '')) like lower(concat('%', :search, '%'))
+              or lower(coalesce(a.assignedTo, '')) like lower(concat('%', :search, '%'))
+              or lower(a.company.name) like lower(concat('%', :search, '%'))
+              or lower(a.model.name) like lower(concat('%', :search, '%')))
+            order by a.updatedAt desc
+            """)
+    List<Asset> searchScoped(String search, boolean all, boolean self, Long userId,
+                             boolean department, java.util.Set<String> departments);
+
+    @Query("select distinct a from Asset a left join a.imageUrls image where a.imageUrl = :reference or image = :reference")
+    List<Asset> findImageOwners(String reference);
     @Query("select count(distinct a.id) from Asset a left join a.imageUrls image where a.imageUrl = :reference or image = :reference")
     long countImageReferences(@Param("reference") String reference);
     @EntityGraph(attributePaths = {"company", "model", "category", "status", "location"})

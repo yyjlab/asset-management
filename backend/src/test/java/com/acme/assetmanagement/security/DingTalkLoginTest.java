@@ -83,7 +83,7 @@ class DingTalkLoginTest {
         verifyNoInteractions(provider);
     }
 
-    @Test void unboundIdentityCannotCreateOrEnterAccount() throws Exception {
+    @Test void identityWithoutVerifiedEmployeeNameCannotCreateOrEnterAccount() throws Exception {
         long count = users.count();
         when(provider.unionId("good")).thenReturn("unbound");
         var start = begin();
@@ -91,6 +91,49 @@ class DingTalkLoginTest {
                 .andExpect(redirectedUrlPattern("/?dingtalkError=*"));
         assertEquals(count, users.count());
         mvc.perform(get("/api/auth/me").session(session(start))).andExpect(status().isUnauthorized());
+    }
+
+    @Test void firstLoginCreatesPinyinEmployeeWithSelfViewAndDoesNotMergeNames() throws Exception {
+        var legacy = create("zhangsan");
+        legacy.setDisplayName("张三");
+        users.saveAndFlush(legacy);
+        long count = users.count();
+        when(provider.unionId("employee-code")).thenReturn("new-company-employee");
+        when(provider.employeeName("new-company-employee")).thenReturn("张三");
+        var start = begin();
+        var browser = session(start);
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state(start)).param("code", "employee-code"))
+                .andExpect(redirectedUrl("/"));
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("zhangsan2"))
+                .andExpect(jsonPath("$.displayName").value("张三"))
+                .andExpect(jsonPath("$.role").value("USER"))
+                .andExpect(jsonPath("$.dataScope").value("SELF"))
+                .andExpect(jsonPath("$.permissions.length()").value(1))
+                .andExpect(jsonPath("$.permissions[0]").value("ASSET_VIEW"));
+        assertEquals(count + 1, users.count());
+        assertNull(users.findById(legacy.getId()).orElseThrow().getDingtalkIdentity());
+        var again = begin();
+        mvc.perform(get(ROOT + "/callback").session(session(again)).param("state", state(again)).param("code", "employee-code"))
+                .andExpect(redirectedUrl("/"));
+        assertEquals(count + 1, users.count());
+        verify(provider, times(1)).employeeName("new-company-employee");
+        var created = users.findByUsernameIgnoreCase("zhangsan2").orElseThrow();
+        created.setEnabled(false); users.saveAndFlush(created);
+        var disabled = begin();
+        mvc.perform(get(ROOT + "/callback").session(session(disabled)).param("state", state(disabled)).param("code", "employee-code"))
+                .andExpect(redirectedUrlPattern("/?dingtalkError=*"));
+        assertFalse(users.findById(created.getId()).orElseThrow().isEnabled());
+    }
+
+    @Test void nonMemberCannotProvisionAnAccount() throws Exception {
+        long count = users.count();
+        when(provider.unionId("outside-code")).thenReturn("outsider");
+        when(provider.employeeName("outsider")).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "非本企业员工"));
+        var start = begin();
+        mvc.perform(get(ROOT + "/callback").session(session(start)).param("state", state(start)).param("code", "outside-code"))
+                .andExpect(redirectedUrlPattern("/?dingtalkError=*"));
+        assertEquals(count, users.count());
     }
 
     @Test void boundUserGetsExistingSessionAndRoleAndReplayIsRejected() throws Exception {

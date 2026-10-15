@@ -8,6 +8,7 @@ interface Props {
   assets: Asset[]
   loading: boolean
   canEdit: boolean
+  canCreate: boolean
   parameterProfile: AssetProfile | null
   onSelect: (asset: Asset) => void
   onEdit: (asset: Asset) => void
@@ -34,7 +35,7 @@ const firstThreeParameters = (asset: Asset): AssetParameter[] => {
   return [0, 1, 2].map((index) => parameters[index] || { name: `参数${index + 1}`, value: '' })
 }
 
-export function AssetTable({ assets, loading, canEdit, onSelect, onEdit, onClone }: Props) {
+export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEdit, onClone }: Props) {
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const showPurchasePrice = assets.some((asset) => asset.purchasePrice != null)
@@ -68,7 +69,7 @@ export function AssetTable({ assets, loading, canEdit, onSelect, onEdit, onClone
         </tr></thead>
         <tbody>
           {loading ? <tr><td colSpan={columnCount}><div className="table-empty"><span className="spinner" />正在读取资产…</div></td></tr> :
-           assets.length === 0 ? <tr><td colSpan={columnCount}><div className="table-empty"><strong>该分类下暂无资产</strong><span>可以切换上方状态卡片，或新增一项资产。</span></div></td></tr> :
+           assets.length === 0 ? <tr><td colSpan={columnCount}><div className="table-empty"><strong>当前授权范围内暂无匹配资产</strong><span>{canCreate ? '可以调整筛选条件，或新增一项资产。' : '可以调整筛选条件；本人资产需由管理员确认并关联领用账号。'}</span></div></td></tr> :
            assets.map((asset) => {
              const scrapped = isScrapped(asset)
              const maintenance = isMaintenance(asset)
@@ -93,7 +94,7 @@ export function AssetTable({ assets, loading, canEdit, onSelect, onEdit, onClone
                {showPurchasePrice && <td className="number value-cell">{money(asset.purchasePrice)}</td>}
                {showCurrentValue && <td className="number value-cell">{money(asset.currentValue)}</td>}
                <td className="sticky-action"><div className="row-actions">
-                 {canEdit && <button className="clone-action" title="克隆资产" onClick={(event) => { event.stopPropagation(); onClone(asset) }}><CloneIcon /></button>}
+                 {canCreate && <button className="clone-action" title="克隆资产" onClick={(event) => { event.stopPropagation(); onClone(asset) }}><CloneIcon /></button>}
                  {canEdit && <button className="edit-action" title="编辑资产" onClick={(event) => { event.stopPropagation(); onEdit(asset) }}><EditIcon /></button>}
                </div></td>
              </tr>

@@ -128,10 +128,12 @@ public class AuthController {
     }
     public record CsrfResponse(String headerName, String token) {}
     public record AuthResponse(Long id, String username, UserRole role,
-                               Set<Permission> permissions, boolean canManageUsers, boolean hasAvatar) {
+                               Set<Permission> permissions, boolean canManageUsers, boolean hasAvatar,
+                               String displayName, com.acme.assetmanagement.user.DataScope dataScope, Set<String> departments) {
         static AuthResponse from(UserAccount account) {
             return new AuthResponse(account.getId(), account.getUsername(), account.getRole(),
-                    Set.of(Permission.values()), account.getRole() == UserRole.SUPER_ADMIN, account.hasAvatar());
+                    account.effectivePermissions(), account.getRole() == UserRole.SUPER_ADMIN, account.hasAvatar(),
+                    account.getDisplayName(), account.getDataScope(), Set.copyOf(account.getDepartments()));
         }
     }
 }

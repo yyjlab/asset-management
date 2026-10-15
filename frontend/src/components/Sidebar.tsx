@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { AssetFilter } from '../types'
+import type { AssetFilter, Permission } from '../types'
 const version = 'v26.915.1651'
 import { BoxesIcon, ClipboardIcon, DashboardIcon, SettingsIcon, SidebarPanelIcon, UploadIcon, UsersIcon } from './Icons'
 
@@ -8,6 +8,7 @@ export type AppSection = 'dashboard' | 'assets' | 'transfer' | 'users' | 'logs' 
 interface Props {
   section: AppSection
   canManageUsers: boolean
+  permissions: Permission[]
   onFilter: (filter: AssetFilter) => void
   onSection: (section: AppSection) => void
 }
@@ -19,7 +20,7 @@ const initiallyCollapsed = () => {
   catch { return false }
 }
 
-export function Sidebar({ section, canManageUsers, onFilter, onSection }: Props) {
+export function Sidebar({ section, canManageUsers, permissions, onFilter, onSection }: Props) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed)
   const toggleSidebar = () => setCollapsed((current) => {
     const next = !current
@@ -42,9 +43,9 @@ export function Sidebar({ section, canManageUsers, onFilter, onSection }: Props)
         <button aria-label="驾驶舱" title={collapsed ? '驾驶舱' : undefined} className={`nav-item ${section === 'dashboard' ? 'active' : ''}`} onClick={() => onSection('dashboard')}>
           <DashboardIcon /><span>驾驶舱</span>
         </button>
-        <button aria-label="资产" title={collapsed ? '资产' : undefined} className={`nav-item ${section === 'assets' ? 'active' : ''}`} onClick={() => { onSection('assets'); onFilter('all') }}>
+        {permissions.includes('ASSET_VIEW') && <button aria-label="资产" title={collapsed ? '资产' : undefined} className={`nav-item ${section === 'assets' ? 'active' : ''}`} onClick={() => { onSection('assets'); onFilter('all') }}>
           <BoxesIcon /><span>资产</span>
-        </button>
+        </button>}
         {canManageUsers && <button aria-label="用户" title={collapsed ? '用户' : undefined} className={`nav-item ${section === 'users' ? 'active' : ''}`} onClick={() => onSection('users')}>
           <UsersIcon /><span>用户</span>
         </button>}
@@ -54,9 +55,9 @@ export function Sidebar({ section, canManageUsers, onFilter, onSection }: Props)
         {canManageUsers && <button aria-label="设置" title={collapsed ? '设置' : undefined} className={`nav-item ${section === 'settings' ? 'active' : ''}`} onClick={() => onSection('settings')}>
           <SettingsIcon /><span>设置</span>
         </button>}
-        <button aria-label="数据" title={collapsed ? '数据' : undefined} className={`nav-item ${section === 'transfer' ? 'active' : ''}`} onClick={() => onSection('transfer')}>
+        {(permissions.includes('ASSET_IMPORT') || permissions.includes('ASSET_EXPORT')) && <button aria-label="数据" title={collapsed ? '数据' : undefined} className={`nav-item ${section === 'transfer' ? 'active' : ''}`} onClick={() => onSection('transfer')}>
           <UploadIcon /><span>数据</span>
-        </button>
+        </button>}
       </nav>
     </aside>
   )

@@ -439,6 +439,13 @@ input, select, textarea { font-size: 14px; }
 .user-editor > p { margin: 0 0 22px; color: #8491a4; font-size: 13px; }
 .user-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .user-form-grid.single-field { grid-template-columns: 1fr; }
+.user-source-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 0 16px; }
+.user-panel > .user-source-tabs { padding-left: 18px; }
+.access-permissions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
+.access-permissions label, .access-enabled { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.access-permissions input, .access-enabled input { width: 17px; height: 17px; accent-color: #356ff1; }
+.access-editor .user-form-grid { margin-bottom: 18px; }
+.user-identity > small { display: block; margin-top: 7px; color: #8491a4; }
 .user-form-grid label { display: flex; flex-direction: column; gap: 7px; }
 .user-form-grid label.full { grid-column: 1/-1; }
 .user-form-grid label span { color: #53647d; font-size: 13px; font-weight: 600; }

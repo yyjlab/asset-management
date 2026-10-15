@@ -34,6 +34,7 @@ class AuditAndImportTest {
     @Autowired jakarta.persistence.EntityManager entityManager;
     @Autowired com.acme.assetmanagement.audit.AuditLogService auditService;
     @Autowired com.acme.assetmanagement.asset.AssetCsvTemplateService csvExportService;
+    @Autowired com.acme.assetmanagement.user.UserRepository users;
 
     @Test
     void previewRejectsOverlongNameAndWrongBindingType() throws Exception {
@@ -62,7 +63,7 @@ class AuditAndImportTest {
         assertTrue(csv.startsWith("\uFEFF资产编号*,资产名称*,所属公司*"));
         assetRepository.findAll().forEach(asset -> assertTrue(csv.contains(asset.getAssetTag())));
         assertTrue(auditLogRepository.findAll().stream().anyMatch(log ->
-                "CSV_TEMPLATE_EXPORT".equals(log.getAction().name()) && log.getSummary().contains("导出全部资产数据")));
+                "CSV_TEMPLATE_EXPORT".equals(log.getAction().name()) && log.getSummary().contains("导出授权范围资产数据")));
     }
 
     @Test
@@ -244,11 +245,13 @@ class AuditAndImportTest {
                 ("\uFEFF" + content).getBytes(StandardCharsets.UTF_8));
     }
 
-    private static RequestPostProcessor assetUser() {
-        return user("asset-tester").authorities(
-                new SimpleGrantedAuthority("ROLE_USER"),
-                new SimpleGrantedAuthority("ASSET_VIEW"),
-                new SimpleGrantedAuthority("ASSET_CREATE"));
+    private RequestPostProcessor assetUser() {
+        var account = users.findByUsernameIgnoreCase("asset-tester").orElseGet(() -> {
+            var created = new com.acme.assetmanagement.user.UserAccount();
+            created.setUsername("asset-tester"); created.setDisplayName("测试用户"); created.setPasswordHash("test-hash");
+            return users.saveAndFlush(created);
+        });
+        return user(com.acme.assetmanagement.security.AccountPrincipal.from(account));
     }
 
     private static RequestPostProcessor adminUser() {

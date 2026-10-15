@@ -26,7 +26,7 @@ public record AccountPrincipal(
     private static final long serialVersionUID = 1L;
 
     public static AccountPrincipal from(UserAccount account) {
-        Set<Permission> effectivePermissions = Set.of(Permission.values());
+        Set<Permission> effectivePermissions = account.effectivePermissions();
         return new AccountPrincipal(account.getId(), account.getUsername(), account.getPasswordHash(),
                 account.getRole(), effectivePermissions, account.isEnabled());
     }

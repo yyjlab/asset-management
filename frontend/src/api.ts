@@ -1,4 +1,4 @@
-import type { Asset, AssetPayload, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
+import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -67,6 +67,9 @@ async function download(path: string, fallbackFilename: string) {
 }
 
 export const api = {
+  dashboard: () => request<DashboardOverview>('/api/dashboard'),
+  assignees: () => request<Assignee[]>('/api/assignees'),
+  updateUserAccess: (id: number, payload: AccessPayload) => mutate<ManagedUser>(`/api/users/${id}/access`, { method: 'PUT', body: JSON.stringify(payload) }),
   getAsset: (id: number) => request<Asset>(`/api/assets/${id}`),
   getPublicAsset: (qrToken: string) => request<PublicAsset>(`/api/public/assets/${encodeURIComponent(qrToken)}`),
   me: () => request<AuthUser>('/api/auth/me'),

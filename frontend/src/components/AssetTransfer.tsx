@@ -4,11 +4,13 @@ import type { CsvImportPreview } from '../types'
 import { DownloadIcon, UploadIcon } from './Icons'
 
 interface Props {
+  canExport: boolean
+  canImport: boolean
   onNotify: (text: string, kind?: 'ok' | 'error') => void
   onImported: () => Promise<void>
 }
 
-export function AssetTransfer({ onNotify, onImported }: Props) {
+export function AssetTransfer({ canExport, canImport, onNotify, onImported }: Props) {
   const [downloading, setDownloading] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<CsvImportPreview | null>(null)
@@ -20,7 +22,7 @@ export function AssetTransfer({ onNotify, onImported }: Props) {
     setDownloading(true)
     try {
       await api.downloadAssetCsv()
-      onNotify('全部资产数据已导出')
+      onNotify('授权范围内的资产数据已导出')
     } catch (error) {
       onNotify(error instanceof Error ? error.message : '资产数据导出失败', 'error')
     } finally {
@@ -50,7 +52,7 @@ export function AssetTransfer({ onNotify, onImported }: Props) {
   }
 
   return <section className="transfer-page">
-    <div className="transfer-card">
+    {canExport && <div className="transfer-card">
       <div className="transfer-copy">
         <span className="transfer-icon"><DownloadIcon /></span>
         <div>
@@ -58,14 +60,14 @@ export function AssetTransfer({ onNotify, onImported }: Props) {
         </div>
       </div>
       <button className="button primary transfer-download" disabled={downloading} onClick={() => void downloadAssets()}>
-        <DownloadIcon />{downloading ? '正在导出…' : '导出全部数据'}
+        <DownloadIcon />{downloading ? '正在导出…' : '导出授权范围数据'}
       </button>
-    </div>
+    </div>}
 
-    <div className="transfer-import-card">
+    {canImport && <div className="transfer-import-card">
       <div className="transfer-copy"><span className="transfer-icon import"><UploadIcon /></span><div><h2>导入 CSV</h2></div></div>
       <div className="transfer-import-actions"><input ref={inputRef} hidden type="file" accept=".csv,text/csv" onChange={(event) => void selectFile(event.target.files?.[0])} /><button className="button ghost" disabled={checking || importing} onClick={() => inputRef.current?.click()}><UploadIcon />{checking ? '正在校验…' : file ? '重新选择' : '选择 CSV'}</button>{preview?.canImport && <button className="button primary" disabled={importing} onClick={() => void confirmImport()}>{importing ? '正在导入…' : `确认导入 ${preview.validRows} 项`}</button>}</div>
-    </div>
+    </div>}
 
     {file && <div className="csv-file-line"><strong>{file.name}</strong><span>{(file.size / 1024).toFixed(1)} KB</span></div>}
     {preview && <div className={`csv-preview ${preview.canImport ? 'ready' : 'invalid'}`}>

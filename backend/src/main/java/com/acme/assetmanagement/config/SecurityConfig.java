@@ -47,7 +47,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
                 .cors(cors -> {})
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/csrf", "/api/public/assets/**", "/api/public/asset-images/**", "/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/csrf", "/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/v1/auth/dingtalk/status", "/api/v1/auth/dingtalk/login",
                                 "/api/v1/auth/dingtalk/callback").permitAll()

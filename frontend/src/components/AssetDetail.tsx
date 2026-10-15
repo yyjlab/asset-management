@@ -6,6 +6,7 @@ import { AssetImageLightbox } from './AssetImageLightbox'
 interface Props {
   asset: Asset | null
   canEdit: boolean
+  canCreate: boolean
   canReturn: boolean
   canDelete: boolean
   onClose: () => void
@@ -18,7 +19,7 @@ interface Props {
 const money = (value: number | null) => value == null ? '—' : `¥ ${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
 const isMaintenance = (asset: Asset) => asset.status.name.includes('维修') || asset.status.name.includes('维护')
-export function AssetDetail({ asset, canEdit, canReturn, canDelete, onClose, onEdit, onClone, onReturn, onDelete }: Props) {
+export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, onClose, onEdit, onClone, onReturn, onDelete }: Props) {
   const [qrUnavailable, setQrUnavailable] = useState(false)
   const [imagePreviewIndex, setImagePreviewIndex] = useState<number | null>(null)
   useEffect(() => { setQrUnavailable(false); setImagePreviewIndex(null) }, [asset?.id])
@@ -133,7 +134,7 @@ export function AssetDetail({ asset, canEdit, canReturn, canDelete, onClose, onE
         <div>{canDelete && <button className="button danger-button" onClick={() => onDelete(asset)}><TrashIcon />删除资产</button>}</div>
         <div>
           {canReturn && asset.checkedOut && <button className="button return-button" onClick={() => onReturn(asset)}><ReturnIcon />归还资产</button>}
-          {canEdit && <button className="button clone-button" onClick={() => onClone(asset)}><CloneIcon />克隆资产</button>}
+          {canCreate && <button className="button clone-button" onClick={() => onClone(asset)}><CloneIcon />克隆资产</button>}
           {canEdit && <button className="button warm" onClick={() => onEdit(asset)}><EditIcon />编辑资产</button>}
           <button className="button primary" onClick={onClose}>返回资产列表</button>
         </div>

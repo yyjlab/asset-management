@@ -16,10 +16,18 @@ import java.util.HexFormat;
 public class DingTalkAccountService {
     private final UserRepository repository;
     private final DingTalkProperties properties;
+    private final DingTalkClient client;
+    private final org.springframework.security.crypto.password.PasswordEncoder encoder;
+    private final com.acme.assetmanagement.audit.AuditLogService audit;
 
-    public DingTalkAccountService(UserRepository repository, DingTalkProperties properties) {
+    public DingTalkAccountService(UserRepository repository, DingTalkProperties properties, DingTalkClient client,
+                                 org.springframework.security.crypto.password.PasswordEncoder encoder,
+                                 com.acme.assetmanagement.audit.AuditLogService audit) {
         this.repository = repository;
         this.properties = properties;
+        this.client = client;
+        this.encoder = encoder;
+        this.audit = audit;
     }
 
     @Transactional
@@ -28,8 +36,7 @@ public class DingTalkAccountService {
         UserAccount account;
         if (bindingUserId == null) {
             account = repository.findByDingtalkIdentity(identity)
-                    .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN,
-                            "此钉钉身份尚未绑定账号，请先用账号密码登录，在头像窗口绑定钉钉"));
+                    .orElseGet(() -> provision(unionId, identity));
         } else {
             account = repository.findForDingtalkBinding(bindingUserId)
                     .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "绑定账号不存在"));
@@ -48,6 +55,34 @@ public class DingTalkAccountService {
         }
         if (!account.isEnabled()) throw new ApiException(HttpStatus.FORBIDDEN, "账号已停用");
         return AccountPrincipal.from(account);
+    }
+
+    private UserAccount provision(String unionId, String identity) {
+        String name = client.employeeName(unionId);
+        if (name == null || name.isBlank() || name.length() > 80) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "未取得企业员工姓名，无法自动创建账号");
+        }
+        String base = me.majiajie.tinypinyin.Pinyin.toPinyin(name, "").toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]", "");
+        if (base.isBlank()) base = "dingtalk" + identity.substring(0, 8);
+        if (base.length() > 48) base = base.substring(0, 48);
+        String username = base;
+        int suffix = 2;
+        while (repository.existsByUsernameIgnoreCase(username)) username = base + suffix++;
+        UserAccount account = new UserAccount();
+        account.setUsername(username);
+        account.setDisplayName(name.trim());
+        // Unguessable random password: auto-created users use DingTalk unless an admin resets it.
+        account.setPasswordHash(encoder.encode(java.util.UUID.randomUUID().toString()));
+        account.setDingtalkIdentity(identity);
+        account.setRole(com.acme.assetmanagement.user.UserRole.USER);
+        account.setPermissions(java.util.Set.of(com.acme.assetmanagement.user.Permission.ASSET_VIEW));
+        account.setDataScope(com.acme.assetmanagement.user.DataScope.SELF);
+        account.setAccessConfigured(true);
+        account = repository.saveAndFlush(account);
+        audit.success(com.acme.assetmanagement.audit.AuditAction.USER_CREATE, "USER", account.getId(), username,
+                "钉钉首次登录自动创建普通账号", java.util.Map.of("姓名", name, "账号", username, "数据范围", "仅本人"));
+        return account;
     }
 
     private String identity(String unionId) {

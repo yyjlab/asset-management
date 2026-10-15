@@ -14,6 +14,7 @@ public enum AuditAction {
     LOOKUP_DELETE("选项", "删除选项"),
     USER_CREATE("用户", "创建用户"),
     USER_PASSWORD_RESET("用户", "重置密码"),
+    USER_ACCESS_UPDATE("用户", "修改权限"),
     AVATAR_UPDATE("用户", "更新头像"),
     AVATAR_DELETE("用户", "删除头像"),
     USER_DELETE("用户", "删除用户"),

@@ -38,6 +38,18 @@ public class UserAccount {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    // Null identifies pre-permission-management accounts. Preserve their former full access.
+    private Boolean accessConfigured;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private DataScope dataScope;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_departments", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "department", length = 120)
+    private Set<String> departments = new java.util.HashSet<>();
+
     @Lob
     @Column(name = "avatar_data", columnDefinition = "LONGBLOB")
     private byte[] avatarData;
@@ -81,6 +93,18 @@ public class UserAccount {
                 : EnumSet.copyOf(permissions);
     }
     public boolean isEnabled() { return enabled; }
+    public Set<Permission> effectivePermissions() {
+        return role == UserRole.SUPER_ADMIN || !Boolean.TRUE.equals(accessConfigured)
+                ? Set.of(Permission.values()) : Set.copyOf(permissions);
+    }
+    public void setAccessConfigured(boolean configured) { this.accessConfigured = configured; }
+    public DataScope getDataScope() {
+        return role == UserRole.SUPER_ADMIN || !Boolean.TRUE.equals(accessConfigured) ? DataScope.ALL
+                : dataScope == null ? DataScope.SELF : dataScope;
+    }
+    public void setDataScope(DataScope scope) { this.dataScope = scope; }
+    public Set<String> getDepartments() { return departments; }
+    public void setDepartments(Set<String> departments) { this.departments = new java.util.HashSet<>(departments); }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public byte[] getAvatarData() { return avatarData; }
     public void setAvatarData(byte[] avatarData) { this.avatarData = avatarData; }

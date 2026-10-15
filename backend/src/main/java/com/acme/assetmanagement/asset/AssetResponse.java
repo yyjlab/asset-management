@@ -40,9 +40,13 @@ public record AssetResponse(
         List<AccessoryResponse> accessories,
         List<CustomParameterResponse> customParameters,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        Long assignedUserId
 ) {
     public static AssetResponse from(Asset asset) {
+        return from(asset, ignored -> true);
+    }
+    public static AssetResponse from(Asset asset, java.util.function.Predicate<Asset> visible) {
         List<String> images = asset.getImageUrls().isEmpty()
                 ? asset.getImageUrl() == null || asset.getImageUrl().isBlank() ? List.of() : List.of(asset.getImageUrl())
                 : List.copyOf(asset.getImageUrls());
@@ -56,12 +60,12 @@ public record AssetResponse(
                 LookupResponse.from(asset.getLocation()), asset.getPurchasePrice(), asset.getCurrentValue(),
                 asset.isCheckedOut(), asset.getAssignedTo(), images.isEmpty() ? null : images.getFirst(), images,
                 asset.getNotes(),
-                asset.getBoundDisplays().stream().map(AssetLinkResponse::from).toList(),
-                asset.getBoundComputers().stream().findFirst().map(AssetLinkResponse::from).orElse(null),
+                asset.getBoundDisplays().stream().filter(visible).map(AssetLinkResponse::from).toList(),
+                asset.getBoundComputers().stream().filter(visible).findFirst().map(AssetLinkResponse::from).orElse(null),
                 asset.getRelatedDevices().stream().map(RelatedDeviceResponse::from).toList(),
                 asset.getAccessories().stream().map(AccessoryResponse::from).toList(),
                 asset.getCustomParameters().stream().map(CustomParameterResponse::from).toList(),
-                asset.getCreatedAt(), asset.getUpdatedAt()
+                asset.getCreatedAt(), asset.getUpdatedAt(), asset.getAssignedUserId()
         );
     }
 

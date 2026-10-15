@@ -30,7 +30,7 @@ export function LoginPage({ loading, error, onLogin }: Props) {
       </form>
       {dingtalkEnabled && <div className="dingtalk-login">
         <button className="button primary" disabled={loading} onClick={() => { window.location.assign('/api/v1/auth/dingtalk/login') }}>钉钉登录</button>
-        <small>首次使用请先用账号密码登录，点击头像绑定钉钉。</small>
+        <small>本企业员工首次钉钉登录后自动创建普通账号；已有本地账号可登录后在头像窗口绑定钉钉。</small>
       </div>}
     </section>
   </main>

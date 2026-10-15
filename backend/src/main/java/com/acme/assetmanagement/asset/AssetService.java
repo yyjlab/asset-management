@@ -26,32 +26,45 @@ public class AssetService {
     private final AuditLogService auditLogService;
     private final AssetTagGenerator assetTagGenerator;
     private final AssetImageStorageService assetImageStorageService;
+    private final AssetAccess access;
+    private final com.acme.assetmanagement.user.UserRepository users;
 
     public AssetService(AssetRepository assetRepository, LookupRepository lookupRepository,
                         AuditLogService auditLogService, AssetTagGenerator assetTagGenerator,
-                        AssetImageStorageService assetImageStorageService) {
+                        AssetImageStorageService assetImageStorageService, AssetAccess access,
+                        com.acme.assetmanagement.user.UserRepository users) {
         this.assetRepository = assetRepository;
         this.lookupRepository = lookupRepository;
         this.auditLogService = auditLogService;
         this.assetTagGenerator = assetTagGenerator;
         this.assetImageStorageService = assetImageStorageService;
+        this.access = access;
+        this.users = users;
     }
 
     @Transactional(readOnly = true)
     public List<AssetResponse> list(String search) {
-        return assetRepository.search(search == null ? "" : search.trim()).stream().map(AssetResponse::from).toList();
+        var scope = access.scope();
+        return assetRepository.searchScoped(search == null ? "" : search.trim(),
+                scope.type() == com.acme.assetmanagement.user.DataScope.ALL,
+                scope.type() == com.acme.assetmanagement.user.DataScope.SELF, scope.userId(),
+                scope.type() == com.acme.assetmanagement.user.DataScope.DEPARTMENT,
+                scope.departments().isEmpty() ? java.util.Set.of("") : scope.departments())
+                .stream().filter(scope::allows).map(asset -> AssetResponse.from(asset, scope::allows)).toList();
     }
 
     @Transactional(readOnly = true)
     public AssetResponse get(Long id) {
-        return AssetResponse.from(findAsset(id));
+        return response(findAsset(id));
     }
 
     @Transactional(readOnly = true)
     public PublicAssetResponse getPublicByQrToken(String qrToken) {
         Asset asset = assetRepository.findByQrToken(qrToken)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "二维码对应的资产不存在或已被删除"));
-        return PublicAssetResponse.from(asset);
+        var scope = access.scope();
+        access.require(scope, asset);
+        return PublicAssetResponse.from(asset, scope::allows);
     }
 
     public AssetResponse create(AssetRequest request) {
@@ -59,6 +72,7 @@ public class AssetService {
     }
 
     public AssetResponse create(AssetRequest request, Long cloneSourceId) {
+        if (cloneSourceId != null) findAsset(cloneSourceId);
         String assetTag = clean(request.assetTag());
         if (assetTag == null) assetTag = assetTagGenerator.nextTag();
         validateUnique(request, null, assetTag);
@@ -73,7 +87,7 @@ public class AssetService {
         String summary = cloneSourceId == null ? "新增资产“" + saved.getName() + "”"
                 : "从资产 ID " + cloneSourceId + " 克隆生成新资产“" + saved.getName() + "”";
         auditLogService.success(action, "ASSET", saved.getId(), assetLabel(saved), summary, snapshot(saved));
-        return AssetResponse.from(saved);
+        return response(saved);
     }
 
     public AssetResponse update(Long id, AssetRequest request, String version) {
@@ -100,7 +114,7 @@ public class AssetService {
         Asset saved = assetRepository.saveAndFlush(asset);
         auditLogService.success(AuditAction.ASSET_UPDATE, "ASSET", saved.getId(), assetLabel(saved),
                 "编辑资产“" + saved.getName() + "”", auditLogService.diff(before, snapshot(saved)));
-        return AssetResponse.from(saved);
+        return response(saved);
     }
 
     public AssetResponse returnAsset(Long id) {
@@ -110,6 +124,7 @@ public class AssetService {
     public AssetResponse returnAssetByQrToken(String qrToken) {
         Asset asset = assetRepository.findByQrToken(qrToken)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "二维码对应的资产不存在或已被删除"));
+        access.require(asset);
         return returnAsset(asset);
     }
 
@@ -120,13 +135,14 @@ public class AssetService {
         }
         asset.setCheckedOut(false);
         asset.setAssignedTo(null);
+        asset.setAssignedUserId(null);
         lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "当前可用")
                 .or(() -> lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "可领用"))
                 .ifPresent(asset::setStatus);
         Asset saved = assetRepository.saveAndFlush(asset);
         auditLogService.success(AuditAction.ASSET_RETURN, "ASSET", saved.getId(), assetLabel(saved),
                 "归还资产并清空领用人", auditLogService.diff(before, snapshot(saved)));
-        return AssetResponse.from(saved);
+        return response(saved);
     }
 
     public void delete(Long id) {
@@ -161,6 +177,7 @@ public class AssetService {
         values.put("显示接口", asset.getDisplayInterface());
         values.put("订单号", asset.getOrderNumber());
         values.put("领用人", asset.getAssignedTo());
+        values.put("领用账号ID", asset.getAssignedUserId());
         values.put("采购价格", asset.getPurchasePrice());
         values.put("当前价值", asset.getCurrentValue());
         values.put("随附配件", asset.getRelatedDevices().stream().map(AssetResponse.RelatedDeviceResponse::from).toList());
@@ -197,12 +214,38 @@ public class AssetService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "设备型号不能为空");
         }
         LookupValue status = findLookup(request.statusId(), LookupType.STATUS);
-        if (isCheckedOutStatus(status) && clean(request.assignedTo()) == null) {
+        if (isCheckedOutStatus(status) && clean(request.assignedTo()) == null && request.assignedUserId() == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "资产状态为“已经领出”时，必须填写领用人");
         }
     }
 
     private void apply(Asset asset, AssetRequest request) {
+        Long ownerId = null;
+        String ownerName = clean(request.assignedTo());
+        boolean checkedOut = isCheckedOutStatus(findLookup(request.statusId(), LookupType.STATUS));
+        if (checkedOut && request.assignedUserId() != null) {
+            var owner = users.findById(request.assignedUserId()).orElse(null);
+            boolean unchangedOwner = Objects.equals(asset.getAssignedUserId(), request.assignedUserId());
+            if (!unchangedOwner && (owner == null || !owner.isEnabled())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "领用账号不存在或已停用");
+            }
+            ownerId = request.assignedUserId();
+            ownerName = owner == null ? asset.getAssignedTo() : owner.getDisplayName();
+        }
+        if (asset.isCheckedOut() && !checkedOut) {
+            access.permission(com.acme.assetmanagement.user.Permission.ASSET_RETURN);
+        } else if (asset.isCheckedOut() != checkedOut || !Objects.equals(asset.getAssignedUserId(), ownerId)
+                || !Objects.equals(asset.getAssignedTo(), checkedOut ? ownerName : null)) {
+            access.permission(com.acme.assetmanagement.user.Permission.ASSET_CHECKOUT);
+        }
+        // Check target scope before image/file writes and entity mutation.
+        var scope = access.scope();
+        String department = clean(request.ownershipDepartment());
+        if (scope.type() == com.acme.assetmanagement.user.DataScope.SELF && !Objects.equals(scope.userId(), ownerId)
+                || scope.type() == com.acme.assetmanagement.user.DataScope.DEPARTMENT
+                && (department == null || !scope.departments().contains(department))) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "不能保存到授权数据范围以外");
+        }
         assetImageStorageService.removeAfterCommit(imageReferences(asset));
         asset.setName(request.name().trim());
         asset.setOwnershipDepartment(clean(request.ownershipDepartment()));
@@ -245,15 +288,17 @@ public class AssetService {
         asset.setLocation(findLookup(request.locationId(), LookupType.LOCATION));
         asset.setPurchasePrice(request.purchasePrice());
         asset.setCurrentValue(request.currentValue());
-        boolean checkedOut = isCheckedOutStatus(status);
         asset.setCheckedOut(checkedOut);
-        asset.setAssignedTo(checkedOut ? clean(request.assignedTo()) : null);
+        asset.setAssignedTo(checkedOut ? ownerName : null);
+        asset.setAssignedUserId(checkedOut ? ownerId : null);
         // “开放申领”功能已经从产品中移除；保留数据库列仅用于兼容已有数据。
         asset.setRequestable(false);
         List<String> images = request.imageUrls() == null
                 ? clean(request.imageUrl()) == null ? List.of() : List.of(request.imageUrl().trim())
                 : request.imageUrls().stream().map(this::clean).filter(Objects::nonNull).distinct().toList();
         if (images.size() > 5) throw new ApiException(HttpStatus.BAD_REQUEST, "资产图片最多上传5张");
+        images.stream().filter(image -> image.startsWith("/api/public/asset-images/"))
+                .forEach(this::requireImageReference);
         images = assetImageStorageService.persistReferences(images);
         asset.setImageUrls(images);
         asset.setImageUrl(images.isEmpty() ? null : images.getFirst());
@@ -313,6 +358,7 @@ public class AssetService {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "资产不能绑定自身");
                 }
                 Asset display = findAsset(displayId);
+                access.permission(com.acme.assetmanagement.user.Permission.ASSET_EDIT);
                 if (profileOf(display.getCategory()) != AssetProfile.DISPLAY) {
                     throw new ApiException(HttpStatus.BAD_REQUEST, "只能绑定分类模板为“显示设备”的资产");
                 }
@@ -328,6 +374,7 @@ public class AssetService {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "资产不能绑定自身");
             }
             Asset computer = findAsset(computerId);
+            access.permission(com.acme.assetmanagement.user.Permission.ASSET_EDIT);
             if (profileOf(computer.getCategory()) != AssetProfile.COMPUTER) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "显示器只能绑定分类模板为“电脑设备”的资产");
             }
@@ -340,6 +387,10 @@ public class AssetService {
     }
 
     private void unlinkAll(Asset asset) {
+        for (Asset linked : java.util.stream.Stream.concat(asset.getBoundComputers().stream(), asset.getBoundDisplays().stream()).toList()) {
+            access.require(linked);
+            access.permission(com.acme.assetmanagement.user.Permission.ASSET_EDIT);
+        }
         for (Asset computer : new ArrayList<>(asset.getBoundComputers())) {
             computer.getBoundDisplays().remove(asset);
             asset.getBoundComputers().remove(computer);
@@ -355,8 +406,29 @@ public class AssetService {
     }
 
     private Asset findAsset(Long id) {
-        return assetRepository.findById(id)
+        Asset asset = assetRepository.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "资产不存在或已被删除"));
+        access.require(asset);
+        return asset;
+    }
+
+    private AssetResponse response(Asset asset) {
+        var scope = access.scope();
+        return AssetResponse.from(asset, scope::allows);
+    }
+
+    @Transactional(readOnly = true)
+    public void requireImageReference(String reference) {
+        var scope = access.scope();
+        if (assetRepository.findImageOwners(reference).stream().noneMatch(scope::allows)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "图片不存在或无权访问");
+        }
+    }
+
+    public void requireImportScope() {
+        if (access.scope().type() != com.acme.assetmanagement.user.DataScope.ALL) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "批量导入需要全部资产数据范围");
+        }
     }
 
     private LookupValue findLookup(Long id, LookupType expectedType) {

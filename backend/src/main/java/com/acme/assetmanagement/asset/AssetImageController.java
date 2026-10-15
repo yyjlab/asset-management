@@ -15,13 +15,17 @@ import java.time.Duration;
 @RequestMapping("/api/public/asset-images")
 public class AssetImageController {
     private final AssetImageStorageService storage;
+    private final AssetService service;
 
-    public AssetImageController(AssetImageStorageService storage) {
+    public AssetImageController(AssetImageStorageService storage, AssetService service) {
         this.storage = storage;
+        this.service = service;
     }
 
     @GetMapping("/{fileName}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('ASSET_VIEW')")
     public ResponseEntity<Resource> image(@PathVariable String fileName) {
+        service.requireImageReference("/api/public/asset-images/" + fileName);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.parseMediaType(storage.mediaType(fileName)))

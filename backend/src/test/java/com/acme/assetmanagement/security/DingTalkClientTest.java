@@ -56,4 +56,37 @@ class DingTalkClientTest {
         assertThrows(IllegalArgumentException.class, () -> new DingTalkProperties(true, "id", "secret", properties.redirectUri(), 600, 0));
         assertFalse(properties.toString().contains("fake-secret"));
     }
+
+    @Test void employeeNameComesFromEnterpriseDirectoryNotEditableNickname() {
+        var builder = RestClient.builder().baseUrl("https://api.dingtalk.com");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://api.dingtalk.com/v1.0/oauth2/accessToken"))
+                .andExpect(content().json("{\"appKey\":\"fake-client\",\"appSecret\":\"fake-secret\"}"))
+                .andRespond(withSuccess("{\"accessToken\":\"enterprise-token\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://oapi.dingtalk.com/topapi/user/getbyunionid?access_token=enterprise-token"))
+                .andExpect(content().json("{\"unionid\":\"employee-union\"}"))
+                .andRespond(withSuccess("{\"errcode\":0,\"result\":{\"contact_type\":0,\"userid\":\"staff-1\"}}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://oapi.dingtalk.com/topapi/v2/user/get?access_token=enterprise-token"))
+                .andExpect(content().json("{\"userid\":\"staff-1\",\"language\":\"zh_CN\"}"))
+                .andRespond(withSuccess("{\"errcode\":0,\"result\":{\"userid\":\"staff-1\",\"name\":\"张三\",\"active\":true}}", MediaType.APPLICATION_JSON));
+        assertEquals("张三", new DingTalkClient(properties, builder.build()).employeeName("employee-union"));
+        server.verify();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "{\"errcode\":60121,\"errmsg\":\"sensitive-token\"}",
+            "{\"errcode\":0,\"result\":{\"contact_type\":1,\"userid\":\"external\"}}",
+            "{\"errcode\":0,\"result\":{\"userid\":\"unknown-type\"}}"})
+    void externalUnknownAndDirectoryFailuresAreRejected(String membership) {
+        var builder = RestClient.builder().baseUrl("https://api.dingtalk.com");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("https://api.dingtalk.com/v1.0/oauth2/accessToken"))
+                .andRespond(withSuccess("{\"accessToken\":\"enterprise-token\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://oapi.dingtalk.com/topapi/user/getbyunionid?access_token=enterprise-token"))
+                .andRespond(withSuccess(membership, MediaType.APPLICATION_JSON));
+        var failure = assertThrows(ApiException.class, () -> new DingTalkClient(properties, builder.build()).employeeName("outsider"));
+        assertFalse(failure.getMessage().contains("sensitive-token"));
+        server.verify();
+    }
 }

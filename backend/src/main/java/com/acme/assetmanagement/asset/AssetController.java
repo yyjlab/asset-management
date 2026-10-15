@@ -47,11 +47,11 @@ public class AssetController {
     }
 
     @GetMapping(value = {"/export.csv", "/export/template.csv"}, produces = "text/csv;charset=UTF-8")
-    @PreAuthorize("hasAuthority('ASSET_VIEW')")
+    @PreAuthorize("hasAuthority('ASSET_VIEW') and hasAuthority('ASSET_EXPORT')")
     public ResponseEntity<byte[]> exportAssets() {
         List<AssetResponse> assets = service.list("");
-        auditLogService.success(AuditAction.CSV_TEMPLATE_EXPORT, "CSV", null, "全部资产数据",
-                "导出全部资产数据，共 " + assets.size() + " 项", Map.of("导出数量", assets.size()));
+        auditLogService.success(AuditAction.CSV_TEMPLATE_EXPORT, "CSV", null, "授权范围资产数据",
+                "导出授权范围资产数据，共 " + assets.size() + " 项", Map.of("导出数量", assets.size()));
         String disposition = ContentDisposition.attachment()
                 .filename("asset-data.csv", StandardCharsets.UTF_8)
                 .build()
@@ -64,14 +64,16 @@ public class AssetController {
     }
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('ASSET_CREATE')")
+    @PreAuthorize("hasAuthority('ASSET_CREATE') and hasAuthority('ASSET_IMPORT')")
     public AssetCsvImportService.PreviewResponse previewImport(@RequestPart("file") MultipartFile file) {
+        service.requireImportScope();
         return csvImportService.preview(file);
     }
 
     @PostMapping(value = "/import/commit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('ASSET_CREATE')")
+    @PreAuthorize("hasAuthority('ASSET_CREATE') and hasAuthority('ASSET_IMPORT') and hasAuthority('ASSET_CHECKOUT')")
     public AssetCsvImportService.ImportResponse commitImport(@RequestPart("file") MultipartFile file) {
+        service.requireImportScope();
         return csvImportService.commit(file);
     }
 

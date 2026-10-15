@@ -32,6 +32,9 @@ public record PublicAssetResponse(
         LocalDateTime updatedAt
 ) {
     public static PublicAssetResponse from(Asset asset) {
+        return from(asset, ignored -> true);
+    }
+    public static PublicAssetResponse from(Asset asset, java.util.function.Predicate<Asset> visible) {
         List<String> images = asset.getImageUrls().isEmpty()
                 ? asset.getImageUrl() == null || asset.getImageUrl().isBlank() ? List.of() : List.of(asset.getImageUrl())
                 : List.copyOf(asset.getImageUrls());
@@ -55,8 +58,8 @@ public record PublicAssetResponse(
                 asset.getStatus() == null ? null : asset.getStatus().getName(),
                 asset.getLocation() == null ? null : asset.getLocation().getName(),
                 asset.isCheckedOut(), asset.getAssignedTo(), images.isEmpty() ? null : images.getFirst(), images,
-                asset.getBoundDisplays().stream().map(PublicAssetLink::from).toList(),
-                asset.getBoundComputers().stream().findFirst().map(PublicAssetLink::from).orElse(null),
+                asset.getBoundDisplays().stream().filter(visible).map(PublicAssetLink::from).toList(),
+                asset.getBoundComputers().stream().filter(visible).findFirst().map(PublicAssetLink::from).orElse(null),
                 List.copyOf(devices), asset.getUpdatedAt()
         );
     }

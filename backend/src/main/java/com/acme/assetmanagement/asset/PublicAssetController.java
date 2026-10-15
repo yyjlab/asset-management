@@ -17,6 +17,7 @@ public class PublicAssetController {
     }
 
     @GetMapping("/{qrToken}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('ASSET_VIEW')")
     public ResponseEntity<PublicAssetResponse> getByQrToken(@PathVariable String qrToken) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())

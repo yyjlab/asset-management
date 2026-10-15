@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, api } from './api'
-import type { Asset, AssetFilter, AssetPayload, AssetProfile, AuthUser, LookupType, LookupValue, Permission, Summary } from './types'
+import type { Assignee, DashboardOverview, Asset, AssetFilter, AssetPayload, AssetProfile, AuthUser, LookupType, LookupValue, Permission, Summary } from './types'
 import { AssetDetail } from './components/AssetDetail'
 import { AssetForm } from './components/AssetForm'
 import { AssetTable } from './components/AssetTable'
@@ -45,6 +45,8 @@ export default function App() {
   const [page, setPage] = useState<Page>({ name: 'list' })
   const [assets, setAssets] = useState<Asset[]>([])
   const [suggestionAssets, setSuggestionAssets] = useState<Asset[]>([])
+  const [overview, setOverview] = useState<DashboardOverview | null>(null)
+  const [assignees, setAssignees] = useState<Assignee[]>([])
   const [lookups, setLookups] = useState<LookupValue[]>([])
   const [summary, setSummary] = useState<Summary>({ total: 0, available: 0, checkedOut: 0, maintenance: 0, scrapped: 0 })
   const [filter, setFilter] = useState<AssetFilter>('all')
@@ -67,6 +69,12 @@ export default function App() {
   const [avatarSaving, setAvatarSaving] = useState(false)
   const [avatarRevision, setAvatarRevision] = useState(() => Date.now())
   const navigationRevision = useRef(0)
+  const dataRevision = useRef(0)
+  const accessKey = authUser ? `${authUser.id}:${authUser.dataScope}:${[...authUser.permissions].sort().join(',')}:${[...authUser.departments].sort().join(',')}` : ''
+
+  useEffect(() => {
+    setAssets([]); setSuggestionAssets([]); setPage({ name: 'list' })
+  }, [accessKey])
 
   const showView = (nextSection: AppSection, nextPage: Page, mode: 'push' | 'replace' = 'push') => {
     navigationRevision.current++
@@ -95,15 +103,31 @@ export default function App() {
   }
 
   const load = useCallback(async (term = search) => {
+    const revision = ++dataRevision.current
     setLoading(true)
     try {
-      const assetRequest = api.listAssets(term)
-      const suggestionRequest = term.trim() ? api.listAssets('') : assetRequest
-      const [assetData, lookupData, summaryData, suggestionData] = await Promise.all([assetRequest, api.listLookups(), api.summary(), suggestionRequest])
+      const canView = authUser?.permissions.includes('ASSET_VIEW')
+      const assetRequest = canView ? api.listAssets(term) : Promise.resolve([])
+      const suggestionRequest = canView && term.trim() ? api.listAssets('') : assetRequest
+      const [assetData, lookupData, summaryData, suggestionData, dashboardData, assigneeData] = await Promise.all([
+        assetRequest, canView || authUser?.canManageUsers ? api.listLookups() : Promise.resolve([]),
+        canView ? api.summary() : Promise.resolve({ total: 0, available: 0, checkedOut: 0, maintenance: 0, scrapped: 0 }),
+        suggestionRequest, api.dashboard(), authUser?.permissions.includes('ASSET_CHECKOUT') ? api.assignees() : Promise.resolve([]),
+      ])
+      if (revision !== dataRevision.current) return
       setAssets(assetData); setSuggestionAssets(suggestionData); setLookups(lookupData); setSummary(summaryData)
-    } catch (error) { notify(error instanceof Error ? error.message : '读取数据失败', 'error') }
-    finally { setLoading(false) }
-  }, [search])
+      setOverview(dashboardData); setAssignees(assigneeData)
+    } catch (error) {
+      if (revision !== dataRevision.current) return
+      setAssets([]); setSuggestionAssets([])
+      notify(error instanceof Error ? error.message : '读取数据失败', 'error')
+      if (error instanceof ApiError && [401, 403].includes(error.status)) {
+        setPage({ name: 'list' }); setSection('dashboard')
+        void api.me().then(setAuthUser).catch(() => setAuthUser(null))
+      }
+    }
+    finally { if (revision === dataRevision.current) setLoading(false) }
+  }, [search, authUser])
 
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -121,8 +145,18 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!isLabelPrintPage && authUser?.permissions.includes('ASSET_VIEW')) void load('')
+    if (!isLabelPrintPage && authUser) void load('')
+    return () => { dataRevision.current++ }
   }, [authUser])
+
+  useEffect(() => {
+    if (!authUser) return
+    const refresh = () => { void api.me().then(user => setAuthUser(current => JSON.stringify(current) === JSON.stringify(user) ? current : user)).catch(error => {
+      if (error instanceof ApiError && error.status === 401) { setAuthUser(null); setAssets([]); setSuggestionAssets([]) }
+    }) }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [authUser?.id])
 
   useEffect(() => {
     if (!authUser || loading) return
@@ -327,7 +361,7 @@ export default function App() {
     { filter: 'scrapped', label: '已报废', value: summary.scrapped, icon: ArchiveIcon, tone: 'slate' },
   ]
 
-  const accountName = authUser.username
+  const accountName = authUser.displayName || authUser.username
   const topbar = <>
     <header className="topbar">
       <div className="topbar-actions"><button type="button" className="theme-toggle" aria-label={theme === 'light' ? '切换为暗色' : '切换为亮色'} title={theme === 'light' ? '切换为暗色' : '切换为亮色'} onClick={() => setTheme((current) => current === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <MoonIcon /> : <SunIcon />}</button><button className="avatar avatar-button" aria-label="设置我的头像" title="设置我的头像" onClick={() => setAvatarEditorOpen(true)}>{authUser.hasAvatar ? <img src={`/api/users/${authUser.id}/avatar?v=${avatarRevision}`} alt="我的头像" /> : accountName.slice(0, 1).toUpperCase()}</button><div className="account-summary"><strong>{accountName}</strong></div><button className="logout-button" aria-label="退出登录" title="退出登录" onClick={() => void logout()}><LogoutIcon /></button></div>
@@ -336,33 +370,35 @@ export default function App() {
   </>
 
   if (section === 'users' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><UserManagement avatarRevision={avatarRevision} onNotify={notify} onPasswordChanged={() => void logout()} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'settings' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><SystemSettings onNotify={notify} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
-  if (section === 'transfer') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><AssetTransfer onNotify={notify} onImported={() => load(search)} /></div></main>
+  if (section === 'transfer' && (hasPermission('ASSET_IMPORT') || hasPermission('ASSET_EXPORT'))) return <div className="app-shell">
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><AssetTransfer canExport={hasPermission('ASSET_EXPORT')} canImport={hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'} onNotify={notify} onImported={() => load(search)} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'logs' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><AuditLogPage onNotify={notify} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
-  if (section === 'dashboard') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+  if (section === 'dashboard' || !hasPermission('ASSET_VIEW') || section !== 'assets') return <div className="app-shell">
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content cockpit-content"><ComputerDashboard
       assets={suggestionAssets}
+      overview={overview}
+      canView={hasPermission('ASSET_VIEW')}
       loading={loading}
       canCreate={hasPermission('ASSET_CREATE')}
       onRefresh={() => void load('')}
@@ -396,19 +432,19 @@ export default function App() {
         </div>
         {hasPermission('ASSET_CREATE') && <button className="button primary" onClick={() => showView('assets', { name: 'form', asset: null })}><PlusIcon />新增资产</button>}
       </div>
-      <AssetTable assets={visibleAssets} loading={loading} canEdit={hasPermission('ASSET_EDIT')} parameterProfile={tableParameterProfile} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} />
+      <AssetTable assets={visibleAssets} loading={loading} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} parameterProfile={tableParameterProfile} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} />
       <div className="panel-foot"><span>共 {visibleAssets.length} 条{categoryFilter ? categoryOptions.find((category) => String(category.id) === categoryFilter)?.name ?? '分类资产' : filter === 'all' ? '资产' : filterLabels[filter]}</span><span>点击资产行查看完整档案</span></div>
     </section></div>
   </section>
 
-  const assetPage = page.name === 'form'
-    ? <AssetForm key={`${page.clone ? 'clone' : 'form'}-${page.asset?.id ?? 'new'}`} asset={page.asset} clone={page.clone} lookups={lookups} bindableAssets={suggestionAssets} saving={saving} createdLookup={createdLookup} onCancel={returnToPreviousView} onSave={saveAsset} onDeleteLookup={deleteLookup} onNewLookup={(type) => { setCreatedLookup(null); setLookupType(type) }} />
+  const assetPage = page.name === 'form' && (page.clone || !page.asset ? hasPermission('ASSET_CREATE') : hasPermission('ASSET_EDIT'))
+    ? <AssetForm key={`${page.clone ? 'clone' : 'form'}-${page.asset?.id ?? 'new'}`} asset={page.asset} clone={page.clone} lookups={lookups} assignees={assignees} canAssign={hasPermission('ASSET_CHECKOUT')} bindableAssets={suggestionAssets} saving={saving} createdLookup={createdLookup} onCancel={returnToPreviousView} onSave={saveAsset} onDeleteLookup={deleteLookup} onNewLookup={(type) => { setCreatedLookup(null); setLookupType(type) }} />
     : page.name === 'detail'
-      ? <AssetDetail asset={page.asset} canEdit={hasPermission('ASSET_EDIT')} canReturn={hasPermission('ASSET_RETURN')} canDelete={hasPermission('ASSET_DELETE')} onClose={returnToPreviousView} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} onReturn={setReturnTarget} onDelete={(asset) => void deleteAsset(asset)} />
+      ? <AssetDetail asset={page.asset} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} canReturn={hasPermission('ASSET_RETURN')} canDelete={hasPermission('ASSET_DELETE')} onClose={returnToPreviousView} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} onReturn={setReturnTarget} onDelete={(asset) => void deleteAsset(asset)} />
       : listPage
 
   return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content modern-content">{assetPage}</div></main>
     <LookupModal type={lookupType} loading={lookupLoading} onClose={() => setLookupType(null)} onCreate={createLookup} />
     {returnTarget && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setReturnTarget(null)}><div className="return-card">

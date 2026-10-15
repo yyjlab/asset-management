@@ -54,6 +54,42 @@ public class DingTalkClient {
         }
     }
 
+    /** Use the application's enterprise token, not a user's editable nickname, to verify membership/name. */
+    public String employeeName(String unionId) {
+        try {
+            Map<?, ?> token = client.post().uri("/v1.0/oauth2/accessToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("appKey", properties.clientId(), "appSecret", properties.clientSecret()))
+                    .retrieve().body(Map.class);
+            String appToken = requiredString(token, "accessToken");
+            Map<?, ?> membership = client.post().uri("https://oapi.dingtalk.com/topapi/user/getbyunionid?access_token={token}", appToken)
+                    .contentType(MediaType.APPLICATION_JSON).body(Map.of("unionid", unionId))
+                    .retrieve().body(Map.class);
+            Map<?, ?> member = successfulResult(membership);
+            if (!(member.get("contact_type") instanceof Number type) || type.intValue() != 0) throw notEmployee();
+            String userId = requiredString(member, "userid");
+            Map<?, ?> detail = client.post().uri("https://oapi.dingtalk.com/topapi/v2/user/get?access_token={token}", appToken)
+                    .contentType(MediaType.APPLICATION_JSON).body(Map.of("userid", userId, "language", "zh_CN"))
+                    .retrieve().body(Map.class);
+            Map<?, ?> employee = successfulResult(detail);
+            if (!userId.equals(requiredString(employee, "userid")) || Boolean.FALSE.equals(employee.get("active"))) throw notEmployee();
+            String name = requiredString(employee, "name").trim();
+            if (name.length() > 80) throw notEmployee();
+            return name;
+        } catch (RestClientException exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "无法核验企业成员，请管理员检查钉钉通讯录权限和应用可见范围");
+        }
+    }
+
+    private Map<?, ?> successfulResult(Map<?, ?> response) {
+        if (response == null || !(response.get("errcode") instanceof Number code) || code.intValue() != 0
+                || !(response.get("result") instanceof Map<?, ?> result)) throw notEmployee();
+        return result;
+    }
+    private ApiException notEmployee() {
+        return new ApiException(HttpStatus.FORBIDDEN, "企业成员核验失败，请确认属于本企业且在应用通讯录权限范围内");
+    }
+
     private String requiredString(Map<?, ?> body, String key) {
         if (body == null || !(body.get(key) instanceof String value) || value.isBlank()) throw unavailable();
         return value;

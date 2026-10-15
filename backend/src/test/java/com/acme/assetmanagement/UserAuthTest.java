@@ -171,6 +171,9 @@ class UserAuthTest {
 
     @Test
     void normalUserCannotManageUsersButCanOperateAssets() throws Exception {
+        var operator = new com.acme.assetmanagement.user.UserAccount();
+        operator.setUsername("legacy-operator"); operator.setDisplayName("旧操作员"); operator.setPasswordHash("test-hash");
+        userRepository.saveAndFlush(operator);
         var normalUser = user("operator").authorities(
                 new SimpleGrantedAuthority("ROLE_USER"),
                 new SimpleGrantedAuthority("ASSET_VIEW"),
@@ -181,9 +184,7 @@ class UserAuthTest {
                         .content("{\"currentPassword\":\"Secure123!\",\"newPassword\":\"AnotherSecure456!\"}"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/assets/1")
-                        .with(user("operator").authorities(
-                                new SimpleGrantedAuthority("ROLE_USER"),
-                                new SimpleGrantedAuthority("ASSET_DELETE"))).with(csrf()))
+                        .with(user(com.acme.assetmanagement.security.AccountPrincipal.from(operator))).with(csrf()))
                 .andExpect(status().isNoContent());
     }
 

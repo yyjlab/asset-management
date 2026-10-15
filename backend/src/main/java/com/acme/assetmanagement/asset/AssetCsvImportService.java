@@ -170,7 +170,7 @@ public class AssetCsvImportService {
                 isCheckedOutStatus(row.value("资产状态*")), clean(row.value("领用人")), clean(row.value("图片地址")),
                 imageUrls(row.value("图片地址(JSON)"), row.rowNumber()), clean(row.value("备注")), List.of(), null,
                 relatedDevices(relatedDevicesValue(row), row.rowNumber()), List.of(),
-                customParameters(row.value("自定义参数(JSON)"), row.rowNumber()));
+                customParameters(row.value("自定义参数(JSON)"), row.rowNumber()), null);
     }
 
     private void validateBindingGraph(List<ImportRow> rows, List<RowMessage> errors, Set<Integer> invalidRows) {
