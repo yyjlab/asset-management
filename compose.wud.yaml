@@ -49,6 +49,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - wud_data:/store
+      # 已接入资产系统：仅挂载配置目录，用于写回镜像标签和生成 .back 备份。
+      - /opt/asset-management:/opt/asset-management:rw
       # 后续接入项目时，在这里逐个增加其目录；不要挂载宿主机根目录或业务数据卷。
       # 例如：- /opt/你的项目:/opt/你的项目
     labels:

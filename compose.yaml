@@ -64,6 +64,14 @@ services:
       timeout: 5s
       retries: 6
       start_period: 40s
+    labels:
+      wud.watch: "true"
+      wud.watch.digest: "false"
+      # $$ 是 Compose 的转义；只接受递增的 testN 标签，按编号比较版本。
+      wud.tag.include: '^test[0-9]+$$'
+      wud.tag.transform: '^test([0-9]+)$$ => $$1.0.0'
+      wud.compose.file: /opt/asset-management/compose.yaml
+      wud.trigger.dockercompose.shared.enabled: "true"
 
   web:
     image: swr.cn-south-1.myhuaweicloud.com/recovery-uat/fe-asset:test8
@@ -85,6 +93,13 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
+    labels:
+      wud.watch: "true"
+      wud.watch.digest: "false"
+      wud.tag.include: '^test[0-9]+$$'
+      wud.tag.transform: '^test([0-9]+)$$ => $$1.0.0'
+      wud.compose.file: /opt/asset-management/compose.yaml
+      wud.trigger.dockercompose.shared.enabled: "true"
 
 networks:
   asset_internal:

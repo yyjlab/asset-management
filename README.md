@@ -74,66 +74,19 @@ docker compose up -d --build --wait
 - 初始化密码仅用于首次创建账号；修改 `.env` 不会重置已有管理员或数据库密码。
 - 新代码可能更新数据库结构，不能仅靠换回旧代码恢复数据库。
 
-## Jenkins 部署（可选）
+## Jenkins 构建与 WUD 自动更新（可选）
 
-原来的手动部署方式继续可用。Jenkins 方式为：拉取代码 → 测试与构建镜像 → 推送镜像仓库 → 部署服务器拉取指定镜像并更新容器。只推送镜像，不代表已经部署。
+流程：推送 `main` → Jenkins 轮询并构建 → 推送 SWR 镜像 → WUD 每分钟检查 → 更新已授权的前后端 → 写回资产系统 `compose.yaml` 的镜像标签。Jenkins 不需要连接业务服务器；只推送代码或镜像，不代表部署已经成功。
 
-### 一次性配置
+原来的源码手动部署方式保留。资产系统只使用 `compose.yaml`，旧 `compose.jenkins.yaml` 可以保留，但不再叠加使用。WUD 用独立项目 `wud` 部署，不与资产系统共用启停命令。
 
-- 前后端保留两个构建任务，Git 地址均为 `https://github.com/yyjlab/asset-management.git`，分支填 `*/main`；私有仓库配置 GitHub 凭据。Linux 构建节点须能执行 Docker，并能访问 GitHub、依赖源和镜像仓库。
-- 构建任务设置字符串参数 `COMPONENT`（后端填 `backend`，前端填 `frontend`）、`REGISTRY_HOST`（例如 `swr.cn-south-1.myhuaweicloud.com`）、`IMAGE_REPOSITORY`（完整镜像仓库路径，不含标签；两个任务分别使用后端、前端仓库）。通过 Jenkins Credentials Binding 注入 `REGISTRY_USER`、`REGISTRY_PASSWORD`，不要把密码直接写进 Shell。
-- 部署服务器按上面的手动部署前提准备 Docker、Compose 和 `/opt/asset-management`，保留项目的 `compose.yaml` 与服务器自己的 `.env`。首次先创建数据库及管理员配置；更新前备份数据，不覆盖已有 `.env`。钉钉变量也填写在服务器 `.env`，不作为镜像构建参数。
+### Jenkins 构建（一次性配置）
 
-仅在部署服务器 `/opt/asset-management` 新建 `compose.jenkins.yaml`；它只指定前后端镜像，不改变数据库、网络及数据卷。下面的变量写法用于后文的自动部署任务；当前手动发布可直接使用“日常镜像更新”中的固定地址写法，两种写法选择一种即可：
+- 前后端各一个任务，仓库均为 `https://github.com/yyjlab/asset-management.git`，分支 `*/main`；需要时配置 GitHub 拉取凭据。两个任务勾选“轮询 SCM”，填 `* * * * *`，每分钟检查新提交；这种方式不需要 GitHub Webhook。设置了路径过滤时，仅修改 README 或 YAML 可能不触发构建。
+- 设置参数 `COMPONENT`（`backend` 或 `frontend`）、`REGISTRY_HOST`（`swr.cn-south-1.myhuaweicloud.com`）、`IMAGE_REPOSITORY`。后端仓库为 `swr.cn-south-1.myhuaweicloud.com/recovery-uat/be-asset`，前端为同路径下的 `fe-asset`，均不含标签。
+- 用 Jenkins Credentials Binding 注入 `REGISTRY_USER`、`REGISTRY_PASSWORD`。构建节点须能执行 Docker，并能访问 GitHub、依赖源和 SWR；不要把密码直接写进 Shell。
 
-```yaml
-services:
-  backend:
-    image: "${BACKEND_IMAGE:?请设置完整后端镜像地址及标签}"
-  web:
-    image: "${FRONTEND_IMAGE:?请设置完整前端镜像地址及标签}"
-```
-
-### 日常镜像更新（当前手动发布方式）
-
-Jenkins 构建并推送成功后，在**资产部署服务器**操作，不是在 Jenkins 构建服务器操作。以下沿用现有项目名 `asset-management` 和目录 `/opt/asset-management`；更新前先备份数据库和图片，保留旧镜像与原配置。
-
-平时只修改 `compose.jenkins.yaml` 中需要更新的镜像标签，`compose.yaml` 和 `.env` 不动。下面是镜像地址示例，标签以 Jenkins 实际推送成功的版本为准：
-
-```yaml
-services:
-  backend:
-    image: swr.aliyun.com/images/be-asset:test8
-  web:
-    image: swr.aliyun.com/images/fe-asset:test7
-```
-
-只更新前端就改 `web.image` 的标签，后端标签保持原样；只更新后端则相反。前后端任务的构建编号独立，不要求标签一致。只有端口、环境变量或挂载等部署配置发生变化时，才调整原 `compose.yaml` 或 `.env`。
-
-部署服务器当前用户须已登录对应的私有镜像仓库且有拉取权限；同一仓库域名的前后端镜像不必分别登录，凭据失效后需重新登录。登录密钥不要写入文档或仓库。
-
-修改标签后，执行以下命令检查配置、拉取镜像并更新前后端；任一步失败就停止，不在服务器重新编译：
-
-```bash
-cd /opt/asset-management &&
-docker compose -p asset-management -f compose.yaml -f compose.jenkins.yaml config --quiet &&
-docker compose -p asset-management -f compose.yaml -f compose.jenkins.yaml pull backend web &&
-docker compose -p asset-management -f compose.yaml -f compose.jenkins.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 backend web
-```
-
-`--no-deps` 限定只更新指定的前后端服务，不启动或重建 MySQL；未变更镜像及配置的服务通常不会重建。原数据库卷 `asset-management_mysql_data`、图片卷 `asset-management_asset_images` 继续复用，不执行 `down` 或 `down -v`。
-
-更新后用以下只读命令查看状态，再访问原资产网址检查登录、资产列表和图片。更换容器会短暂中断访问；这更新的是真实系统，不是隔离测试环境。
-
-```bash
-docker compose -p asset-management -f /opt/asset-management/compose.yaml -f /opt/asset-management/compose.jenkins.yaml ps
-```
-
-后续接入 Jenkins 自动部署时，使用上面的变量写法，由部署任务传入镜像地址及标签，便不需要每次手动改文件和运行命令。
-
-### 前后端构建任务
-
-两个任务使用相同的 Execute shell，靠 `COMPONENT` 和 `IMAGE_REPOSITORY` 区分；工作目录为 Git 检出的仓库根目录。后端先运行测试，因为当前 Dockerfile 内的打包命令跳过测试；前端 Dockerfile 已包含依赖安装、类型检查及生产构建。
+两个任务均可使用以下 Execute shell。后端先运行测试；前端 Dockerfile 已包含类型检查和生产构建：
 
 ```sh
 #!/bin/sh
@@ -154,7 +107,7 @@ case "$COMPONENT" in
   *) echo 'COMPONENT 只能填写 backend 或 frontend' >&2; exit 1 ;;
 esac
 
-TAG="${BUILD_NUMBER}-$(git rev-parse --short=12 HEAD)"
+TAG="test${BUILD_NUMBER}"
 IMAGE="$IMAGE_REPOSITORY:$TAG"
 docker build -f "$COMPONENT/Dockerfile" -t "$IMAGE" "$COMPONENT"
 printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" --username "$REGISTRY_USER" --password-stdin
@@ -162,38 +115,79 @@ docker push "$IMAGE"
 printf '已推送镜像：%s\n' "$IMAGE"
 ```
 
-后端任务可配置“发布 JUnit 测试结果”，路径为 `backend/target/surefire-reports/*.xml`。测试、构建或推送失败时任务停止；部署选用成功构建的版本，不使用会被反复覆盖的 `latest` 标签。
+标签必须是递增的 `test数字`，例如 `test9` → `test10`，前后端编号独立。不要重置为较小编号，也不要反复覆盖同一标签：当前不检查同标签的摘要变化，也不接受 `latest`、`prod` 或“构建号-gitSHA”标签。后端 JUnit 报告路径为 `backend/target/surefire-reports/*.xml`。
 
-### 部署任务
+### 独立 WUD 与资产接入（一次性配置）
 
-部署任务必须在目标服务器执行：可使用该服务器的 Jenkins agent，或配置 SSH 构建步骤远程执行。不能在 Jenkins 构建节点直接运行下列命令并误以为更新了业务服务器。SSH 方式须把镜像参数和仓库凭据传入远端环境，校验主机身份，不关闭主机密钥检查。
+以下在业务服务器操作，不是在 Jenkins 构建服务器操作。本例接管已存在的 WUD 与 `wud_data` 卷，复用原管理员账号；不是全新空卷安装。只能运行一套使用该卷的 WUD，先核对并停止旧实例，再接管为独立项目 `wud`、容器名 `wud`，不要删除数据卷。
 
-设置参数 `BACKEND_IMAGE`、`FRONTEND_IMAGE`，分别填写上一步输出的完整镜像地址及标签；同时设置 `REGISTRY_HOST`，并绑定该节点可用的仓库拉取凭据 `REGISTRY_USER`、`REGISTRY_PASSWORD`。禁止并发部署同一环境。
+- 资产配置放在 `/opt/asset-management/compose.yaml`，保留同目录原来的 `.env`，包括数据库、端口及钉钉变量。上传前备份原配置、数据库和图片，并保持两条 `image` 与当前运行版本一致，避免接入时回退镜像。
+- WUD 配置放在 `/opt/wud/compose.wud.yaml`，同目录 `.env` 填写下面三项。只读校验命令为：在 `/opt/wud` 执行 `docker compose -p wud -f compose.wud.yaml config --quiet`。旧 WUD 接管完成后，下面的接入命令要求独立 `wud` 已正常运行。
 
-以下脚本在部署服务器执行，先拉取镜像再更新容器，不在服务器编译源码：
-
-```sh
-#!/bin/sh
-set +x
-set -eu
-cd /opt/asset-management
-: "${BACKEND_IMAGE:?请填写完整后端镜像地址及标签}"
-: "${FRONTEND_IMAGE:?请填写完整前端镜像地址及标签}"
-: "${REGISTRY_HOST:?请设置镜像仓库域名}"
-: "${REGISTRY_USER:?请绑定镜像仓库拉取凭据}"
-: "${REGISTRY_PASSWORD:?请绑定镜像仓库拉取凭据}"
-export BACKEND_IMAGE FRONTEND_IMAGE
-
-printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" --username "$REGISTRY_USER" --password-stdin
-docker compose -f compose.yaml -f compose.jenkins.yaml config --quiet
-docker compose -f compose.yaml -f compose.jenkins.yaml pull backend web
-docker compose -f compose.yaml -f compose.jenkins.yaml up -d --no-build --pull never --wait --wait-timeout 180 backend web
-docker compose -f compose.yaml -f compose.jenkins.yaml ps
+```dotenv
+WUD_BIND_IP=服务器内网IP
+WUD_SWR_USER=具有目标仓库读取权限的SWR用户名
+WUD_SWR_PASSWORD='对应的有效SWR密码'
 ```
 
-配置完成后，日常在 Jenkins 构建前后端，再执行部署任务；可由发布流水线串联两个成功的构建，传递对应镜像标签后自动部署测试环境。生产部署保留人工确认。更换容器可能短暂中断并需要重新登录；不要执行 `down -v`。健康检查失败会让任务失败，但不会自动恢复上一版本；涉及数据库结构更新时，不要仅切旧镜像回滚。
+WUD 的 SWR 凭据独立于宿主机 `docker login`，临时凭据过期后需要更新并重建 WUD。只允许可信管理员访问 WUD；Docker socket 具有宿主机管理权限，挂载的业务配置目录也可写。不要把 `.env` 提交到仓库。
 
-以上是 Jenkins 配置示例，尚未在实际 Jenkins 和部署服务器上联调；仓库路径、节点及凭据须按实际环境设置。
+当前配置已挂载资产目录，并只给 `backend`、`web` 授权 `dockercompose.shared` 触发器；MySQL 不参与自动更新。按以下顺序一次性应用：先暂停 WUD，更新前后端的接入标签，等待就绪，再启动 WUD。命令会核对当前镜像，不一致时停止；先同步配置中的版本，不要跳过检查。更新会短暂中断前后端，启用后可能立即部署 SWR 中已有的最大编号 `testN`。
+
+```bash
+test "$(docker ps --filter volume=wud_data --format '{{.Names}}')" = wud &&
+test "$(docker inspect wud --format '{{index .Config.Labels "com.docker.compose.project"}}')" = wud &&
+cd /opt/asset-management &&
+docker compose -p asset-management -f compose.yaml config --quiet &&
+docker compose -p asset-management -f compose.yaml config --images | grep -Fx -- "$(docker inspect asset-management-backend-1 --format '{{.Config.Image}}')" &&
+docker compose -p asset-management -f compose.yaml config --images | grep -Fx -- "$(docker inspect asset-management-web-1 --format '{{.Config.Image}}')" &&
+cd /opt/wud &&
+docker compose -p wud -f compose.wud.yaml config --quiet &&
+docker compose -p wud -f compose.wud.yaml stop wud &&
+cd /opt/asset-management &&
+docker compose -p asset-management -f compose.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 backend web &&
+cd /opt/wud &&
+docker compose -p wud -f compose.wud.yaml up -d --no-build --pull never --wait --wait-timeout 180 wud
+```
+
+这两份 YAML 不会随镜像自动复制到服务器；修改挂载、标签、环境变量等配置后，仍需先在对应服务器应用。接入其他 Compose 项目时，在 WUD 中逐个挂载其配置目录，在目标服务添加 `wud.trigger.dockercompose.shared.enabled: "true"`，并按其标签格式配置筛选规则。多文件项目用 `wud.compose.file` 指定保存完整镜像地址的文件；不把业务服务合进 WUD 的 Compose。
+
+### 日常自动运行与验证
+
+一次性接入完成后，日常只需推送代码，不需要再手动改镜像标签、拉取镜像或执行部署命令。前提是 Jenkins 检出该提交、成功推送更大编号的标签，且 WUD 的 SWR 凭据有效、`WUD_AUTO_UPDATE` 没有设为 `false`。Jenkins 轮询、构建、WUD 检查、镜像下载和启动都需要时间，不是推送后立即完成。
+
+WUD 会把新标签写回服务器的 `/opt/asset-management/compose.yaml`；不要用仓库的旧副本覆盖该运行文件。前后端独立发布，须保持新旧版本兼容。WUD 已配置健康检查失败回滚，但不能回滚数据库；探针通过也不等于业务功能全部通过。
+
+以下为可选的只读验证：授权应为 `true`，配置挂载应可写；检查运行镜像是否变为新标签、Compose 是否同步，再访问系统检查登录、资产列表和图片。仅修改文档或部署配置时，网页外观可能不变。
+
+```bash
+docker inspect asset-management-backend-1 asset-management-web-1 --format '{{.Name}} 镜像={{.Config.Image}} 创建时间={{.Created}} 更新授权={{index .Config.Labels "wud.trigger.dockercompose.shared.enabled"}}'
+docker inspect wud --format '{{range .Mounts}}{{if eq .Destination "/opt/asset-management"}}配置挂载={{.Source}} 可写={{.RW}}{{end}}{{end}}'
+docker compose --env-file /opt/asset-management/.env -p asset-management -f /opt/asset-management/compose.yaml config --images
+docker logs --since 10m wud
+```
+
+未触发时，依次查看 Jenkins 的 SCM 轮询日志和构建日志、SWR 是否已推送新标签、WUD 日志中的鉴权和配置文件错误。参考：[Jenkins 轮询语法](https://www.jenkins.io/doc/book/pipeline/syntax/#triggers)、[WUD 触发器配置](https://getwud.app/docs/configuration/triggers/)。本地静态检查不等于实际 Jenkins/WUD 链路已验证。
+
+### 手动镜像更新（备用）
+
+原来的源码部署和手动镜像更新仍可使用，但不要与 WUD 并发更新同一服务。先在业务服务器暂停 WUD；这会暂停所有接入项目的自动更新，业务容器仍运行：
+
+```bash
+cd /opt/wud &&
+docker compose -p wud -f compose.wud.yaml stop wud
+```
+
+备份后，修改资产 `compose.yaml` 中需要发布的 `image`，保留另一个服务版本。手动拉取私有镜像前，服务器须已登录 SWR 且有读取权限。然后在业务服务器执行，不重新编译源码：
+
+```bash
+cd /opt/asset-management &&
+docker compose -p asset-management -f compose.yaml config --quiet &&
+docker compose -p asset-management -f compose.yaml pull backend web &&
+docker compose -p asset-management -f compose.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 backend web
+```
+
+`--no-deps` 不重建 MySQL，项目名及数据库、图片卷保持不变。不要执行 `down -v` 或 `--remove-orphans`。手动命令失败不会自动回滚；若退回旧版本，恢复 WUD 前须先排除故障标签，否则可能再次升级。恢复自动运行时，在 `/opt/wud` 执行 `docker compose -p wud -f compose.wud.yaml up -d --no-build --pull never --wait --wait-timeout 180 wud`。
 
 ## 备份与恢复
 
