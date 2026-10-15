@@ -371,7 +371,7 @@ export default function App() {
 
   if (section === 'users' && authUser.canManageUsers) return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><UserManagement avatarRevision={avatarRevision} onNotify={notify} onPasswordChanged={() => void logout()} /></div></main>
+    <main className="main-content">{topbar}<div className="content"><UserManagement currentUserId={authUser.id} avatarRevision={avatarRevision} onNotify={notify} onPasswordChanged={() => void logout()} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

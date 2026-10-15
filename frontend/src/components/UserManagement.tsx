@@ -14,14 +14,15 @@ const scopeLabels = { SELF: '仅本人领用', DEPARTMENT: '指定部门', ALL: 
 type Draft = { id?: number; username: string; password: string }
 const freshDraft = (): Draft => ({ username: '', password: '' })
 
-interface Props { avatarRevision: number; onNotify: (text: string, kind?: 'ok' | 'error') => void; onPasswordChanged: () => void }
+interface Props { currentUserId: number; avatarRevision: number; onNotify: (text: string, kind?: 'ok' | 'error') => void; onPasswordChanged: () => void }
 
-export function UserManagement({ avatarRevision, onNotify, onPasswordChanged }: Props) {
+export function UserManagement({ currentUserId, avatarRevision, onNotify, onPasswordChanged }: Props) {
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [source, setSource] = useState<'all' | 'dingtalk' | 'local'>('all')
   const [accessUser, setAccessUser] = useState<ManagedUser | null>(null)
   const [access, setAccess] = useState<AccessPayload | null>(null)
   const [accessSaving, setAccessSaving] = useState(false)
+  const [superAdminConfirmed, setSuperAdminConfirmed] = useState(false)
   const [departmentText, setDepartmentText] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -122,19 +123,23 @@ export function UserManagement({ avatarRevision, onNotify, onPasswordChanged }: 
   }
 
   const openAccess = (user: ManagedUser) => {
+    if (user.protectedAccount || user.id === currentUserId) return
     setAccessUser(user)
-    setAccess({ permissions: [...user.permissions], dataScope: user.dataScope, departments: [...user.departments], enabled: user.enabled })
+    setAccess({ role: user.role, permissions: [...user.permissions], dataScope: user.dataScope, departments: [...user.departments], enabled: user.enabled })
+    setSuperAdminConfirmed(false)
     setDepartmentText(user.departments.join('，'))
   }
   const saveAccess = async () => {
     if (!access || !accessUser) return
+    const roleChanged = access.role !== accessUser.role
+    if (roleChanged && access.role === 'SUPER_ADMIN' && !superAdminConfirmed) { onNotify('请先确认授予超级管理员权限', 'error'); return }
     const departments = access.dataScope === 'DEPARTMENT' ? departmentText.split(/[,，\n]/).map(value => value.trim()).filter(Boolean) : []
     if (access.dataScope === 'DEPARTMENT' && !departments.length) { onNotify('请填写允许访问的部门', 'error'); return }
     setAccessSaving(true)
     try {
       await api.updateUserAccess(accessUser.id, { ...access, departments })
       setAccessUser(null); setAccess(null); await load()
-      onNotify('权限和数据范围已保存，下一次请求生效')
+      onNotify(roleChanged ? '角色已更新，该账号需要重新登录' : '权限和数据范围已保存，下一次请求生效')
     } catch (error) { onNotify(error instanceof Error ? error.message : '权限保存失败', 'error') }
     finally { setAccessSaving(false) }
   }
@@ -162,7 +167,10 @@ export function UserManagement({ avatarRevision, onNotify, onPasswordChanged }: 
           <div className="user-avatar">{user.hasAvatar ? <img src={`/api/users/${user.id}/avatar?v=${avatarRevision}-${encodeURIComponent(user.updatedAt)}`} alt={`${user.username}的头像`} /> : <UserIcon />}</div><div className="user-identity"><div><strong>{user.displayName || user.username}</strong><span className={user.role === 'SUPER_ADMIN' ? 'role super' : 'role'}>{user.role === 'SUPER_ADMIN' ? '超级管理员' : '普通用户'}</span>{!user.enabled && <span className="role off">已停用</span>}</div><small>{user.username} · {user.dingtalkBound ? '钉钉账号' : '本地账号'} · {scopeLabels[user.dataScope]}</small></div>
           <div className="user-updated"><span>最近更新</span><strong>{new Date(user.updatedAt).toLocaleString('zh-CN', { hour12: false })}</strong></div>
           <div className="user-actions">{user.role === 'SUPER_ADMIN'
-            ? <button className="button ghost self-password-button" onClick={openPasswordEditor}>修改我的密码</button>
+            ? <>{user.id === currentUserId
+              ? <button className="button ghost self-password-button" onClick={openPasswordEditor}>修改我的密码</button>
+              : !user.protectedAccount && <button className="button ghost" onClick={() => openAccess(user)}>权限设置</button>}
+              {user.protectedAccount && user.id !== currentUserId && <span className="role">原始管理员受保护</span>}</>
             : <><button className="button ghost" onClick={() => openAccess(user)}>权限设置</button>{user.hasAvatar && <button className="button ghost avatar-clear-button" disabled={avatarDeletingId === user.id} onClick={() => setAvatarDeleteTarget(user)}>{avatarDeletingId === user.id ? '清除中…' : '清除头像'}</button>}<button className="button ghost" onClick={() => openEdit(user)}>重置密码</button><button className="button user-delete-button" disabled={deletingId === user.id} onClick={() => setDeleteTarget(user)}><TrashIcon />{deletingId === user.id ? '删除中…' : '删除用户'}</button></>}
           </div>
         </article>)}
@@ -184,14 +192,15 @@ export function UserManagement({ avatarRevision, onNotify, onPasswordChanged }: 
     {accessUser && access && createPortal(<div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && !accessSaving && setAccessUser(null)}><div className="user-editor access-editor" role="dialog" aria-modal="true" aria-labelledby="access-title">
       <button className="icon-button modal-close" aria-label="关闭权限设置" disabled={accessSaving} onClick={() => setAccessUser(null)}><CloseIcon /></button>
       <h2 id="access-title">权限设置</h2><p>{accessUser.displayName}（{accessUser.username}）· {accessUser.dingtalkBound ? '钉钉账号' : '本地账号'}</p>
-      <div className="user-source-tabs"><button className="button ghost" onClick={() => setAccess({ ...access, permissions: ['ASSET_VIEW'], dataScope: 'SELF', departments: [] })}>普通员工</button><button className="button ghost" onClick={() => setAccess({ ...access, permissions: ['ASSET_VIEW'], dataScope: 'ALL', departments: [] })}>只读查看</button><button className="button ghost" onClick={() => setAccess({ ...access, permissions: Object.keys(permissionLabels) as Permission[], dataScope: 'ALL', departments: [] })}>资产管理员</button></div>
-      <p>驾驶舱对所有登录用户开放，不需要勾选。下面只控制资产明细和操作。</p>
-      <div className="access-permissions">{(Object.entries(permissionLabels) as [Permission, string][]).map(([permission, label]) => <label key={permission}><input type="checkbox" checked={access.permissions.includes(permission)} onChange={event => togglePermission(permission, event.target.checked)} /><span>{label}</span></label>)}</div>
-      <div className="user-form-grid single-field"><label><span>数据范围</span><select value={access.dataScope} onChange={event => setAccess({ ...access, dataScope: event.target.value as AccessPayload['dataScope'] })}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <div className="user-source-tabs"><button className="button ghost" disabled={accessSaving} onClick={() => setAccess({ ...access, role: 'USER', permissions: ['ASSET_VIEW'], dataScope: 'SELF', departments: [] })}>普通员工</button><button className="button ghost" disabled={accessSaving} onClick={() => setAccess({ ...access, role: 'USER', permissions: ['ASSET_VIEW'], dataScope: 'ALL', departments: [] })}>只读查看</button><button className="button ghost" disabled={accessSaving} onClick={() => setAccess({ ...access, role: 'USER', permissions: Object.keys(permissionLabels) as Permission[], dataScope: 'ALL', departments: [] })}>资产管理员</button><button className={`button ${access.role === 'SUPER_ADMIN' ? 'primary' : 'ghost'}`} disabled={accessSaving} onClick={() => setAccess({ ...access, role: 'SUPER_ADMIN', permissions: Object.keys(permissionLabels) as Permission[], dataScope: 'ALL', departments: [] })}>超级管理员</button></div>
+      <p>{access.role === 'SUPER_ADMIN' ? '超级管理员拥有全部资产、用户管理、日志、设置和数据导入导出权限，不受部门或本人范围限制。' : '驾驶舱对所有登录用户开放。资产管理员只管理资产，不包含用户、日志和系统设置权限。'}</p>
+      <div className="access-permissions">{(Object.entries(permissionLabels) as [Permission, string][]).map(([permission, label]) => <label key={permission}><input type="checkbox" disabled={accessSaving || access.role === 'SUPER_ADMIN'} checked={access.permissions.includes(permission)} onChange={event => togglePermission(permission, event.target.checked)} /><span>{label}</span></label>)}</div>
+      <div className="user-form-grid single-field"><label><span>数据范围</span><select disabled={accessSaving || access.role === 'SUPER_ADMIN'} value={access.dataScope} onChange={event => setAccess({ ...access, dataScope: event.target.value as AccessPayload['dataScope'] })}>{Object.entries(scopeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       {access.dataScope === 'DEPARTMENT' && <label><span>允许访问的部门（与资产归属部门一致，用逗号分隔）</span><input maxLength={6000} value={departmentText} onChange={event => setDepartmentText(event.target.value)} placeholder="例如：研发部，行政部" /></label>}</div>
-      <p>{access.dataScope === 'SELF' ? '仅展示已明确关联此账号的领用资产；旧数据不会按同名自动关联。' : '只允许访问所选范围内的资产，导出同样受此范围限制。'}批量导入需要“全部资产”范围。</p>
-      <label className="access-enabled"><input type="checkbox" checked={access.enabled} onChange={event => setAccess({ ...access, enabled: event.target.checked })} />启用账号（取消后不能继续访问）</label>
-      <div className="modal-actions"><button className="button ghost" disabled={accessSaving} onClick={() => setAccessUser(null)}>取消</button><button className="button primary" disabled={accessSaving} onClick={() => void saveAccess()}>{accessSaving ? '保存中…' : '保存权限'}</button></div>
+      <p>{access.dataScope === 'SELF' ? '仅展示已明确关联此账号的领用资产；旧数据不会按同名自动关联。' : '只允许访问所选范围内的资产，导出同样受此范围限制。'}批量导入需要“全部资产”范围。角色变更后该账号需要重新登录。</p>
+      {access.role === 'SUPER_ADMIN' && accessUser.role !== 'SUPER_ADMIN' && <label className="access-enabled"><input type="checkbox" checked={superAdminConfirmed} disabled={accessSaving} onChange={event => setSuperAdminConfirmed(event.target.checked)} />我确认授予该账号全系统和用户权限管理权限</label>}
+      <label className="access-enabled"><input type="checkbox" disabled={accessSaving} checked={access.enabled} onChange={event => setAccess({ ...access, enabled: event.target.checked })} />启用账号（取消后不能继续访问）</label>
+      <div className="modal-actions"><button className="button ghost" disabled={accessSaving} onClick={() => setAccessUser(null)}>取消</button><button className="button primary" disabled={accessSaving || (access.role === 'SUPER_ADMIN' && accessUser.role !== 'SUPER_ADMIN' && !superAdminConfirmed)} onClick={() => void saveAccess()}>{accessSaving ? '保存中…' : '保存权限'}</button></div>
     </div></div>, document.body)}
     {deleteTarget && <ConfirmDialog
       title="删除普通用户"

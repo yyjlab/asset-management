@@ -25,6 +25,7 @@ services:
       start_period: 40s
 
   backend:
+    image: swr.cn-south-1.myhuaweicloud.com/recovery-uat/be-asset:test9
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -65,6 +66,7 @@ services:
       start_period: 40s
 
   web:
+    image: swr.cn-south-1.myhuaweicloud.com/recovery-uat/fe-asset:test8
     build:
       context: ./frontend
       dockerfile: Dockerfile

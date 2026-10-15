@@ -186,6 +186,113 @@ class AssetPermissionsTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.checkedOut").value(false));
     }
 
+    @Test void explicitlyPromotedEmployeeGetsSystemAndUserManagementWithoutChangingAssets() throws Exception {
+        var employee = employee("promoted-admin", Set.of(Permission.ASSET_VIEW));
+        employee.setDingtalkIdentity("existing-dingtalk-identity"); users.saveAndFlush(employee);
+        var oldSession = login(employee);
+        var asset = seed(); asset.setAssignedUserId(employee.getId()); asset.setNotes("权限调整不能修改资产");
+        assets.saveAndFlush(asset);
+        long count = assets.count();
+        var admin = users.findByUsernameIgnoreCase("admin").orElseThrow();
+        String grant = """
+                {"role":"SUPER_ADMIN","permissions":[],"dataScope":"SELF","departments":["研发部"],"enabled":true}
+                """;
+        mvc.perform(put("/api/users/{id}/access", employee.getId()).with(user(AccountPrincipal.from(admin))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(grant)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("SUPER_ADMIN"))
+                .andExpect(jsonPath("$.permissions.length()").value(Permission.values().length))
+                .andExpect(jsonPath("$.dataScope").value("ALL"))
+                .andExpect(jsonPath("$.departments").isEmpty())
+                .andExpect(jsonPath("$.protectedAccount").value(false))
+                .andExpect(jsonPath("$.dingtalkBound").value(true));
+        mvc.perform(get("/api/users").session(oldSession)).andExpect(status().isUnauthorized());
+        assertTrue(oldSession.isInvalid());
+        var session = login(employee);
+        mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.canManageUsers").value(true)).andExpect(jsonPath("$.dataScope").value("ALL"));
+        mvc.perform(get("/api/users").session(session)).andExpect(status().isOk());
+        mvc.perform(get("/api/assets").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(count));
+        mvc.perform(get("/api/settings/qr").session(session)).andExpect(status().isOk());
+        mvc.perform(get("/api/audit-logs").session(session)).andExpect(status().isOk());
+        mvc.perform(get("/api/assets/export.csv").session(session)).andExpect(status().isOk());
+        mvc.perform(post("/api/users").session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"created-by-promoted-admin\",\"password\":\"TestPassword123!\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.role").value("USER"));
+        var managed = users.findByUsernameIgnoreCase("created-by-promoted-admin").orElseThrow();
+        mvc.perform(put("/api/users/{id}/access", managed.getId()).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"role":"USER","permissions":["ASSET_VIEW"],"dataScope":"SELF","departments":[],"enabled":true}
+                        """)).andExpect(status().isOk()).andExpect(jsonPath("$.dataScope").value("SELF"));
+        mvc.perform(put("/api/users/{id}", managed.getId()).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"ResetPassword123!\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(delete("/api/users/{id}", managed.getId()).session(session).with(csrf())).andExpect(status().isNoContent());
+        assertEquals(count, assets.count());
+        assertEquals("权限调整不能修改资产", assets.findById(asset.getId()).orElseThrow().getNotes());
+        assertEquals(employee.getId(), assets.findById(asset.getId()).orElseThrow().getAssignedUserId());
+        assertEquals("existing-dingtalk-identity", users.findById(employee.getId()).orElseThrow().getDingtalkIdentity());
+    }
+
+    @Test void revokingGrantedAdministratorRoleInvalidatesSessionsAndRestoresRestrictedScope() throws Exception {
+        var employee = employee("revoked-admin", Set.of(Permission.values()));
+        employee.setRole(UserRole.SUPER_ADMIN); employee.setDataScope(DataScope.ALL); users.saveAndFlush(employee);
+        var session = login(employee);
+        var asset = seed(); asset.setAssignedUserId(employee.getId()); assets.saveAndFlush(asset);
+        other("960000003001");
+        long count = assets.count();
+        var admin = users.findByUsernameIgnoreCase("admin").orElseThrow();
+        mvc.perform(put("/api/users/{id}/access", employee.getId()).with(user(AccountPrincipal.from(admin))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"role":"USER","permissions":["ASSET_VIEW"],"dataScope":"SELF","departments":[],"enabled":true}
+                        """)).andExpect(status().isOk()).andExpect(jsonPath("$.role").value("USER"));
+        mvc.perform(get("/api/users").session(session)).andExpect(status().isUnauthorized());
+        assertTrue(session.isInvalid());
+        var restrictedSession = login(employee);
+        mvc.perform(get("/api/auth/me").session(restrictedSession)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.canManageUsers").value(false));
+        mvc.perform(get("/api/users").session(restrictedSession)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/settings/qr").session(restrictedSession)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/audit-logs").session(restrictedSession)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/assets/export.csv").session(restrictedSession)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/assets").session(restrictedSession)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value(asset.getId()));
+        assertEquals(count, assets.count());
+    }
+
+    @Test void ordinaryEmployeesAndAssetAdministratorsCannotGrantSystemAdministratorRole() throws Exception {
+        var employee = employee("no-self-elevation", Set.of(Permission.values()));
+        employee.setDataScope(DataScope.ALL); users.saveAndFlush(employee);
+        var target = employee("no-other-elevation", Set.of(Permission.ASSET_VIEW));
+        var session = login(employee);
+        String grant = "{\"role\":\"SUPER_ADMIN\",\"permissions\":[],\"dataScope\":\"ALL\",\"departments\":[],\"enabled\":true}";
+        for (var account : java.util.List.of(employee, target)) {
+            mvc.perform(put("/api/users/{id}/access", account.getId()).session(session).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON).content(grant)).andExpect(status().isForbidden());
+            assertEquals(UserRole.USER, users.findById(account.getId()).orElseThrow().getRole());
+        }
+        mvc.perform(get("/api/users").session(session)).andExpect(status().isForbidden());
+    }
+
+    @Test void promotedAdministratorsCannotChangeProtectedRootOrTheirOwnAccess() throws Exception {
+        var employee = employee("protected-admin-rules", Set.of(Permission.values()));
+        employee.setRole(UserRole.SUPER_ADMIN); users.saveAndFlush(employee);
+        var session = login(employee);
+        var admin = users.findByUsernameIgnoreCase("admin").orElseThrow();
+        String demote = "{\"role\":\"USER\",\"permissions\":[],\"dataScope\":\"SELF\",\"departments\":[],\"enabled\":false}";
+        for (var account : java.util.List.of(admin, employee)) {
+            mvc.perform(put("/api/users/{id}/access", account.getId()).session(session).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON).content(demote)).andExpect(status().isBadRequest());
+            assertEquals(UserRole.SUPER_ADMIN, users.findById(account.getId()).orElseThrow().getRole());
+            assertTrue(users.findById(account.getId()).orElseThrow().isEnabled());
+        }
+        mvc.perform(delete("/api/users/{id}", admin.getId()).session(session).with(csrf())).andExpect(status().isBadRequest());
+        mvc.perform(put("/api/users/{id}", admin.getId()).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"ResetPassword123!\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/users").session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.username == 'admin')].protectedAccount").value(org.hamcrest.Matchers.contains(true)));
+    }
+
     private UserAccount employee(String username, Set<Permission> permissions) {
         var account = new UserAccount(); account.setUsername(username); account.setDisplayName("张三");
         account.setPasswordHash(encoder.encode("TestPassword123!")); account.setPermissions(permissions);

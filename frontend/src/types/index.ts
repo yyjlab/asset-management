@@ -167,7 +167,7 @@ export type AssetFilter = 'all' | 'available' | 'checkedOut' | 'maintenance' | '
 
 export type Permission = 'ASSET_VIEW' | 'ASSET_CREATE' | 'ASSET_EDIT' | 'ASSET_DELETE' | 'ASSET_RETURN' | 'ASSET_CHECKOUT' | 'ASSET_IMPORT' | 'ASSET_EXPORT'
 export type DataScope = 'SELF' | 'DEPARTMENT' | 'ALL'
-export interface AccessPayload { permissions: Permission[]; dataScope: DataScope; departments: string[]; enabled: boolean }
+export interface AccessPayload { role?: UserRole; permissions: Permission[]; dataScope: DataScope; departments: string[]; enabled: boolean }
 export interface Assignee { id: number; username: string; displayName: string }
 export interface DashboardOverview {
   total: number; computerCount: number; displayCount: number; available: number; checkedOut: number; maintenance: number; scrapped: number
@@ -190,6 +190,7 @@ export interface AuthUser {
 }
 
 export interface ManagedUser {
+  protectedAccount: boolean
   displayName: string
   dingtalkBound: boolean
   dataScope: DataScope
