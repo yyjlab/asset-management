@@ -103,9 +103,9 @@ Jenkins 构建并推送成功后，在**资产部署服务器**操作，不是�
 ```yaml
 services:
   backend:
-    image: swr.cn-south-1.myhuaweicloud.com/recovery-uat/be-asset:test8
+    image: swr.aliyun.com/images/be-asset:test8
   web:
-    image: swr.cn-south-1.myhuaweicloud.com/recovery-uat/fe-asset:test7
+    image: swr.aliyun.com/images/fe-asset:test7
 ```
 
 只更新前端就改 `web.image` 的标签，后端标签保持原样；只更新后端则相反。前后端任务的构建编号独立，不要求标签一致。只有端口、环境变量或挂载等部署配置发生变化时，才调整原 `compose.yaml` 或 `.env`。
