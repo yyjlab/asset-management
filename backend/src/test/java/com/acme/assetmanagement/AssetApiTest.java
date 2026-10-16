@@ -230,6 +230,24 @@ class AssetApiTest {
         assertEquals(assetRepository.count() + 1, text.lines().count());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "https://asset.example.test/?from=login", "https://asset.example.test/#assets",
+            "https://user:password@asset.example.test"
+    })
+    void rejectsQrBaseUrlsThatWouldBreakScanLinks(String url) throws Exception {
+        mockMvc.perform(put("/api/settings/qr").with(adminUser()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"qrBaseUrl\":\"https://asset.example.test\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/settings/qr").with(adminUser()).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"qrBaseUrl\":\"" + url + "\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/settings/qr").with(adminUser()))
+                .andExpect(jsonPath("$.qrBaseUrl").value("https://asset.example.test"));
+    }
+
     @Test
     void generatesQrCodePointingToLatestAssetRecord() throws Exception {
         mockMvc.perform(get("/api/settings/qr").with(assetUser()))

@@ -68,6 +68,9 @@ public class SystemSettingService {
             if (uri.getHost() == null || !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))) {
                 throw new IllegalArgumentException();
             }
+            if (uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "二维码访问地址不能包含账号信息、查询参数或片段");
+            }
         } catch (IllegalArgumentException exception) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "二维码访问地址必须是完整的 http:// 或 https:// 地址");
         }

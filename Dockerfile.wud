@@ -1,0 +1,7 @@
+# WUD 9.4.1 SWR compatibility fix; reuse the original runtime and dependencies.
+FROM ghcr.io/getwud/wud:9.4.1
+
+COPY patch-wud-swr-auth.cjs patch-wud-swr-auth.test.cjs /opt/wud-swr-fix/
+RUN node --test /opt/wud-swr-fix/patch-wud-swr-auth.test.cjs \
+    && node /opt/wud-swr-fix/patch-wud-swr-auth.cjs \
+    && node --check /home/node/app/dist/registries/DockerRegistryV2.js

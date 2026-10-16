@@ -55,6 +55,23 @@ class AssetPermissionsTest {
                 .andExpect(content().string(not(containsString(other.getAssetTag()))));
     }
 
+    @Test void selfScopedReturnSucceedsEvenThoughTheAssetLeavesTheUsersScope() throws Exception {
+        var employee = employee("self-return", Set.of(Permission.ASSET_VIEW, Permission.ASSET_RETURN));
+        Asset own = seed();
+        own.setAssignedUserId(employee.getId());
+        own.setAssignedTo(employee.getDisplayName());
+        own.setCheckedOut(true);
+        own.setStatus(lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "在用").orElseThrow());
+        assets.saveAndFlush(own);
+        var session = login(employee);
+        mvc.perform(post("/api/assets/qr/{token}/return", own.getQrToken()).session(session).with(csrf()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.checkedOut").value(false))
+                .andExpect(jsonPath("$.assignedUserId").doesNotExist());
+        mvc.perform(get("/api/public/assets/{token}", own.getQrToken()).session(session))
+                .andExpect(status().isNotFound());
+        assertFalse(assets.findById(own.getId()).orElseThrow().isCheckedOut());
+    }
+
     @Test void operationsAreIndependentFromDashboardAndScope() throws Exception {
         var employee = employee("readonly", Set.of(Permission.ASSET_VIEW));
         Asset own = seed(); own.setAssignedUserId(employee.getId()); assets.saveAndFlush(own);

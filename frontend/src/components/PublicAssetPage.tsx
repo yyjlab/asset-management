@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, api } from '../api'
+import App from '../App'
 import type { AuthUser, PublicAsset } from '../types'
 import { BoxesIcon, CheckIcon, CloseIcon, ReturnIcon, UserIcon } from './Icons'
 
@@ -84,8 +85,12 @@ export function PublicAssetPage({ qrToken }: Props) {
     setReturning(true)
     setActionError('')
     try {
-      await api.returnAssetByQrToken(qrToken)
-      await refreshAsset()
+      const updated = await api.returnAssetByQrToken(qrToken)
+      setAsset(current => current ? {
+        ...current, checkedOut: updated.checkedOut, assignedTo: updated.assignedTo,
+        status: updated.status.name, updatedAt: updated.updatedAt,
+        boundDisplays: updated.boundDisplays, boundComputer: updated.boundComputer,
+      } : current)
       setConfirmOpen(false)
       setSuccess('资产已经归还，领用人已清空并恢复为当前可用')
     } catch (reason) {
@@ -95,7 +100,8 @@ export function PublicAssetPage({ qrToken }: Props) {
     }
   }
 
-  if (error) return <main className="public-asset-state"><div><BoxesIcon /><h1>{needsLogin ? '请登录后查看资产档案' : '无法打开资产档案'}</h1><p>{error}</p>{needsLogin ? <a className="button primary" href={`/?qr=${encodeURIComponent(qrToken)}`}>前往登录</a> : <small>请确认有此资产的查看权限，或联系资产管理员。</small>}</div></main>
+  if (needsLogin) return <App />
+  if (error) return <main className="public-asset-state"><div><BoxesIcon /><h1>无法打开资产档案</h1><p>{error}</p><small>请确认有此资产的查看权限，或联系资产管理员。</small></div></main>
   if (!asset) return <main className="public-asset-state"><div><span className="spinner" /><h1>正在读取设备信息</h1><p>请稍候…</p></div></main>
 
   const deviceFields = asset.assetProfile === 'COMPUTER' ? [
@@ -172,7 +178,7 @@ export function PublicAssetPage({ qrToken }: Props) {
         {actionError && !loginOpen && !confirmOpen && <div className="public-action-message error" role="alert"><span>{actionError}</span></div>}
       </section>
 
-      <footer className="public-asset-foot"><span>数据更新时间</span><strong>{time(asset.updatedAt)}</strong><small>公开信息可直接查看，业务操作需要登录确认</small></footer>
+      <footer className="public-asset-foot"><span>数据更新时间</span><strong>{time(asset.updatedAt)}</strong><small>资产档案仅供授权账号查看，业务操作需要再次确认</small></footer>
     </article>
 
     {loginOpen && <div className="public-action-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !loginLoading && setLoginOpen(false)}>

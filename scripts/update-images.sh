@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# 使用前先备份数据库和图片，并更新 compose.jenkins.yaml 中的镜像标签。
+# 使用前先暂停 WUD、备份数据库和图片，并更新 compose.yaml 中的镜像标签。
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-if [[ ! -f compose.yaml || ! -f compose.jenkins.yaml ]]; then
-  echo "错误：项目目录中需要 compose.yaml 和 compose.jenkins.yaml。" >&2
+if [[ ! -f compose.yaml ]]; then
+  echo "错误：项目目录中需要 compose.yaml。" >&2
   exit 1
 fi
 
-COMPOSE=(docker compose -p asset-management -f compose.yaml -f compose.jenkins.yaml)
+COMPOSE=(docker compose -p asset-management -f compose.yaml)
 
 echo "[1/4] 检查 Compose 配置"
 "${COMPOSE[@]}" config --quiet

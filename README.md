@@ -122,7 +122,7 @@ printf '已推送镜像：%s\n' "$IMAGE"
 以下在业务服务器操作，不是在 Jenkins 构建服务器操作。本例接管已存在的 WUD 与 `wud_data` 卷，复用原管理员账号；不是全新空卷安装。只能运行一套使用该卷的 WUD，先核对并停止旧实例，再接管为独立项目 `wud`、容器名 `wud`，不要删除数据卷。
 
 - 资产配置放在 `/opt/asset-management/compose.yaml`，保留同目录原来的 `.env`，包括数据库、端口及钉钉变量。上传前备份原配置、数据库和图片，并保持两条 `image` 与当前运行版本一致，避免接入时回退镜像。
-- WUD 配置放在 `/opt/wud/compose.wud.yaml`，同目录 `.env` 填写下面三项。只读校验命令为：在 `/opt/wud` 执行 `docker compose -p wud -f compose.wud.yaml config --quiet`。旧 WUD 接管完成后，下面的接入命令要求独立 `wud` 已正常运行。
+- WUD 配置为 `/opt/asset-management/compose.wud.yaml`，在同目录原 `.env` 中保留已有内容并填写下面三项，不移动文件。只读校验命令为：在 `/opt/asset-management` 执行 `docker compose -p wud -f compose.wud.yaml config --quiet`。WUD 与资产配置同目录不影响项目独立，始终用 `-p wud -f compose.wud.yaml` 单独管理；下面的接入命令要求独立 `wud` 已正常运行。
 
 ```dotenv
 WUD_BIND_IP=服务器内网IP
@@ -132,7 +132,18 @@ WUD_SWR_PASSWORD='对应的有效SWR密码'
 
 WUD 的 SWR 凭据独立于宿主机 `docker login`，临时凭据过期后需要更新并重建 WUD。只允许可信管理员访问 WUD；Docker socket 具有宿主机管理权限，挂载的业务配置目录也可写。不要把 `.env` 提交到仓库。
 
-当前配置已挂载资产目录，并只给 `backend`、`web` 授权 `dockercompose.shared` 触发器；MySQL 不参与自动更新。按以下顺序一次性应用：先暂停 WUD，更新前后端的接入标签，等待就绪，再启动 WUD。命令会核对当前镜像，不一致时停止；先同步配置中的版本，不要跳过检查。更新会短暂中断前后端，启用后可能立即部署 SWR 中已有的最大编号 `testN`。
+WUD 使用 `wud-swr-fixed:9.4.1-1` 兼容镜像：基于原版 9.4.1，只将 SWR 根接口的错误认证范围改为实际镜像的 `pull` 范围。账号、权限、管理员数据和其他仓库逻辑不变。依据：[上游认证代码](https://github.com/getwud/wud/blob/9.4.1/app/registries/DockerRegistryV2.ts#L437)。补丁回归测试在镜像构建时执行；真实镜像构建和自动更新仍须在服务器验证。
+
+首次或更新补丁时，把 `Dockerfile.wud` 上传到 `/opt/asset-management/`，把 `scripts/patch-wud-swr-auth.cjs`、`scripts/patch-wud-swr-auth.test.cjs` 上传到 `/opt/asset-management/scripts/`。保留服务器原 `.env` 和已有 Compose 配置，只按仓库 `compose.wud.yaml` 示例将 `wud.image` 改为 `wud-swr-fixed:9.4.1-1` 并增加 `wud.build`，不要覆盖其他项目的挂载或设置。执行下面命令构建并仅重建 WUD，复用 `wud_data`，不直接启停业务容器；恢复后可能立即自动更新已授权服务，无需重新构建资产前后端。构建失败时不要继续替换。
+
+```bash
+cd /opt/asset-management &&
+docker compose -p wud -f compose.wud.yaml config --quiet &&
+docker compose -p wud -f compose.wud.yaml build wud &&
+docker compose -p wud -f compose.wud.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 wud
+```
+
+当前配置已挂载资产目录，并只给 `backend`、`web` 授权 `dockercompose.shared` 触发器；MySQL 不参与自动更新，并通过 `WUD_WATCHER_LOCAL_EXCLUDE: '^asset-management-mysql-1$$'` 排除其镜像版本监控，避免无关的 Docker Hub 查询报错。这不停止数据库，也不改变其他项目的监控。只调整该监控配置时，校验后单独重建 WUD 即可，无需重新构建镜像或启停业务服务。首次接入按以下顺序一次性应用：先暂停 WUD，更新前后端的接入标签，等待就绪，再启动 WUD。命令会核对当前镜像，不一致时停止；先同步配置中的版本，不要跳过检查。更新会短暂中断前后端，启用后可能立即部署 SWR 中已有的最大编号 `testN`。
 
 ```bash
 test "$(docker ps --filter volume=wud_data --format '{{.Names}}')" = wud &&
@@ -141,12 +152,12 @@ cd /opt/asset-management &&
 docker compose -p asset-management -f compose.yaml config --quiet &&
 docker compose -p asset-management -f compose.yaml config --images | grep -Fx -- "$(docker inspect asset-management-backend-1 --format '{{.Config.Image}}')" &&
 docker compose -p asset-management -f compose.yaml config --images | grep -Fx -- "$(docker inspect asset-management-web-1 --format '{{.Config.Image}}')" &&
-cd /opt/wud &&
+cd /opt/asset-management &&
 docker compose -p wud -f compose.wud.yaml config --quiet &&
 docker compose -p wud -f compose.wud.yaml stop wud &&
 cd /opt/asset-management &&
 docker compose -p asset-management -f compose.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 backend web &&
-cd /opt/wud &&
+cd /opt/asset-management &&
 docker compose -p wud -f compose.wud.yaml up -d --no-build --pull never --wait --wait-timeout 180 wud
 ```
 
@@ -169,12 +180,42 @@ docker logs --since 10m wud
 
 未触发时，依次查看 Jenkins 的 SCM 轮询日志和构建日志、SWR 是否已推送新标签、WUD 日志中的鉴权和配置文件错误。参考：[Jenkins 轮询语法](https://www.jenkins.io/doc/book/pipeline/syntax/#triggers)、[WUD 触发器配置](https://getwud.app/docs/configuration/triggers/)。本地静态检查不等于实际 Jenkins/WUD 链路已验证。
 
+### 钉钉群更新通知（可选，一次性配置）
+
+上传 `scripts/wud-dingtalk-notify.cjs` 到服务器同名路径 `/opt/asset-management/scripts/`，按本仓库示例把 `compose.wud.yaml` 中的通知钩子、`COMMAND_DINGTALK` 和 `WUD_DINGTALK` 环境变量合入服务器原 WUD 配置。保留原镜像、挂载和其他项目设置，不覆盖资产 `compose.yaml`，无需构建任何镜像。
+
+使用钉钉群机器人的 Webhook，安全设置选“加签”；凭据不是资产系统钉钉登录的 Client Secret。在服务器原 `.env` 中追加下面三项，替换占位内容，不上传密钥：
+
+```dotenv
+WUD_DINGTALK_ENABLED=true
+WUD_DINGTALK_WEBHOOK='https://oapi.dingtalk.com/robot/send?access_token=替换为机器人token'
+WUD_DINGTALK_SECRET='替换为机器人的SEC加签密钥'
+```
+
+只重建 WUD 容器以加载配置，复用原卷；不直接启停业务服务，恢复后仍可能自动更新已授权项目：
+
+```bash
+cd /opt/asset-management &&
+docker compose -p wud -f compose.wud.yaml config --quiet &&
+docker compose -p wud -f compose.wud.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 wud
+```
+
+可选验证：以下命令只发一条测试消息，不访问 Docker API、不修改配置、不更新容器。不要使用 WUD 设置页的 `Test Trigger` 测试生产更新，它可能把示例版本真实写进 Compose。
+
+```bash
+docker exec wud node /opt/asset-management/scripts/wud-dingtalk-notify.cjs --test
+```
+
+启用后无需人工发送：只在已授权更新的完成、异常、回滚/中止钩子上通知，不重复发送“发现新版本”。完成通知以 WUD 更新流程结束为准，健康门禁依赖服务自身的探针及回滚配置；回滚通知不等于回滚成功。仓库查询、服务匹配等未进入更新流程的问题仍须查 WUD 日志，不由这些钩子通知。
+
+钉钉拒绝、网络错误或超时只记日志，不改变业务更新结果；10 秒超时，不自动重发。关闭通知时钩子不发送，显式 `--test` 仍可验证渠道；凭据缺失时测试失败。收不到时查看 `docker logs --since 10m wud` 中的 `[wud-dingtalk]`。真实群投递和服务器钩子仍须现场验证。
+
 ### 手动镜像更新（备用）
 
 原来的源码部署和手动镜像更新仍可使用，但不要与 WUD 并发更新同一服务。先在业务服务器暂停 WUD；这会暂停所有接入项目的自动更新，业务容器仍运行：
 
 ```bash
-cd /opt/wud &&
+cd /opt/asset-management &&
 docker compose -p wud -f compose.wud.yaml stop wud
 ```
 
@@ -187,7 +228,7 @@ docker compose -p asset-management -f compose.yaml pull backend web &&
 docker compose -p asset-management -f compose.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 180 backend web
 ```
 
-`--no-deps` 不重建 MySQL，项目名及数据库、图片卷保持不变。不要执行 `down -v` 或 `--remove-orphans`。手动命令失败不会自动回滚；若退回旧版本，恢复 WUD 前须先排除故障标签，否则可能再次升级。恢复自动运行时，在 `/opt/wud` 执行 `docker compose -p wud -f compose.wud.yaml up -d --no-build --pull never --wait --wait-timeout 180 wud`。
+`--no-deps` 不重建 MySQL，项目名及数据库、图片卷保持不变。不要执行 `down -v` 或 `--remove-orphans`。手动命令失败不会自动回滚；若退回旧版本，恢复 WUD 前须先排除故障标签，否则可能再次升级。恢复自动运行时，在 `/opt/asset-management` 执行 `docker compose -p wud -f compose.wud.yaml up -d --no-build --pull never --wait --wait-timeout 180 wud`。
 
 ## 备份与恢复
 
