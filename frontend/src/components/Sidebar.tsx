@@ -8,6 +8,7 @@ export type AppSection = 'dashboard' | 'assets' | 'transfer' | 'users' | 'logs' 
 interface Props {
   section: AppSection
   canManageUsers: boolean
+  dingtalkLogin: boolean
   permissions: Permission[]
   onFilter: (filter: AssetFilter) => void
   onSection: (section: AppSection) => void
@@ -20,7 +21,7 @@ const initiallyCollapsed = () => {
   catch { return false }
 }
 
-export function Sidebar({ section, canManageUsers, permissions, onFilter, onSection }: Props) {
+export function Sidebar({ section, canManageUsers, dingtalkLogin, permissions, onFilter, onSection }: Props) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed)
   const toggleSidebar = () => setCollapsed((current) => {
     const next = !current
@@ -43,19 +44,19 @@ export function Sidebar({ section, canManageUsers, permissions, onFilter, onSect
         <button aria-label="驾驶舱" title={collapsed ? '驾驶舱' : undefined} className={`nav-item ${section === 'dashboard' ? 'active' : ''}`} onClick={() => onSection('dashboard')}>
           <DashboardIcon /><span>驾驶舱</span>
         </button>
-        {permissions.includes('ASSET_VIEW') && <button aria-label="资产" title={collapsed ? '资产' : undefined} className={`nav-item ${section === 'assets' ? 'active' : ''}`} onClick={() => { onSection('assets'); onFilter('all') }}>
+        {(dingtalkLogin || permissions.includes('ASSET_VIEW')) && <button aria-label="资产" title={collapsed ? '资产' : undefined} className={`nav-item ${section === 'assets' ? 'active' : ''}`} onClick={() => { onSection('assets'); onFilter('all') }}>
           <BoxesIcon /><span>资产</span>
         </button>}
-        {canManageUsers && <button aria-label="用户" title={collapsed ? '用户' : undefined} className={`nav-item ${section === 'users' ? 'active' : ''}`} onClick={() => onSection('users')}>
+        {(dingtalkLogin || canManageUsers) && <button aria-label="用户" title={collapsed ? '用户' : undefined} className={`nav-item ${section === 'users' ? 'active' : ''}`} onClick={() => onSection('users')}>
           <UsersIcon /><span>用户</span>
         </button>}
-        {canManageUsers && <button aria-label="日志" title={collapsed ? '日志' : undefined} className={`nav-item ${section === 'logs' ? 'active' : ''}`} onClick={() => onSection('logs')}>
+        {(dingtalkLogin || canManageUsers) && <button aria-label="日志" title={collapsed ? '日志' : undefined} className={`nav-item ${section === 'logs' ? 'active' : ''}`} onClick={() => onSection('logs')}>
           <ClipboardIcon /><span>日志</span>
         </button>}
         {canManageUsers && <button aria-label="设置" title={collapsed ? '设置' : undefined} className={`nav-item ${section === 'settings' ? 'active' : ''}`} onClick={() => onSection('settings')}>
           <SettingsIcon /><span>设置</span>
         </button>}
-        {(permissions.includes('ASSET_IMPORT') || permissions.includes('ASSET_EXPORT')) && <button aria-label="数据" title={collapsed ? '数据' : undefined} className={`nav-item ${section === 'transfer' ? 'active' : ''}`} onClick={() => onSection('transfer')}>
+        {(dingtalkLogin || permissions.includes('ASSET_IMPORT') || permissions.includes('ASSET_EXPORT')) && <button aria-label="数据" title={collapsed ? '数据' : undefined} className={`nav-item ${section === 'transfer' ? 'active' : ''}`} onClick={() => onSection('transfer')}>
           <UploadIcon /><span>数据</span>
         </button>}
       </nav>

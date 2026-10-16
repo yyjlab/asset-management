@@ -108,6 +108,7 @@ class DingTalkLoginTest {
                 .andExpect(jsonPath("$.username").value("zhangsan2"))
                 .andExpect(jsonPath("$.displayName").value("张三"))
                 .andExpect(jsonPath("$.role").value("USER"))
+                .andExpect(jsonPath("$.dingtalkLogin").value(true))
                 .andExpect(jsonPath("$.dataScope").value("SELF"))
                 .andExpect(jsonPath("$.permissions.length()").value(1))
                 .andExpect(jsonPath("$.permissions[0]").value("ASSET_VIEW"));
@@ -147,7 +148,8 @@ class DingTalkLoginTest {
                 .andExpect(redirectedUrl("/"));
         assertNotEquals(originalSessionId, session.getId());
         mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("bound-user")).andExpect(jsonPath("$.role").value("USER"));
+                .andExpect(jsonPath("$.username").value("bound-user")).andExpect(jsonPath("$.role").value("USER"))
+                .andExpect(jsonPath("$.dingtalkLogin").value(true));
         mvc.perform(get(ROOT + "/callback").session(session).param("state", state(start)).param("code", "good"))
                 .andExpect(redirectedUrlPattern("/?dingtalkError=*"));
         verify(provider, times(1)).unionId("good");
@@ -172,6 +174,69 @@ class DingTalkLoginTest {
         assertNotNull(users.findById(account.getId()).orElseThrow().getDingtalkIdentity());
         mvc.perform(get(ROOT + "/status").session(session)).andExpect(jsonPath("$.bound").value(true));
         assertEquals(account.getId(), accounts.resolve("new-identity", null, null).id());
+    }
+
+    @Test void passwordLoginDoesNotUseDingtalkMenuFlagEvenForBoundAccount() throws Exception {
+        var account = create("bound-password-login");
+        accounts.resolve("password-only-identity", account.getId(), account.getPasswordHash());
+        var browser = passwordLogin(account);
+        mvc.perform(get("/api/auth/me").session(browser))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.dingtalkLogin").value(false));
+    }
+
+    @Test void dingtalkAdministratorRetainsSettingsAccess() throws Exception {
+        var account = create("dingtalk-administrator");
+        account.setRole(UserRole.SUPER_ADMIN);
+        users.saveAndFlush(account);
+        accounts.resolve("administrator-identity", account.getId(), account.getPasswordHash());
+        when(provider.unionId("administrator-code")).thenReturn("administrator-identity");
+        var start = begin();
+        var browser = session(start);
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state(start)).param("code", "administrator-code"))
+                .andExpect(redirectedUrl("/"));
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.dingtalkLogin").value(true))
+                .andExpect(jsonPath("$.canManageUsers").value(true))
+                .andExpect(jsonPath("$.role").value("SUPER_ADMIN"));
+        mvc.perform(get("/api/settings/qr").session(browser)).andExpect(status().isOk());
+    }
+
+    @Test void successfulPasswordLoginClearsPreviousDingtalkMenuFlag() throws Exception {
+        var account = create("switch-login-method");
+        accounts.resolve("switch-identity", account.getId(), account.getPasswordHash());
+        when(provider.unionId("switch-code")).thenReturn("switch-identity");
+        var start = begin();
+        var browser = session(start);
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state(start)).param("code", "switch-code"))
+                .andExpect(redirectedUrl("/"));
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(jsonPath("$.dingtalkLogin").value(true));
+        mvc.perform(post("/api/auth/login").session(browser).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"switch-login-method\",\"password\":\"TestPassword!\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.dingtalkLogin").value(false));
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(jsonPath("$.dingtalkLogin").value(false));
+    }
+
+    @Test void dingtalkMenuVisibilityDoesNotGrantPermissionsOrExpandAssetScope() throws Exception {
+        when(provider.unionId("view-only-code")).thenReturn("view-only-employee");
+        when(provider.employeeName("view-only-employee")).thenReturn("测试员工");
+        var start = begin();
+        var browser = session(start);
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state(start)).param("code", "view-only-code"))
+                .andExpect(redirectedUrl("/"));
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.dingtalkLogin").value(true))
+                .andExpect(jsonPath("$.canManageUsers").value(false))
+                .andExpect(jsonPath("$.dataScope").value("SELF"))
+                .andExpect(jsonPath("$.permissions.length()").value(1))
+                .andExpect(jsonPath("$.permissions[0]").value("ASSET_VIEW"));
+        mvc.perform(get("/api/dashboard").session(browser)).andExpect(status().isOk());
+        mvc.perform(get("/api/assets").session(browser)).andExpect(status().isOk()).andExpect(content().json("[]"));
+        mvc.perform(get("/api/users").session(browser)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/audit-logs").session(browser)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/settings/qr").session(browser)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/assets/export.csv").session(browser)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/assets/{id}", Long.MAX_VALUE).session(browser).with(csrf()))
+                .andExpect(status().isForbidden());
     }
 
     @Test void duplicateBindingAndRebindingCannotTakeOverAccounts() {

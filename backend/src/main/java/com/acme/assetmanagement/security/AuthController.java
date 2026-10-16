@@ -33,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+    // UI-only session hint; it does not grant authorities or widen data access.
+    static final String DINGTALK_LOGIN = AuthController.class.getName() + ".dingtalkLogin";
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -62,9 +64,10 @@ public class AuthController {
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
             securityContextRepository.saveContext(context, request, response);
+            request.getSession().removeAttribute(DINGTALK_LOGIN);
             AccountPrincipal principal = (AccountPrincipal) authentication.getPrincipal();
             auditLogService.authenticationSuccess(principal, AuditAction.LOGIN_SUCCESS, "账号登录系统");
-            return AuthResponse.from(requireAccount(principal.id()));
+            return AuthResponse.from(requireAccount(principal.id()), false);
         } catch (AuthenticationException exception) {
             auditLogService.authenticationFailure(body.username(), "账号或密码错误");
             throw new ApiException(HttpStatus.UNAUTHORIZED, "账号或密码错误");
@@ -72,8 +75,10 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public AuthResponse me(@AuthenticationPrincipal AccountPrincipal principal) {
-        return AuthResponse.from(requireAccount(principal.id()));
+    public AuthResponse me(@AuthenticationPrincipal AccountPrincipal principal, HttpServletRequest request) {
+        var session = request.getSession(false);
+        boolean dingtalkLogin = session != null && Boolean.TRUE.equals(session.getAttribute(DINGTALK_LOGIN));
+        return AuthResponse.from(requireAccount(principal.id()), dingtalkLogin);
     }
 
     private UserAccount requireAccount(Long id) {
@@ -129,11 +134,12 @@ public class AuthController {
     public record CsrfResponse(String headerName, String token) {}
     public record AuthResponse(Long id, String username, UserRole role,
                                Set<Permission> permissions, boolean canManageUsers, boolean hasAvatar,
-                               String displayName, com.acme.assetmanagement.user.DataScope dataScope, Set<String> departments) {
-        static AuthResponse from(UserAccount account) {
+                               String displayName, com.acme.assetmanagement.user.DataScope dataScope, Set<String> departments,
+                               boolean dingtalkLogin) {
+        static AuthResponse from(UserAccount account, boolean dingtalkLogin) {
             return new AuthResponse(account.getId(), account.getUsername(), account.getRole(),
                     account.effectivePermissions(), account.getRole() == UserRole.SUPER_ADMIN, account.hasAvatar(),
-                    account.getDisplayName(), account.getDataScope(), Set.copyOf(account.getDepartments()));
+                    account.getDisplayName(), account.getDataScope(), Set.copyOf(account.getDepartments()), dingtalkLogin);
         }
     }
 }

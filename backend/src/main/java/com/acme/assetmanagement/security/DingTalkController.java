@@ -106,6 +106,7 @@ public class DingTalkController {
             context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities()));
             SecurityContextHolder.setContext(context);
             new HttpSessionSecurityContextRepository().saveContext(context, request, response);
+            request.getSession().setAttribute(AuthController.DINGTALK_LOGIN, true);
             audit.authenticationSuccess(principal, AuditAction.LOGIN_SUCCESS,
                     pending.userId() == null ? "钉钉登录系统" : "账号绑定钉钉身份");
             response.sendRedirect(pending.userId() == null ? "/" : "/?dingtalk=bound");

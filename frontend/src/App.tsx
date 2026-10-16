@@ -369,32 +369,44 @@ export default function App() {
     {avatarEditorOpen && <AvatarEditor user={authUser} revision={avatarRevision} busy={avatarSaving} onClose={() => !avatarSaving && setAvatarEditorOpen(false)} onUpload={uploadAvatar} onDelete={deleteMyAvatar} onError={(message) => notify(message, 'error')} />}
   </>
 
+  const restrictedSection = (section === 'users' || section === 'logs' || section === 'settings') && !authUser.canManageUsers
+    ? { users: '用户', logs: '日志', settings: '设置' }[section]
+    : section === 'transfer' && !(hasPermission('ASSET_EXPORT') || (hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'))
+      ? '数据'
+      : section === 'assets' && !hasPermission('ASSET_VIEW') ? '资产' : null
+
+  if (restrictedSection) return <div className="app-shell">
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><section className="transfer-page"><div className="transfer-card"><div><h2>{restrictedSection}</h2><p>当前账号尚未获得此功能的访问权限，请联系管理员授权。</p></div></div></section></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
+
   if (section === 'users' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><UserManagement currentUserId={authUser.id} avatarRevision={avatarRevision} onNotify={notify} onPasswordChanged={() => void logout()} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'settings' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><SystemSettings onNotify={notify} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'transfer' && (hasPermission('ASSET_IMPORT') || hasPermission('ASSET_EXPORT'))) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><AssetTransfer canExport={hasPermission('ASSET_EXPORT')} canImport={hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'} onNotify={notify} onImported={() => load(search)} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'logs' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><AuditLogPage onNotify={notify} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'dashboard' || !hasPermission('ASSET_VIEW') || section !== 'assets') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content cockpit-content"><ComputerDashboard
       assets={suggestionAssets}
       overview={overview}
@@ -444,7 +456,7 @@ export default function App() {
       : listPage
 
   return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content modern-content">{assetPage}</div></main>
     <LookupModal type={lookupType} loading={lookupLoading} onClose={() => setLookupType(null)} onCreate={createLookup} />
     {returnTarget && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setReturnTarget(null)}><div className="return-card">

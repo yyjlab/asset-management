@@ -187,6 +187,7 @@ export interface AuthUser {
   permissions: Permission[]
   canManageUsers: boolean
   hasAvatar: boolean
+  dingtalkLogin: boolean
 }
 
 export interface ManagedUser {

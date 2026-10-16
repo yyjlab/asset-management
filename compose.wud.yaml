@@ -41,8 +41,6 @@ services:
       WUD_WATCHER_LOCAL_CRON: "* * * * *"
       WUD_WATCHER_LOCAL_JITTER: "1000"
       WUD_WATCHER_LOCAL_WATCHBYDEFAULT: "true"
-      # 只跳过当前 MySQL 的镜像版本检查，不停止数据库，也不影响其他项目。
-      WUD_WATCHER_LOCAL_EXCLUDE: '^asset-management-mysql-1$$'
       WUD_REGISTRY_CUSTOM_SWR_URL: https://swr.cn-south-1.myhuaweicloud.com
       WUD_REGISTRY_CUSTOM_SWR_LOGIN: ${WUD_SWR_USER:?请在.env中设置WUD_SWR_USER}
       WUD_REGISTRY_CUSTOM_SWR_PASSWORD: ${WUD_SWR_PASSWORD:?请在.env中设置WUD_SWR_PASSWORD}
@@ -53,6 +51,13 @@ services:
       WUD_TRIGGER_DOCKERCOMPOSE_SHARED_PRUNE: "false"
       WUD_TRIGGER_DOCKERCOMPOSE_SHARED_ROLLBACK: "true"
       WUD_TRIGGER_DOCKERCOMPOSE_SHARED_ROLLBACKWINDOW: "180000"
+      # 保留服务器原有的 MySQL 排除规则和钉钉环境变量引用。
+      WUD_WATCHER_LOCAL_EXCLUDE: '^asset-management-mysql-1$$'
+      WUD_DINGTALK_ENABLED: ${WUD_DINGTALK_ENABLED:-false}
+      WUD_DINGTALK_WEBHOOK: ${WUD_DINGTALK_WEBHOOK:-}
+      WUD_DINGTALK_SECRET: ${WUD_DINGTALK_SECRET:-}
+
+      # 在服务器配置基础上补齐：更新完成、异常、回滚/中止时调用通知脚本。
       # 通知只由更新结果钩子调用；不会把“发现新版本”当作更新完成。
       WUD_TRIGGER_DOCKERCOMPOSE_SHARED_HOOKS_0_TYPE: trigger
       WUD_TRIGGER_DOCKERCOMPOSE_SHARED_HOOKS_0_PHASE: post
@@ -66,10 +71,6 @@ services:
       WUD_TRIGGER_COMMAND_DINGTALK_AUTO: "false"
       WUD_TRIGGER_COMMAND_DINGTALK_CMD: node /opt/asset-management/scripts/wud-dingtalk-notify.cjs
       WUD_TRIGGER_COMMAND_DINGTALK_TIMEOUT: "15000"
-      # 以下三项供本项目通知脚本读取，不是钉钉登录配置；默认关闭。
-      WUD_DINGTALK_ENABLED: ${WUD_DINGTALK_ENABLED:-false}
-      WUD_DINGTALK_WEBHOOK: ${WUD_DINGTALK_WEBHOOK:-}
-      WUD_DINGTALK_SECRET: ${WUD_DINGTALK_SECRET:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - wud_data:/store
