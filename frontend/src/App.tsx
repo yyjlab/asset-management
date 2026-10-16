@@ -18,6 +18,8 @@ import { AvatarEditor } from './components/AvatarEditor'
 import { AssetLabelPrintPreview } from './components/AssetLabelPrintPreview'
 import { ComputerDashboard } from './components/ComputerDashboard'
 import { AssetTransfer } from './components/AssetTransfer'
+import { HandoverPage } from './components/HandoverPage'
+import { SelfServicePage } from './components/SelfServicePage'
 
 type Page = { name: 'list' } | { name: 'form'; asset: Asset | null; clone?: boolean } | { name: 'detail'; asset: Asset }
 type AppHistoryState = { assetManagement: true; section: AppSection; page: Page; depth: number }
@@ -68,6 +70,7 @@ export default function App() {
   const [avatarEditorOpen, setAvatarEditorOpen] = useState(false)
   const [avatarSaving, setAvatarSaving] = useState(false)
   const [avatarRevision, setAvatarRevision] = useState(() => Date.now())
+  const [assetLoadError, setAssetLoadError] = useState('')
   const navigationRevision = useRef(0)
   const dataRevision = useRef(0)
   const accessKey = authUser ? `${authUser.id}:${authUser.dataScope}:${[...authUser.permissions].sort().join(',')}:${[...authUser.departments].sort().join(',')}` : ''
@@ -104,7 +107,7 @@ export default function App() {
 
   const load = useCallback(async (term = search) => {
     const revision = ++dataRevision.current
-    setLoading(true)
+    setLoading(true); setAssetLoadError('')
     try {
       const canView = authUser?.permissions.includes('ASSET_VIEW')
       const assetRequest = canView ? api.listAssets(term) : Promise.resolve([])
@@ -120,6 +123,7 @@ export default function App() {
     } catch (error) {
       if (revision !== dataRevision.current) return
       setAssets([]); setSuggestionAssets([])
+      setAssetLoadError(error instanceof Error ? error.message : '读取数据失败')
       notify(error instanceof Error ? error.message : '读取数据失败', 'error')
       if (error instanceof ApiError && [401, 403].includes(error.status)) {
         setPage({ name: 'list' }); setSection('dashboard')
@@ -378,6 +382,18 @@ export default function App() {
   if (restrictedSection) return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><section className="transfer-page"><div className="transfer-card"><div><h2>{restrictedSection}</h2><p>当前账号尚未获得此功能的访问权限，请联系管理员授权。</p></div></div></section></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
+
+  if (section === 'selfService') return <div className="app-shell">
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><SelfServicePage key={accessKey} user={authUser} assets={suggestionAssets} lookups={lookups} loading={loading} error={assetLoadError} onRefresh={() => void load('')} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onNotify={notify} /></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
+
+  if (section === 'handover') return <div className="app-shell">
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><HandoverPage key={accessKey} currentUserId={authUser.id} assets={suggestionAssets} onNotify={notify} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

@@ -167,6 +167,49 @@ export type AssetFilter = 'all' | 'available' | 'checkedOut' | 'maintenance' | '
 
 export type Permission = 'ASSET_VIEW' | 'ASSET_CREATE' | 'ASSET_EDIT' | 'ASSET_DELETE' | 'ASSET_RETURN' | 'ASSET_CHECKOUT' | 'ASSET_IMPORT' | 'ASSET_EXPORT'
 export type DataScope = 'SELF' | 'DEPARTMENT' | 'ALL'
+export type HandoverKind = 'ONBOARDING' | 'OFFBOARDING'
+export type HandoverState = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+export interface HandoverSummary {
+  id: number; version: number; kind: HandoverKind; state: HandoverState
+  employeeUserId: number | null; employeeName: string; department: string; plannedDate: string | null
+  totalItems: number; checkedItems: number; confirmedItems: number; createdAt: string
+}
+export interface HandoverItem {
+  index: number; assetId: number | null; assetTag: string | null; name: string; model: string | null
+  serialNumber: string | null; accessories: string | null; checked: boolean; checkedBy: string | null
+  checkedAt: string | null; confirmationMethod: 'ONLINE' | 'OFFLINE' | null; confirmedBy: string | null
+  confirmedAt: string | null; confirmationNote: string | null
+}
+export interface HandoverDetail extends Omit<HandoverSummary, 'totalItems' | 'checkedItems' | 'confirmedItems'> {
+  approvalReference: string; notes: string; createdByName: string; items: HandoverItem[]
+  events: { occurredAt: string; actorName: string; description: string }[]
+}
+export interface HandoverPageData { items: HandoverSummary[]; page: number; totalElements: number; totalPages: number; canManage: boolean }
+export interface HandoverEmployee extends Assignee { enabled: boolean }
+export type RegistrationState = 'SUBMITTED' | 'NEEDS_INFO' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN'
+export interface RegistrationSummary {
+  id: number; version: number; ownerId: number; ownerName: string; name: string; model: string
+  serialNumber: string; state: RegistrationState; updatedAt: string; approvedAssetId: number | null; approvedAssetTag: string | null
+}
+export interface RegistrationDetail {
+  request: RegistrationSummary; requestKey: string; department: string; location: string; cpu: string; memory: string; storage: string
+  notes: string; reviewNote: string; reviewerName: string; photos: string[]; serialAlreadyInAssets: boolean
+  events: { occurredAt: string; actorName: string; description: string }[]
+}
+export interface RegistrationPageData { items: RegistrationSummary[]; page: number; totalElements: number; totalPages: number; canReview: boolean }
+export interface RegistrationSubmit {
+  requestKey: string; version?: number; name: string; model: string; serialNumber: string; department: string; location: string
+  cpu: string; memory: string; storage: string; notes: string
+}
+export interface TaskNotificationStatus {
+  enabled: boolean; configured: boolean; pending: number; failed: number
+  recent: { id: number; category: string; title: string; state: string; attempts: number; lastError: string | null; createdAt: string; sentAt: string | null }[]
+}
+export interface HandoverCreate {
+  requestKey: string; kind: HandoverKind; employeeUserId: number | null; employeeName: string; department: string
+  plannedDate: string | null; approvalReference: string; notes: string; assetIds: number[]
+  includeAssignedAssets: boolean; allowLegacyAssets: boolean; manualItems: string[]
+}
 export interface AccessPayload { role?: UserRole; permissions: Permission[]; dataScope: DataScope; departments: string[]; enabled: boolean }
 export interface Assignee { id: number; username: string; displayName: string }
 export interface DashboardOverview {

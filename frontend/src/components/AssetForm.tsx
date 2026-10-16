@@ -117,7 +117,7 @@ const loadImage = (source: string) => new Promise<HTMLImageElement>((resolve, re
 
 const dataUrlBytes = (source: string) => Math.ceil((source.split(',')[1]?.length || 0) * 3 / 4)
 
-async function prepareImage(file: File) {
+export async function prepareImage(file: File) {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) throw new Error('仅支持 JPG、PNG 或 WebP 图片')
   if (file.size > MAX_CAMERA_SOURCE_BYTES) throw new Error('照片不能超过 20 MB')
   const source = await readImage(file)

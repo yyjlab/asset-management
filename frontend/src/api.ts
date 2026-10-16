@@ -1,4 +1,6 @@
 import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
+import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData } from './types'
+import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -66,7 +68,33 @@ async function download(path: string, fallbackFilename: string) {
   URL.revokeObjectURL(objectUrl)
 }
 
+function registrationForm(payload: RegistrationSubmit, photos: File[]) {
+  const form = new FormData()
+  form.append('data', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
+  photos.forEach(photo => form.append('photos', photo))
+  return form
+}
+
 export const api = {
+  listRegistrations: (page = 0, state = '', review = false) => request<RegistrationPageData>(`/api/registrations?${new URLSearchParams({ page: String(page), state, review: String(review) })}`),
+  getRegistration: (id: number) => request<RegistrationDetail>(`/api/registrations/${id}`),
+  submitRegistration: (payload: RegistrationSubmit, photos: File[]) => mutateForm<RegistrationDetail>('/api/registrations', registrationForm(payload, photos)),
+  supplementRegistration: (id: number, payload: RegistrationSubmit, photos: File[]) => mutateForm<RegistrationDetail>(`/api/registrations/${id}/supplement`, registrationForm(payload, photos)),
+  withdrawRegistration: (id: number, version: number, note: string) => mutate<RegistrationDetail>(`/api/registrations/${id}/withdraw`, { method: 'POST', body: JSON.stringify({ version, note }) }),
+  reviewRegistration: (id: number, version: number, decision: 'NEEDS_INFO' | 'REJECTED', note: string) => mutate<RegistrationDetail>(`/api/registrations/${id}/review`, { method: 'POST', body: JSON.stringify({ version, decision, note }) }),
+  approveNewRegistration: (id: number, version: number, companyId: number, categoryId: number, locationId: number, note: string, confirmed: boolean) => mutate<RegistrationDetail>(`/api/registrations/${id}/approve-create`, { method: 'POST', body: JSON.stringify({ version, companyId, categoryId, locationId, note, confirmed }) }),
+  approveExistingRegistration: (id: number, version: number, assetId: number, assetVersion: number, note: string, confirmed: boolean) => mutate<RegistrationDetail>(`/api/registrations/${id}/approve-existing`, { method: 'POST', body: JSON.stringify({ version, assetId, assetVersion, note, confirmed }) }),
+  taskNotifications: () => request<TaskNotificationStatus>('/api/task-notifications'),
+  retryTaskNotification: (id: number) => mutate<void>(`/api/task-notifications/${id}/retry`, { method: 'POST' }),
+  listHandovers: (page = 0, kind = '', state = '', mine = false) => request<HandoverPageData>(`/api/handovers?${new URLSearchParams({ page: String(page), kind, state, ...(mine ? { mine: 'true' } : {}) })}`),
+  getHandover: (id: number) => request<HandoverDetail>(`/api/handovers/${id}`),
+  handoverEmployees: () => request<HandoverEmployee[]>('/api/handovers/employees'),
+  createHandover: (payload: HandoverCreate) => mutate<HandoverDetail>('/api/handovers', { method: 'POST', body: JSON.stringify(payload) }),
+  checkHandoverItem: (id: number, index: number, version: number, checked: boolean) => mutate<HandoverDetail>(`/api/handovers/${id}/items/${index}/check`, { method: 'POST', body: JSON.stringify({ version, checked }) }),
+  confirmHandoverItem: (id: number, index: number, version: number, offline: boolean, note = '') => mutate<HandoverDetail>(`/api/handovers/${id}/items/${index}/confirm`, { method: 'POST', body: JSON.stringify({ version, offline, note }) }),
+  completeHandover: (id: number, version: number) => mutate<HandoverDetail>(`/api/handovers/${id}/complete`, { method: 'POST', body: JSON.stringify({ version }) }),
+  cancelHandover: (id: number, version: number, note: string) => mutate<HandoverDetail>(`/api/handovers/${id}/cancel`, { method: 'POST', body: JSON.stringify({ version, note }) }),
+  linkHandoverEmployee: (id: number, version: number, employeeUserId: number) => mutate<HandoverDetail>(`/api/handovers/${id}/employee`, { method: 'POST', body: JSON.stringify({ version, employeeUserId }) }),
   dashboard: () => request<DashboardOverview>('/api/dashboard'),
   assignees: () => request<Assignee[]>('/api/assignees'),
   updateUserAccess: (id: number, payload: AccessPayload) => mutate<ManagedUser>(`/api/users/${id}/access`, { method: 'PUT', body: JSON.stringify(payload) }),

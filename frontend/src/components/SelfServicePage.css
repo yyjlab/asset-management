@@ -1,0 +1,17 @@
+.self-service-page { display: grid; gap: 18px; color: var(--ink); }
+.self-service-head, .self-service-asset-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.self-service-head h2, .self-service-asset h3 { margin: 0; }
+.self-service-head p, .self-service-total, .self-service-asset-head span { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.self-service-tabs { display: flex; flex-wrap: wrap; gap: 10px; }
+.self-service-notice { margin: 0; padding: 14px 16px; background: var(--blue-soft); border-radius: 12px; font-size: 13px; line-height: 1.7; }
+.self-service-total { margin: 0; }
+.self-service-assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.self-service-asset { padding: 20px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--muted) 15%, transparent); border-radius: 14px; }
+.self-service-asset h3 { font-size: 16px; }
+.self-service-asset-head { align-items: flex-start; }
+.self-service-asset dl { display: grid; gap: 10px; margin: 18px 0; font-size: 13px; }
+.self-service-asset dl > div { display: grid; grid-template-columns: 85px minmax(0, 1fr); gap: 10px; }
+.self-service-asset dt { color: var(--muted); }
+.self-service-asset dd { margin: 0; overflow-wrap: anywhere; }
+.self-service-empty { display: flex; justify-content: center; gap: 12px; padding: 40px 20px; color: var(--muted); background: var(--surface); border-radius: 14px; font-size: 13px; line-height: 1.7; text-align: center; }
+@media (max-width: 650px) { .self-service-asset { padding: 14px; } }

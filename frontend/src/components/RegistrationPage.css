@@ -1,0 +1,19 @@
+.registration-page { display: grid; gap: 18px; color: var(--ink); }
+.registration-page label { display: grid; gap: 8px; font-size: 13px; }
+.registration-page input:not([type=checkbox]), .registration-page select, .registration-page textarea { width: 100%; padding: 10px 12px; color: var(--ink); background: var(--surface); border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 8px; }
+.registration-page textarea { min-height: 80px; resize: vertical; }
+.registration-card { display: grid; gap: 16px; padding: 20px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--muted) 15%, transparent); border-radius: 14px; }
+.registration-card h3, .registration-card p { margin: 0; }
+.registration-card p, .registration-details dt { color: var(--muted); font-size: 13px; line-height: 1.7; }
+.registration-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.registration-details { display: grid; gap: 12px; margin: 0; font-size: 13px; }
+.registration-details > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; }
+.registration-details dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.registration-photos { display: flex; gap: 16px; flex-wrap: wrap; }
+.registration-photos > div { display: grid; gap: 8px; }
+.registration-photos img { max-width: 240px; max-height: 200px; object-fit: contain; border-radius: 8px; }
+.registration-page .registration-confirm { display: flex; align-items: flex-start; gap: 10px; line-height: 1.7; }
+.registration-confirm input { margin-top: 4px; accent-color: var(--blue); }
+.registration-filter { max-width: 220px; }
+.registration-card hr { width: 100%; border: 0; border-top: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); }
+@media (max-width: 650px) { .registration-fields { grid-template-columns: 1fr; } .registration-card { padding: 14px; } .registration-details > div { grid-template-columns: 1fr; gap: 4px; } .registration-photos img { max-width: 100%; } }

@@ -39,6 +39,10 @@ app:
   public-base-url: ${ASSET_PUBLIC_BASE_URL:}
   asset-images:
     directory: ${ASSET_IMAGE_DIRECTORY:./data/asset-images}
+  workflow-notifications:
+    enabled: ${ASSET_WORKFLOW_NOTIFY_ENABLED:false}
+    webhook: ${ASSET_WORKFLOW_DINGTALK_WEBHOOK:}
+    secret: ${ASSET_WORKFLOW_DINGTALK_SECRET:}
   dingtalk-login:
     enabled: ${DINGTALK_LOGIN_ENABLED:false}
     client-id: ${DINGTALK_LOGIN_CLIENT_ID:}
