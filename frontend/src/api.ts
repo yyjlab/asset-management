@@ -1,6 +1,7 @@
 import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
 import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData } from './types'
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
+import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -76,6 +77,20 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  listOperations: (page = 0, kind = '', mine = true) => request<OperationPageData>(`/api/operations?${new URLSearchParams({ page: String(page), kind, mine: String(mine) })}`),
+  getOperation: (id: number) => request<OperationDetail>(`/api/operations/${id}`),
+  createOperation: (payload: OperationCreate) => mutate<OperationDetail>('/api/operations', { method: 'POST', body: JSON.stringify(payload) }),
+  operationAction: (id: number, payload: OperationAction) => mutate<OperationDetail>(`/api/operations/${id}/actions`, { method: 'POST', body: JSON.stringify(payload) }),
+  listInventories: (page = 0) => request<InventoryPageData>(`/api/inventories?page=${page}`),
+  getInventory: (id: number) => request<InventoryDetail>(`/api/inventories/${id}`),
+  createInventory: (payload: { requestKey: string; title: string; department: string; dueDate: string }) => mutate<InventoryDetail>('/api/inventories', { method: 'POST', body: JSON.stringify(payload) }),
+  inventoryAction: (id: number, payload: InventoryAction) => mutate<InventoryDetail>(`/api/inventories/${id}/actions`, { method: 'POST', body: JSON.stringify(payload) }),
+  listConsumables: (page = 0, query = '', lowStock = false) => request<ConsumablePageData>(`/api/consumables?${new URLSearchParams({ page: String(page), query, lowStock: String(lowStock) })}`),
+  getConsumable: (id: number) => request<Consumable>(`/api/consumables/${id}`),
+  createConsumable: (payload: { requestKey: string; name: string; unit: string; lowStockThreshold: number; notes: string }) => mutate<Consumable>('/api/consumables', { method: 'POST', body: JSON.stringify(payload) }),
+  updateConsumable: (id: number, payload: { requestKey: string; version: number; name: string; unit: string; lowStockThreshold: number; notes: string }) => mutate<Consumable>(`/api/consumables/${id}/settings`, { method: 'POST', body: JSON.stringify(payload) }),
+  moveConsumable: (id: number, payload: { requestKey: string; version: number; kind: 'IN' | 'OUT'; quantity: number; recipientUsername: string; note: string }) => mutate<{ item: Consumable }>(`/api/consumables/${id}/movements`, { method: 'POST', body: JSON.stringify(payload) }),
+  listConsumableMovements: (page = 0, consumableId: number | null = null, mine = true) => request<ConsumableMovementPage>(`/api/consumables/movements?${new URLSearchParams({ page: String(page), ...(consumableId ? { consumableId: String(consumableId) } : {}), mine: String(mine) })}`),
   listRegistrations: (page = 0, state = '', review = false) => request<RegistrationPageData>(`/api/registrations?${new URLSearchParams({ page: String(page), state, review: String(review) })}`),
   getRegistration: (id: number) => request<RegistrationDetail>(`/api/registrations/${id}`),
   submitRegistration: (payload: RegistrationSubmit, photos: File[]) => mutateForm<RegistrationDetail>('/api/registrations', registrationForm(payload, photos)),

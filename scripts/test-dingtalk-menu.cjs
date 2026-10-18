@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx'].map(async file => {
+  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
       build: {
@@ -34,7 +34,7 @@ function load(file, mocks = {}, collapsed = false, globals = {}) {
   const module = { exports: {} };
   const browser = { location: { pathname: '/' }, localStorage: { getItem: () => String(collapsed) } };
   vm.runInNewContext(compiled[file], {
-    module, exports: module.exports, window: browser, URLSearchParams, crypto: require('node:crypto').webcrypto, ...globals,
+    module, exports: module.exports, window: browser, URLSearchParams, FormData, Blob, File, crypto: require('node:crypto').webcrypto, ...globals,
     require: id => Object.hasOwn(mocks, id) ? mocks[id] : frontendRequire(id),
   }, { filename: file });
   return module.exports;
@@ -54,25 +54,25 @@ function menuLabels(markup) {
 }
 
 test('DingTalk employees see all non-settings menus including handovers', () => {
-  assert.deepEqual(menuLabels(sidebarMarkup({ dingtalkLogin: true, permissions: [] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '用户', '日志', '数据']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ dingtalkLogin: true, permissions: [] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '用户', '日志', '数据']);
 });
 
 test('collapsed DingTalk menus retain their labels and accessible names', () => {
   const markup = sidebarMarkup({ dingtalkLogin: true }, true);
   assert.match(markup, /sidebar collapsed/);
-  for (const label of ['驾驶舱', '员工自助', '资产', '入离职交接', '用户', '日志', '数据']) assert.ok(markup.includes(`aria-label="${label}"`));
+  for (const label of ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '用户', '日志', '数据']) assert.ok(markup.includes(`aria-label="${label}"`));
   assert.ok(!markup.includes('aria-label="设置"'));
 });
 
 test('password login retains existing permission-based menus', () => {
-  assert.deepEqual(menuLabels(sidebarMarkup()), ['驾驶舱', '员工自助', '资产', '入离职交接']);
-  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: [] })), ['驾驶舱', '员工自助', '入离职交接']);
-  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '数据']);
+  assert.deepEqual(menuLabels(sidebarMarkup()), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: [] })), ['驾驶舱', '员工自助', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '数据']);
 });
 
 test('administrator keeps the settings menu with either login method', () => {
   for (const dingtalkLogin of [true, false]) {
-    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '用户', '日志', '设置', '数据']);
+    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '用户', '日志', '设置', '数据']);
   }
 });
 
@@ -89,7 +89,7 @@ test('every visible DingTalk menu navigates to its own section', () => {
   });
   const nav = tree.props.children.find(child => child.type === 'nav');
   for (const button of nav.props.children.filter(Boolean)) button.props.onClick();
-  assert.deepEqual(sections, ['dashboard', 'selfService', 'assets', 'handover', 'users', 'logs', 'transfer']);
+  assert.deepEqual(sections, ['dashboard', 'selfService', 'assets', 'handover', 'operations', 'inventory', 'repair', 'consumables', 'users', 'logs', 'transfer']);
   assert.deepEqual(filters, ['all']);
 });
 
@@ -107,7 +107,7 @@ function appMarkup(section, overrides = {}) {
   const icons = load('components/Icons.tsx');
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons });
   const rendered = [];
-  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage'];
+  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage'];
   const mocks = { react, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: () => {
     rendered.push(name);
@@ -226,6 +226,11 @@ function selfServiceMarkup({ user = {}, assets = [], loading = false, error = ''
     './HandoverPage': { HandoverPage: props => React.createElement('div', {
       'data-personal-handovers': String(props.selfService), 'data-user': String(props.currentUserId),
     }, '本人交接') },
+    './RegistrationPage': { RegistrationPage: () => React.createElement('div', null, '设备登记组件') },
+    './WorkflowNotifications': { WorkflowNotifications: () => React.createElement('div', null, '通知状态组件') },
+    './OperationPage': { OperationPage: () => React.createElement('div', null, '工单组件') },
+    './InventoryPage': { InventoryPage: () => React.createElement('div', null, '盘点组件') },
+    './ConsumablePage': { ConsumablePage: () => React.createElement('div', null, '耗材组件') },
   });
   return renderToStaticMarkup(React.createElement(SelfServicePage, {
     user: { id: 1, username: 'zhangsan', displayName: '张三', permissions: ['ASSET_VIEW'], ...user },
@@ -309,4 +314,142 @@ test('personal handover view requests only own records and rejects an unscoped b
     else { assert.equal(values[0].items[0].employeeUserId, 1); assert.equal(values[6], ''); }
     assert.equal(values[5], false);
   }
+});
+
+for (const [section, component] of [['operations', 'OperationPage'], ['repair', 'OperationPage'], ['inventory', 'InventoryPage'], ['consumables', 'ConsumablePage']]) {
+  test(`${section} opens its own workflow even without asset read permissions`, () => {
+    assert.deepEqual(appMarkup(section, { permissions: [] }).rendered, [component]);
+  });
+}
+
+const workflowUser = (manager = false, id = 1) => ({ id, username: 'employee', displayName: '员工', dataScope: manager ? 'ALL' : 'SELF', permissions: manager ? ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'] : [] });
+function workflowMarkup(file, component, state = {}, props = {}) {
+  let index = 0;
+  const react = { ...React, useState(initial) { const position = index++; return React.useState(Object.hasOwn(state, position) ? state[position] : initial); } };
+  const { [component]: Page } = load(`components/${file}.tsx`, {
+    react, '../api': { api: {}, ApiError: class extends Error {} }, './WorkflowPages.css': {},
+    './HandoverPage': { requestKey: () => '11111111-1111-4111-8111-111111111111' },
+    './OperationPage': { canManageWorkflows: user => user.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'].every(permission => user.permissions.includes(permission)) },
+    './ConfirmDialog': { ConfirmDialog: () => React.createElement('div', null, '再次确认弹窗') },
+  });
+  return renderToStaticMarkup(React.createElement(Page, { user: workflowUser(), assets: [], onNotify() {}, onAssetsChanged() {}, ...props }));
+}
+const operationFixture = overrides => ({ task: { id: 9, version: 2, kind: 'ISSUE', state: 'WAITING_CONFIRM', ownerId: 1, ownerName: '申请人', targetId: 1, targetName: '本人', assetId: 1, assetTag: 'DEVICE-001', title: '办公设备', ...overrides }, assetVersion: 4, description: '办公需要', proposed: {}, outcome: null, repairCost: null, events: [] });
+test('ordinary operation employee can confirm only own target and cannot complete or manage', () => {
+  const own = workflowMarkup('OperationPage', 'OperationPage', { 7: operationFixture() });
+  assert.match(own, /本人确认/);
+  assert.match(own, /disabled="">本人确认/);
+  assert.ok(!own.includes('受理并交员工确认'));
+  assert.ok(!own.includes('完结并写入台账</button>'));
+  const other = workflowMarkup('OperationPage', 'OperationPage', { 7: operationFixture({ targetId: 2, targetName: '接收人' }) });
+  assert.ok(!other.includes('>本人确认</button>'));
+  assert.match(other, /管理员不能代签/);
+});
+test('operation completion requires both explicit confirmation and note', () => {
+  const data = { items: [], canManage: true };
+  const detail = operationFixture({ state: 'CONFIRMED' });
+  const locked = workflowMarkup('OperationPage', 'OperationPage', { 0: data, 7: detail }, { user: workflowUser(true) });
+  assert.match(locked, /disabled="">完结并写入台账/);
+  const ready = workflowMarkup('OperationPage', 'OperationPage', { 0: data, 7: detail, 11: '实物验收完成', 13: true }, { user: workflowUser(true) });
+  assert.match(ready, /class="button primary">完结并写入台账/);
+  assert.match(ready, /版本冲突时不会覆盖其他修改/);
+});
+test('issue editor does not select existing asset and repair picker contains only current account assets', () => {
+  const issue = workflowMarkup('OperationPage', 'OperationPage', { 8: true });
+  assert.ok(!issue.includes('请选择本人设备'));
+  const repair = workflowMarkup('OperationPage', 'OperationPage', { 8: true }, { repair: true, assets: [selfAsset(), selfAsset({ id: 2, assignedUserId: 2, assetTag: 'FORBIDDEN-002' })] });
+  assert.match(repair, /SELF-001/);
+  assert.ok(!repair.includes('FORBIDDEN-002'));
+  assert.match(repair, /提交申请（不修改台账）/);
+});
+const inventoryFixture = (manager = false) => ({ batch: { id: 3, version: 7, title: '部门盘点', department: '研发', dueDate: '2026-12-01', state: 'OPEN', total: 1, confirmed: 0, resolved: 0 }, items: [{ index: 0, assetId: 1, assetVersion: 4, assetTag: 'SELF-001', name: '电脑', ownerId: 1, ownerName: '本人', result: null, employeeNote: '', resolved: false, resolution: '', ledgerChanged: true }], events: [], canManage: manager });
+test('employee inventory exposes own confirmation, discrepancy warning and no manager controls', () => {
+  const markup = workflowMarkup('InventoryPage', 'InventoryPage', { 5: inventoryFixture() });
+  assert.match(markup, /确认本人设备/);
+  assert.match(markup, /台账在盘点发起后已变化/);
+  assert.ok(!markup.includes('管理员核实／处理差异</button>'));
+  assert.ok(!markup.includes('完成盘点</button>'));
+});
+test('inventory completion stays disabled until every item has manager resolution', () => {
+  const markup = workflowMarkup('InventoryPage', 'InventoryPage', { 0: { items: [], canManage: true }, 5: inventoryFixture(true), 12: '实物已核对' }, { user: workflowUser(true) });
+  assert.match(markup, /disabled="">完成盘点/);
+  assert.match(markup, /管理员核实／处理差异/);
+});
+test('consumable employee sees stock warning but no inventory mutation controls', () => {
+  const item = { id: 2, version: 1, name: '电池', unit: '节', quantity: 1, lowStockThreshold: 3, lowStock: true, notes: '库存测试' };
+  const markup = workflowMarkup('ConsumablePage', 'ConsumablePage', { 11: item });
+  assert.match(markup, /库存不足预警/);
+  assert.ok(!markup.includes('保存入库'));
+  assert.ok(!markup.includes('库存变动</h3>'));
+  assert.ok(!markup.includes('修改名称／预警配置</button>'));
+});
+test('workflow API mutations retain CSRF, task and asset versions and never call direct asset mutation', async () => {
+  const calls = [];
+  const { api } = load('api.ts', {}, false, { fetch: async (url, options) => {
+    calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf' } : {} };
+  } });
+  await api.listOperations(0, '', true);
+  await api.operationAction(8, { version: 4, action: 'COMPLETE', assetVersion: 12, confirmed: true, note: '验收' });
+  await api.inventoryAction(3, { version: 7, action: 'CONFIRM', index: 0, result: 'MISMATCH', note: '内存不符' });
+  await api.moveConsumable(2, { requestKey: 'uuid', version: 3, kind: 'OUT', quantity: 2, recipientUsername: 'employee', note: '领用' });
+  await api.updateConsumable(2, { requestKey: 'uuid-settings', version: 4, name: '电池', unit: '节', lowStockThreshold: 5, notes: '' });
+  assert.equal(new URL(calls[0].url, 'http://localhost').searchParams.get('mine'), 'true');
+  const writes = calls.filter(call => call.options.method === 'POST');
+  assert.deepEqual(writes.map(call => call.url), ['/api/operations/8/actions', '/api/inventories/3/actions', '/api/consumables/2/movements', '/api/consumables/2/settings']);
+  for (const call of writes) { assert.equal(call.options.headers['X-CSRF-TOKEN'], 'csrf'); assert.equal(call.options.credentials, 'include'); }
+  assert.equal(JSON.parse(writes[0].options.body).assetVersion, 12);
+  assert.equal(JSON.parse(writes[1].options.body).version, 7);
+  assert.equal(JSON.parse(writes[3].options.body).requestKey, 'uuid-settings');
+  assert.ok(!calls.some(call => call.url.startsWith('/api/assets')));
+});
+
+test('registration and notification tabs preserve independent review and administrator permissions', () => {
+  const ordinary = selfServiceMarkup({ user: { permissions: [] }, tab: 'registrations' });
+  assert.match(ordinary, /设备登记组件/);
+  assert.ok(!ordinary.includes('登记审核</button>'));
+  assert.ok(!ordinary.includes('通知状态</button>'));
+  assert.ok(!selfServiceMarkup({ tab: 'review', user: { permissions: [] } }).includes('设备登记组件'));
+  assert.ok(!selfServiceMarkup({ tab: 'notifications' }).includes('通知状态组件'));
+  assert.match(selfServiceMarkup({ tab: 'notifications', user: { canManageUsers: true } }), /通知状态组件/);
+  assert.match(selfServiceMarkup({ tab: 'review', user: { dataScope: 'ALL', permissions: ['ASSET_VIEW', 'ASSET_CREATE', 'ASSET_CHECKOUT'] } }), /设备登记组件/);
+});
+
+function registrationMarkup(state = {}, props = {}) {
+  let index = 0;
+  const react = { ...React, useState(initial) { const position = index++; return React.useState(Object.hasOwn(state, position) ? state[position] : initial); } };
+  const { RegistrationPage } = load('components/RegistrationPage.tsx', {
+    react, '../api': { api: {}, ApiError: class extends Error {} }, './RegistrationPage.css': {},
+    './AssetForm': { prepareImage: async () => '' }, './Icons': load('components/Icons.tsx'),
+    './HandoverPage': { requestKey: () => '11111111-1111-4111-8111-111111111111' },
+    './ConfirmDialog': { ConfirmDialog: () => React.createElement('div', null, '确认审核弹窗') },
+  });
+  return renderToStaticMarkup(React.createElement(RegistrationPage, { user: workflowUser(), assets: [], lookups: [], onNotify() {}, onAssetsChanged() {}, ...props }));
+}
+const registrationFixture = () => ({ request: { id: 5, version: 4, ownerId: 1, ownerName: '本人', name: '登记笔记本', model: '型号', serialNumber: 'SN-TEST', state: 'SUBMITTED' }, requestKey: 'uuid', department: '研发', location: '公司', cpu: 'I7', memory: '32G', storage: '1T', notes: '待核实', photos: [], reviewNote: '', events: [], serialAlreadyInAssets: false });
+test('registration review needs explicit physical confirmation and does not expose review actions to employees', () => {
+  const detail = registrationFixture();
+  const ordinary = registrationMarkup({ 6: detail });
+  assert.match(ordinary, /撤回本次登记/);
+  assert.ok(!ordinary.includes('审核通过并新增资产</button>'));
+  const manager = registrationMarkup({ 0: { items: [], canReview: true }, 6: detail }, { review: true });
+  assert.match(manager, /disabled="">审核通过并新增资产/);
+  assert.match(manager, /disabled="">审核通过并记录关联/);
+  assert.match(manager, /我已核对实物/);
+});
+test('registration multipart and review APIs keep CSRF and explicit versions without direct asset writes', async () => {
+  const calls = [];
+  const { api } = load('api.ts', {}, false, { fetch: async (url, options) => {
+    calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf' } : {} };
+  } });
+  await api.submitRegistration({ requestKey: 'uuid', name: '电脑', model: '型号', serialNumber: 'sn' }, [new File(['photo'], 'photo.png', { type: 'image/png' })]);
+  await api.approveExistingRegistration(5, 4, 12, 7, '已核对', true);
+  await api.retryTaskNotification(9);
+  const writes = calls.filter(call => call.options.method === 'POST');
+  assert.deepEqual(writes.map(call => call.url), ['/api/registrations', '/api/registrations/5/approve-existing', '/api/task-notifications/9/retry']);
+  assert.equal(writes[0].options.headers['Content-Type'], undefined);
+  assert.equal(writes[0].options.body.get('photos').name, 'photo.png');
+  assert.equal(JSON.parse(await writes[0].options.body.get('data').text()).requestKey, 'uuid');
+  assert.equal(JSON.parse(writes[1].options.body).assetVersion, 7);
+  for (const call of writes) assert.equal(call.options.headers['X-CSRF-TOKEN'], 'csrf');
+  assert.ok(!calls.some(call => call.url.startsWith('/api/assets')));
 });

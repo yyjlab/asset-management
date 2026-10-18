@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AssetRepository extends JpaRepository<Asset, Long> {
+    List<Asset> findTop501ByOwnershipDepartmentOrderByAssetTagAsc(String department);
+    List<Asset> findTop501ByOrderByAssetTagAsc();
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = {"company", "model", "category", "status", "location"})
     @Query("select a from Asset a where a.id = :id")

@@ -1,0 +1,26 @@
+.workflow-page { display: grid; gap: 18px; color: var(--ink); }
+.workflow-head, .workflow-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.workflow-head { justify-content: space-between; }
+.workflow-head h2, .workflow-card h3 { margin: 0 0 6px; }
+.workflow-head p, .workflow-muted { color: var(--muted); }
+.workflow-notice { padding: 14px 18px; background: var(--blue-soft); border-radius: 12px; line-height: 1.7; }
+.workflow-card { padding: 20px; border: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); background: var(--surface); border-radius: 14px; display: grid; gap: 16px; }
+.workflow-page label { display: grid; gap: 8px; }
+.workflow-page input:not([type=checkbox]), .workflow-page select, .workflow-page textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); background: var(--surface); color: var(--ink); }
+.workflow-page option { background: var(--surface); color: var(--ink); }
+.workflow-page textarea { min-height: 84px; resize: vertical; }
+.workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.workflow-page .workflow-check { display: flex; align-items: center; gap: 10px; }
+.workflow-table-wrap { overflow-x: auto; background: var(--surface); border-radius: 14px; }
+.workflow-table { width: 100%; border-collapse: collapse; text-align: left; }
+.workflow-table th, .workflow-table td { padding: 14px 12px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); }
+.workflow-meta { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); }
+.workflow-page .workflow-warning { color: #c99a55; }
+.workflow-page .workflow-error { color: #e88484; padding: 14px; }
+.workflow-empty { padding: 38px 18px; text-align: center; }
+.workflow-history { display: grid; gap: 10px; }
+.workflow-history > div { display: flex; flex-wrap: wrap; gap: 12px; border-top: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); padding-top: 10px; }
+.workflow-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.workflow-pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.workflow-page .button:disabled { opacity: .5; cursor: not-allowed; }
+@media(max-width: 700px) { .workflow-grid { grid-template-columns: 1fr; } .workflow-card { padding: 14px; } }

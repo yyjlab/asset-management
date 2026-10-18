@@ -4,6 +4,9 @@ import { BoxesIcon, ClipboardIcon, RefreshIcon } from './Icons'
 import { HandoverPage } from './HandoverPage'
 import { RegistrationPage } from './RegistrationPage'
 import { WorkflowNotifications } from './WorkflowNotifications'
+import { OperationPage } from './OperationPage'
+import { InventoryPage } from './InventoryPage'
+import { ConsumablePage } from './ConsumablePage'
 import './SelfServicePage.css'
 
 interface Props {
@@ -18,7 +21,7 @@ interface Props {
 }
 
 export function SelfServicePage({ user, assets, lookups, loading, error, onRefresh, onSelect, onNotify }: Props) {
-  const [tab, setTab] = useState<'assets' | 'handovers' | 'registrations' | 'review' | 'notifications'>('assets')
+  const [tab, setTab] = useState<'assets' | 'handovers' | 'registrations' | 'review' | 'notifications' | 'operations' | 'repair' | 'inventory' | 'consumables'>('assets')
   const canView = user.permissions.includes('ASSET_VIEW')
   const canReview = user.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_CREATE', 'ASSET_CHECKOUT'].every(permission => user.permissions.includes(permission as 'ASSET_VIEW' | 'ASSET_CREATE' | 'ASSET_CHECKOUT'))
   const ownAssets = useMemo(() => canView ? assets.filter(asset => asset.assignedUserId === user.id) : [], [assets, user.id, canView])
@@ -32,10 +35,17 @@ export function SelfServicePage({ user, assets, lookups, loading, error, onRefre
       <button className={`button ${tab === 'assets' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}><BoxesIcon />我的资产</button>
       <button className={`button ${tab === 'handovers' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'handovers'} onClick={() => setTab('handovers')}><ClipboardIcon />我的交接</button>
       <button className={`button ${tab === 'registrations' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'registrations'} onClick={() => setTab('registrations')}>设备登记</button>
+      <button className={`button ${tab === 'operations' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'operations'} onClick={() => setTab('operations')}>领用归还／信息纠错</button>
+      <button className={`button ${tab === 'repair' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'repair'} onClick={() => setTab('repair')}>故障报修</button>
+      <button className={`button ${tab === 'inventory' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'inventory'} onClick={() => setTab('inventory')}>我的盘点</button>
+      <button className={`button ${tab === 'consumables' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'consumables'} onClick={() => setTab('consumables')}>耗材领用</button>
       {canReview && <button className={`button ${tab === 'review' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'review'} onClick={() => setTab('review')}>登记审核</button>}
       {user.canManageUsers && <button className={`button ${tab === 'notifications' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'notifications'} onClick={() => setTab('notifications')}>通知状态</button>}
     </div>
     {tab === 'handovers' ? <HandoverPage currentUserId={user.id} assets={[]} selfService onNotify={onNotify} />
+      : tab === 'operations' || tab === 'repair' ? <OperationPage key={tab} user={user} assets={assets} repair={tab === 'repair'} onNotify={onNotify} onAssetsChanged={onRefresh} />
+        : tab === 'inventory' ? <InventoryPage user={user} onNotify={onNotify} />
+          : tab === 'consumables' ? <ConsumablePage user={user} onNotify={onNotify} />
       : tab === 'registrations' || tab === 'review' && canReview ? <RegistrationPage key={tab} user={user} review={tab === 'review'} assets={assets} lookups={lookups} onNotify={onNotify} onAssetsChanged={onRefresh} />
         : tab === 'notifications' && user.canManageUsers ? <WorkflowNotifications onNotify={onNotify} />
       : <>

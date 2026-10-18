@@ -205,6 +205,23 @@ export interface TaskNotificationStatus {
   enabled: boolean; configured: boolean; pending: number; failed: number
   recent: { id: number; category: string; title: string; state: string; attempts: number; lastError: string | null; createdAt: string; sentAt: string | null }[]
 }
+export type OperationKind = 'ISSUE' | 'RETURN' | 'TRANSFER' | 'CORRECTION' | 'REPAIR'
+export type OperationState = 'PENDING' | 'WAITING_CONFIRM' | 'PROCESSING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED'
+export interface OperationSummary { id: number; version: number; kind: OperationKind; state: OperationState; ownerId: number; ownerName: string; targetId: number; targetName: string; assetId: number | null; assetTag: string | null; title: string; updatedAt: string }
+export interface WorkflowEvent { occurredAt: string; actor: string; description: string }
+export interface OperationDetail { task: OperationSummary; assetVersion: number | null; description: string; proposed: Record<string, string>; outcome: 'FIXED' | 'SCRAP' | null; repairCost: number | null; events: WorkflowEvent[] }
+export interface OperationPageData { items: OperationSummary[]; page: number; totalElements: number; totalPages: number; canManage: boolean }
+export interface OperationCreate { requestKey: string; kind: OperationKind; title: string; description: string; assetId: number | null; targetUsername: string; proposed: Record<string, string> }
+export interface OperationAction { version: number; action: 'APPROVE' | 'PROGRESS' | 'RESOLVE' | 'CONFIRM' | 'COMPLETE' | 'REJECT' | 'CANCEL'; note?: string; assetId?: number; assetVersion?: number; outcome?: 'FIXED' | 'SCRAP'; repairCost?: number; confirmed?: boolean }
+export interface InventorySummary { id: number; version: number; title: string; department: string; dueDate: string; state: 'OPEN' | 'COMPLETED' | 'CANCELLED'; total: number; confirmed: number; resolved: number }
+export interface InventoryItem { index: number; assetId: number; assetVersion: number; assetTag: string; name: string; ownerId: number | null; ownerName: string | null; result: 'PRESENT' | 'MISSING' | 'MISMATCH' | null; employeeNote: string | null; resolved: boolean; resolution: string | null; ledgerChanged: boolean }
+export interface InventoryDetail { batch: InventorySummary; items: InventoryItem[]; events: WorkflowEvent[]; canManage: boolean }
+export interface InventoryPageData { items: InventorySummary[]; page: number; totalElements: number; totalPages: number; canManage: boolean }
+export interface InventoryAction { version: number; action: 'CONFIRM' | 'RESOLVE' | 'CLOSE' | 'CANCEL'; index?: number; result?: 'PRESENT' | 'MISSING' | 'MISMATCH'; note: string }
+export interface Consumable { id: number; version: number; name: string; unit: string; quantity: number; lowStockThreshold: number; lowStock: boolean; notes: string; updatedAt: string }
+export interface ConsumablePageData { items: Consumable[]; page: number; totalElements: number; totalPages: number; canManage: boolean }
+export interface ConsumableMovement { id: number; consumableId: number; consumableName: string; unit: string; kind: 'IN' | 'OUT'; quantity: number; balanceAfter: number; recipientId: number | null; recipientName: string | null; actorName: string; note: string; createdAt: string }
+export interface ConsumableMovementPage { items: ConsumableMovement[]; page: number; totalElements: number; totalPages: number; canManage: boolean }
 export interface HandoverCreate {
   requestKey: string; kind: HandoverKind; employeeUserId: number | null; employeeName: string; department: string
   plannedDate: string | null; approvalReference: string; notes: string; assetIds: number[]

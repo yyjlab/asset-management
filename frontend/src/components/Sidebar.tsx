@@ -3,7 +3,7 @@ import type { AssetFilter, Permission } from '../types'
 const version = 'v26.915.1651'
 import { BoxesIcon, ClipboardIcon, DashboardIcon, SettingsIcon, SidebarPanelIcon, UploadIcon, UserIcon, UsersIcon } from './Icons'
 
-export type AppSection = 'dashboard' | 'selfService' | 'assets' | 'handover' | 'transfer' | 'users' | 'logs' | 'settings'
+export type AppSection = 'dashboard' | 'selfService' | 'assets' | 'handover' | 'operations' | 'inventory' | 'repair' | 'consumables' | 'transfer' | 'users' | 'logs' | 'settings'
 
 interface Props {
   section: AppSection
@@ -53,6 +53,10 @@ export function Sidebar({ section, canManageUsers, dingtalkLogin, permissions, o
         <button aria-label="入离职交接" title={collapsed ? '入离职交接' : undefined} className={`nav-item ${section === 'handover' ? 'active' : ''}`} onClick={() => onSection('handover')}>
           <ClipboardIcon /><span>入离职交接</span>
         </button>
+        <button aria-label="领用归还" title={collapsed ? '领用归还' : undefined} className={`nav-item ${section === 'operations' ? 'active' : ''}`} onClick={() => onSection('operations')}><ClipboardIcon /><span>领用归还</span></button>
+        <button aria-label="资产盘点" title={collapsed ? '资产盘点' : undefined} className={`nav-item ${section === 'inventory' ? 'active' : ''}`} onClick={() => onSection('inventory')}><BoxesIcon /><span>资产盘点</span></button>
+        <button aria-label="报修维修" title={collapsed ? '报修维修' : undefined} className={`nav-item ${section === 'repair' ? 'active' : ''}`} onClick={() => onSection('repair')}><ClipboardIcon /><span>报修维修</span></button>
+        <button aria-label="耗材管理" title={collapsed ? '耗材管理' : undefined} className={`nav-item ${section === 'consumables' ? 'active' : ''}`} onClick={() => onSection('consumables')}><BoxesIcon /><span>耗材管理</span></button>
         {(dingtalkLogin || canManageUsers) && <button aria-label="用户" title={collapsed ? '用户' : undefined} className={`nav-item ${section === 'users' ? 'active' : ''}`} onClick={() => onSection('users')}>
           <UsersIcon /><span>用户</span>
         </button>}

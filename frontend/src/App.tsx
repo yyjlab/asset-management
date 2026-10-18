@@ -20,6 +20,9 @@ import { ComputerDashboard } from './components/ComputerDashboard'
 import { AssetTransfer } from './components/AssetTransfer'
 import { HandoverPage } from './components/HandoverPage'
 import { SelfServicePage } from './components/SelfServicePage'
+import { OperationPage } from './components/OperationPage'
+import { InventoryPage } from './components/InventoryPage'
+import { ConsumablePage } from './components/ConsumablePage'
 
 type Page = { name: 'list' } | { name: 'form'; asset: Asset | null; clone?: boolean } | { name: 'detail'; asset: Asset }
 type AppHistoryState = { assetManagement: true; section: AppSection; page: Page; depth: number }
@@ -394,6 +397,15 @@ export default function App() {
   if (section === 'handover') return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><HandoverPage key={accessKey} currentUserId={authUser.id} assets={suggestionAssets} onNotify={notify} /></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
+
+  if (section === 'operations' || section === 'repair' || section === 'inventory' || section === 'consumables') return <div className="app-shell">
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content">{section === 'inventory'
+      ? <InventoryPage key={`${accessKey}:inventory`} user={authUser} onNotify={notify} />
+      : section === 'consumables' ? <ConsumablePage key={`${accessKey}:consumables`} user={authUser} onNotify={notify} />
+        : <OperationPage key={`${accessKey}:${section}`} user={authUser} assets={suggestionAssets} repair={section === 'repair'} onNotify={notify} onAssetsChanged={() => void load('')} />}</div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

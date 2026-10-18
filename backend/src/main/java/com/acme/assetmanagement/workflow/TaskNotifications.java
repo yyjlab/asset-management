@@ -65,7 +65,7 @@ public class TaskNotifications {
         if (!properties.configured()) throw new ApiException(HttpStatus.CONFLICT, "请先在服务器启用并配置工作流通知及加签机器人");
         var entity = repository.locked(id).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "通知不存在"));
         if (!"FAILED".equals(entity.state)) throw new ApiException(HttpStatus.CONFLICT, "只能重试已失败的通知");
-        entity.state = "PENDING"; entity.attempts = 0; entity.nextAttemptAt = Instant.now(); entity.lastError = null;
+        entity.state = "PENDING"; entity.attempts = 0; entity.nextAttemptAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS); entity.lastError = null;
         repository.saveAndFlush(entity);
     }
 }

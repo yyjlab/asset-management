@@ -17,7 +17,8 @@ public class TaskNotification {
     @Column(length = 100) String lastError;
     @Column(length = 36) String leaseId;
     Instant leasedUntil;
-    @Column(nullable = false) Instant nextAttemptAt = Instant.now();
+    // Persist millisecond precision so DB timestamp rounding cannot move a new job into the future.
+    @Column(nullable = false) Instant nextAttemptAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
     @Column(nullable = false, updatable = false) Instant createdAt = Instant.now();
     Instant sentAt;
     protected TaskNotification() {}

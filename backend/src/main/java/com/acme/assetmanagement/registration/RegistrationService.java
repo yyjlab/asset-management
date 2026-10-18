@@ -86,7 +86,9 @@ public class RegistrationService {
 
     @Transactional
     public Detail supplement(Long id, RegistrationRequest.Submit request, List<MultipartFile> files) {
-        var actor = access.current(); var registration = locked(id); owned(registration, actor); version(registration, request.version());
+        var actor = access.current();
+        users.findForWorkflowUpdate(actor.getId()).orElseThrow(() -> error(HttpStatus.UNAUTHORIZED, "账号不可用"));
+        var registration = locked(id); owned(registration, actor); version(registration, request.version());
         if (!"NEEDS_INFO".equals(registration.state)) throw error(HttpStatus.CONFLICT, "只有待补充资料的登记可以重新提交");
         if (!registration.requestKey.equals(request.requestKey())) throw error(HttpStatus.BAD_REQUEST, "不能更改原登记请求标识");
         apply(registration, request); duplicateOpen(registration);
@@ -119,6 +121,7 @@ public class RegistrationService {
         var owner = users.findById(registration.ownerId).filter(UserAccount::isEnabled)
                 .orElseThrow(() -> error(HttpStatus.CONFLICT, "登记员工账号已停用，不能新增领用资产"));
         var status = lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "已经领出")
+                .or(() -> lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "在用"))
                 .orElseThrow(() -> error(HttpStatus.CONFLICT, "请先在设置中准备“已经领出”状态"));
         var photoData = photos.findByRegistrationIdAndRevisionOrderById(id, registration.photoRevision).stream()
                 .map(p -> "data:" + p.mediaType + ";base64," + Base64.getEncoder().encodeToString(p.data)).toList();

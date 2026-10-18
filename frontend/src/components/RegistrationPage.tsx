@@ -39,14 +39,14 @@ export function RegistrationPage({ user, review = false, assets, lookups, onNoti
     api.listRegistrations(page, state, review).then(result => { if (active) {
       if (review && !result.canReview || !review && result.items.some(item => item.ownerId !== user.id)) throw new Error('登记数据范围不一致，请刷新并核对权限')
       setData(result)
-    } }).catch(failure => { if (active) { setData(empty); setSelected(null); setEditor(null); setError(message(failure)) } })
+    } }).catch(failure => { if (active) { selection.current++; setOpening(false); setData(empty); setSelected(null); setEditor(null); setError(message(failure)) } })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [page, state, review, revision, user.id])
   const resetReview = () => { setNote(''); setConfirmed(false); setCompany(''); setCategory(''); setLocation(''); setLinkedAsset(''); setAssetSearch(''); setApproval(null) }
   const open = async (id: number) => {
     const current = ++selection.current
-    setOpening(true); resetReview()
+    setOpening(true); setSelected(null); resetReview()
     try { const result = await api.getRegistration(id); if (current === selection.current) {
       if (!review && result.request.ownerId !== user.id) throw new Error('登记不属于当前账号')
       setSelected(result)
@@ -54,13 +54,13 @@ export function RegistrationPage({ user, review = false, assets, lookups, onNoti
     finally { if (current === selection.current) setOpening(false) }
   }
   const mutate = async (operation: () => Promise<RegistrationDetail>, success: string, assetChanged = false) => {
-    selection.current++; setBusy(true); setApproval(null)
+    selection.current++; setOpening(false); setBusy(true); setApproval(null)
     try { const result = await operation(); setSelected(result); setRevision(value => value + 1); resetReview(); onNotify(success); if (assetChanged) onAssetsChanged() }
     catch (failure) { onNotify(message(failure), 'error'); if (failure instanceof ApiError && [403, 404].includes(failure.status)) { setSelected(null); setRevision(value => value + 1) }
       else if (failure instanceof ApiError && failure.status === 409 && selected) await open(selected.request.id) }
     finally { setBusy(false) }
   }
-  const close = () => { selection.current++; setSelected(null); resetReview() }
+  const close = () => { selection.current++; setOpening(false); setSelected(null); resetReview() }
   const request = selected?.request
   const openState = request && ['SUBMITTED', 'NEEDS_INFO'].includes(request.state)
   const chosenAsset = assets.find(asset => asset.id === Number(linkedAsset))
@@ -126,7 +126,7 @@ function RegistrationEditor({ original, onCancel, onSaved, onNotify }: { origina
     if (photos.length + files.length > 2) { onNotify('最多上传2张照片', 'error'); return }
     setPreparing(true)
     try {
-      const added = []
+      const added: { preview: string; file: File }[] = []
       for (const file of Array.from(files)) {
         const preview = await prepareImage(file)
         const [header, encoded] = preview.split(','); const type = header.slice(5, header.indexOf(';'))

@@ -24,7 +24,7 @@ export function WorkflowNotifications({ onNotify }: { onNotify: (text: string, k
     finally { setBusy(null) }
   }
   const labels: Record<string, string> = { PENDING: '待发送／等待重试', CLAIMED: '发送中', SENT: '已送达', FAILED: '重试耗尽' }
-  return <section className="handover-page"><header className="handover-head"><div><h2>登记与交接通知</h2><p>钉钉群提醒，独立于WUD部署通知。网络投递失败不撤销业务操作。</p></div><button className="button ghost" disabled={loading || busy !== null} onClick={() => setRevision(value => value + 1)}><RefreshIcon />刷新</button></header>
+  return <section className="handover-page"><header className="handover-head"><div><h2>业务工作流通知</h2><p>登记、交接、工单、盘点和耗材的钉钉群提醒，独立于WUD部署通知。网络投递失败不撤销业务操作。</p></div><button className="button ghost" disabled={loading || busy !== null} onClick={() => setRevision(value => value + 1)}><RefreshIcon />刷新</button></header>
     <div className="handover-notice">在服务器 .env 配置 ASSET_WORKFLOW_NOTIFY_ENABLED、ASSET_WORKFLOW_DINGTALK_WEBHOOK、ASSET_WORKFLOW_DINGTALK_SECRET，再更新后端容器。密钥不在网页填写或显示；请使用仅限相关人员的资产管理群。</div>
     {error ? <p role="alert" className="handover-empty">{error}</p> : loading ? <div className="handover-empty"><span className="spinner" />正在读取通知状态…</div> : data && <>
       <p>通知：{data.enabled ? '已启用' : '未启用'} · 配置：{data.configured ? '格式有效，实际可达性以投递结果为准' : '未配置完整或格式错误'} · 待发送：{data.pending} · 失败：{data.failed}</p>

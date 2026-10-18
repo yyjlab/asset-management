@@ -45,6 +45,18 @@ public class ApiExceptionHandler {
         return body(HttpStatus.BAD_REQUEST, "请求数据格式不正确");
     }
 
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleMissingResource(Exception exception) {
+        return body(HttpStatus.NOT_FOUND, "请求的资源不存在");
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleUnsupportedMethod(org.springframework.web.HttpRequestMethodNotSupportedException exception) {
+        var response = body(HttpStatus.METHOD_NOT_ALLOWED, "此资源不支持该操作");
+        if (exception.getSupportedHttpMethods() == null) return response;
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).allow(exception.getSupportedHttpMethods().toArray(org.springframework.http.HttpMethod[]::new)).body(response.getBody());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(Exception exception) {
         log.error("Unexpected server error", exception);
