@@ -4,6 +4,7 @@ import type { Asset, HandoverCreate, HandoverDetail, HandoverEmployee, HandoverK
 import { CheckIcon, ChevronIcon, ClipboardIcon, PlusIcon, RefreshIcon } from './Icons'
 import { ConfirmDialog } from './ConfirmDialog'
 import './HandoverPage.css'
+import { HandoverKitPicker } from './EquipmentKitPage'
 
 const kinds: Record<HandoverKind, string> = { ONBOARDING: '入职配发', OFFBOARDING: '离职交接' }
 const states: Record<HandoverState, string> = { PENDING: '待交接', IN_PROGRESS: '交接中', COMPLETED: '已完结', CANCELLED: '已取消' }
@@ -11,9 +12,9 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12
 const emptyPage: HandoverPageData = { items: [], page: 0, totalElements: 0, totalPages: 0, canManage: false }
 const safeMessage = (error: unknown) => error instanceof Error ? error.message : '交接操作失败'
 
-interface Props { currentUserId: number; assets: Asset[]; selfService?: boolean; onNotify: (text: string, kind?: 'ok' | 'error') => void }
+interface Props { currentUserId: number; assets: Asset[]; selfService?: boolean; initialId?: number; canUseKits?: boolean; onNotify: (text: string, kind?: 'ok' | 'error') => void }
 
-export function HandoverPage({ currentUserId, assets, selfService = false, onNotify }: Props) {
+export function HandoverPage({ currentUserId, assets, selfService = false, initialId, canUseKits = false, onNotify }: Props) {
   const [data, setData] = useState(emptyPage)
   const [page, setPage] = useState(0)
   const [kind, setKind] = useState('')
@@ -63,6 +64,7 @@ export function HandoverPage({ currentUserId, assets, selfService = false, onNot
     catch (failure) { if (next === selectionRevision.current) onNotify(safeMessage(failure), 'error') }
     finally { if (next === selectionRevision.current) setOpening(false) }
   }
+  useEffect(() => { if (initialId) void open(initialId) }, [initialId])
   const mutate = async (operation: () => Promise<HandoverDetail>, message: string) => {
     selectionRevision.current++; setOpening(false)
     setBusy(true)
@@ -94,7 +96,7 @@ export function HandoverPage({ currentUserId, assets, selfService = false, onNot
     </div></header>
     <div className="handover-notice"><ClipboardIcon /><span>独立交接记录：创建、验收、完结、取消均不会自动更改领用人、资产状态、价格或图片。钉钉审批自动同步尚未启用。</span></div>
 
-    {creating && data.canManage ? <HandoverEditor assets={assets} employees={employees} onCancel={() => setCreating(false)} onCreated={task => { setCreating(false); setSelected(task); setRevision(value => value + 1); onNotify('交接单已创建，原资产台账未修改') }} onNotify={onNotify} />
+    {creating && data.canManage ? <HandoverEditor assets={assets} employees={employees} canUseKits={canUseKits} onCancel={() => setCreating(false)} onCreated={task => { setCreating(false); setSelected(task); setRevision(value => value + 1); onNotify('交接单已创建，原资产台账未修改') }} onNotify={onNotify} />
       : selected ? <>
         <div className="handover-detail-head"><button className="button ghost" disabled={busy} onClick={closeDetail}>返回列表</button><h3>{selected.employeeName} · {kinds[selected.kind]}</h3><span className={`handover-status ${selected.state.toLowerCase()}`}>{states[selected.state]}</span></div>
         <div className="handover-meta"><span>交接单 #{selected.id}</span><span>{selected.department || '未填写部门'}</span><span>{selected.kind === 'ONBOARDING' ? '计划入职' : '最后工作日'}：{selected.plannedDate || '未填写'}</span><span>登记人：{selected.createdByName}</span><span>审批编号：{selected.approvalReference || '未填写（手工创建）'}</span></div>
@@ -132,7 +134,7 @@ export function requestKey() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-function HandoverEditor({ assets, employees, onCancel, onCreated, onNotify }: { assets: Asset[]; employees: HandoverEmployee[]; onCancel: () => void; onCreated: (task: HandoverDetail) => void; onNotify: Props['onNotify'] }) {
+function HandoverEditor({ assets, employees, canUseKits, onCancel, onCreated, onNotify }: { assets: Asset[]; employees: HandoverEmployee[]; canUseKits: boolean; onCancel: () => void; onCreated: (task: HandoverDetail) => void; onNotify: Props['onNotify'] }) {
   const [draft, setDraft] = useState<HandoverCreate>(() => ({ requestKey: requestKey(), kind: 'ONBOARDING', employeeUserId: null, employeeName: '', department: '', plannedDate: null, approvalReference: '', notes: '', assetIds: [], includeAssignedAssets: false, allowLegacyAssets: false, manualItems: [] }))
   const [manualText, setManualText] = useState('')
   const [assetSearch, setAssetSearch] = useState('')
@@ -147,7 +149,15 @@ function HandoverEditor({ assets, employees, onCancel, onCreated, onNotify }: { 
     finally { setSaving(false) }
   }
   return <form className="handover-editor" onSubmit={event => void submit(event)}>
-    <h3>新建交接单</h3><div className="handover-form-grid">
+    <h3>新建交接单</h3>
+    {canUseKits && draft.kind === 'ONBOARDING' && <HandoverKitPicker disabled={saving} onApply={kit => {
+      const lines = manualText.split(/\r?\n/).map(value => value.trim()).filter(Boolean)
+      const note = `使用岗位模板：${kit.name}（版本${kit.version}）；仅生成准备项，实物另行核对。`
+      if (lines.length + kit.manualItems.length > 50) { onNotify('追加后超过50项，请分单或减少现有准备项', 'error'); return }
+      if (draft.notes.length + note.length + 1 > 2000) { onNotify('备注空间不足，请整理备注后再追加模板', 'error'); return }
+      setManualText([...lines, ...kit.manualItems].join('\n')); setDraft({ ...draft, notes: [draft.notes, note].filter(Boolean).join('\n') })
+    }} />}
+    <div className="handover-form-grid">
       <label>交接类型<select disabled={saving} value={draft.kind} onChange={event => { const kind = event.target.value as HandoverKind; setDraft({ ...draft, kind, assetIds: [], includeAssignedAssets: kind === 'OFFBOARDING' && !!draft.employeeUserId, allowLegacyAssets: false }) }}>{Object.entries(kinds).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>明确关联员工账号<select disabled={saving} value={draft.employeeUserId ?? ''} onChange={event => { const employee = employees.find(value => value.id === Number(event.target.value)); setDraft({ ...draft, employeeUserId: employee?.id ?? null, employeeName: employee?.displayName ?? '', assetIds: [], includeAssignedAssets: draft.kind === 'OFFBOARDING' && !!employee, allowLegacyAssets: false }) }}><option value="">暂无账号／先手工登记</option>{employees.filter(employee => draft.kind === 'OFFBOARDING' || employee.enabled).map(employee => <option key={employee.id} value={employee.id}>{employee.displayName}（{employee.username}）{!employee.enabled ? ' · 已停用' : ''}</option>)}</select></label>
       <label>员工姓名<input required maxLength={80} disabled={saving || !!draft.employeeUserId} value={draft.employeeName} onChange={event => setDraft({ ...draft, employeeName: event.target.value })} /></label>

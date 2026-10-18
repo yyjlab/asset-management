@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Asset } from '../types'
 import { CloneIcon, EditIcon, EyeIcon, ReturnIcon, TrashIcon } from './Icons'
 import { AssetImageLightbox } from './AssetImageLightbox'
+import { AssetHistoryPanel } from './AssetHistoryPanel'
 
 interface Props {
   asset: Asset | null
@@ -22,7 +23,8 @@ const isMaintenance = (asset: Asset) => asset.status.name.includes('维修') || 
 export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, onClose, onEdit, onClone, onReturn, onDelete }: Props) {
   const [qrUnavailable, setQrUnavailable] = useState(false)
   const [imagePreviewIndex, setImagePreviewIndex] = useState<number | null>(null)
-  useEffect(() => { setQrUnavailable(false); setImagePreviewIndex(null) }, [asset?.id])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  useEffect(() => { setQrUnavailable(false); setImagePreviewIndex(null); setHistoryOpen(false) }, [asset?.id])
   if (!asset) return null
   const maintenance = isMaintenance(asset)
   const scrapped = asset.status.name.includes('报废')
@@ -120,6 +122,7 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
           </div>
         </section>
 
+        <section className="record-subsection"><button className="button ghost" onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? '收起资产履历' : '查看资产履历'}</button>{historyOpen && <AssetHistoryPanel key={asset.id} assetId={asset.id} />}</section>
         <div className="record-bottom record-media-panel">
           <div className="record-notes-media">
             {images.length

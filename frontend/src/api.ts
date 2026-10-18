@@ -1,6 +1,7 @@
 import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
 import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData } from './types'
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
+import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
 export class ApiError extends Error {
@@ -77,6 +78,21 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  workbench: () => request<Workbench>('/api/management/workbench'),
+  assetHistory: (assetId: number) => request<AssetHistory>(`/api/management/history/${assetId}`),
+  managementReports: () => request<ManagementReport>('/api/management/reports'),
+  listKits: (page = 0) => request<Paged<Kit>>(`/api/management/kits?page=${page}`),
+  getKit: (id: number) => request<Kit>(`/api/management/kits/${id}`),
+  saveKit: (id: number | null, payload: KitWrite) => mutate<Kit>(`/api/management/kits${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
+  listSuppliers: (page = 0) => request<Paged<Supplier>>(`/api/management/suppliers?page=${page}`),
+  saveSupplier: (id: number | null, payload: SupplierWrite) => mutate<Supplier>(`/api/management/suppliers${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
+  listWarranties: (page = 0, filter = '') => request<Paged<Warranty>>(`/api/management/warranties?${new URLSearchParams({ page: String(page), filter })}`),
+  getWarranty: (assetId: number) => request<Warranty>(`/api/management/warranties/${assetId}`),
+  saveWarranty: (assetId: number, payload: WarrantyWrite) => mutate<Warranty>(`/api/management/warranties/${assetId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  listProcurements: (page = 0, mine = true) => request<Paged<ProcurementSummary> & { canManage: boolean }>(`/api/procurements?${new URLSearchParams({ page: String(page), mine: String(mine) })}`),
+  getProcurement: (id: number) => request<ProcurementDetail>(`/api/procurements/${id}`),
+  createProcurement: (payload: ProcurementCreate) => mutate<ProcurementDetail>('/api/procurements', { method: 'POST', body: JSON.stringify(payload) }),
+  procurementAction: (id: number, payload: ProcurementAction) => mutate<ProcurementDetail>(`/api/procurements/${id}/actions`, { method: 'POST', body: JSON.stringify(payload) }),
   listOperations: (page = 0, kind = '', mine = true) => request<OperationPageData>(`/api/operations?${new URLSearchParams({ page: String(page), kind, mine: String(mine) })}`),
   getOperation: (id: number) => request<OperationDetail>(`/api/operations/${id}`),
   createOperation: (payload: OperationCreate) => mutate<OperationDetail>('/api/operations', { method: 'POST', body: JSON.stringify(payload) }),

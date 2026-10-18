@@ -10,9 +10,9 @@ import './RegistrationPage.css'
 const states: Record<RegistrationState, string> = { SUBMITTED: '待审核', NEEDS_INFO: '待补充资料', APPROVED: '审核通过', REJECTED: '已驳回', WITHDRAWN: '已撤回' }
 const empty: RegistrationPageData = { items: [], page: 0, totalElements: 0, totalPages: 0, canReview: false }
 const message = (error: unknown) => error instanceof Error ? error.message : '登记操作失败'
-interface Props { user: AuthUser; review?: boolean; assets: Asset[]; lookups: LookupValue[]; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
+interface Props { user: AuthUser; review?: boolean; initialId?: number; assets: Asset[]; lookups: LookupValue[]; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
 
-export function RegistrationPage({ user, review = false, assets, lookups, onNotify, onAssetsChanged }: Props) {
+export function RegistrationPage({ user, review = false, initialId, assets, lookups, onNotify, onAssetsChanged }: Props) {
   const [data, setData] = useState(empty)
   const [page, setPage] = useState(0)
   const [state, setState] = useState(review ? 'SUBMITTED' : '')
@@ -53,6 +53,7 @@ export function RegistrationPage({ user, review = false, assets, lookups, onNoti
     } } catch (failure) { if (current === selection.current) { setSelected(null); onNotify(message(failure), 'error') } }
     finally { if (current === selection.current) setOpening(false) }
   }
+  useEffect(() => { if (initialId) void open(initialId) }, [initialId])
   const mutate = async (operation: () => Promise<RegistrationDetail>, success: string, assetChanged = false) => {
     selection.current++; setOpening(false); setBusy(true); setApproval(null)
     try { const result = await operation(); setSelected(result); setRevision(value => value + 1); resetReview(); onNotify(success); if (assetChanged) onAssetsChanged() }

@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx'].map(async file => {
+  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
       build: {
@@ -32,7 +32,7 @@ before(async () => {
 
 function load(file, mocks = {}, collapsed = false, globals = {}) {
   const module = { exports: {} };
-  const browser = { location: { pathname: '/' }, localStorage: { getItem: () => String(collapsed) } };
+  const browser = { location: { pathname: '/' }, history: { state: null, pushState() {}, replaceState() {} }, localStorage: { getItem: () => String(collapsed) } };
   vm.runInNewContext(compiled[file], {
     module, exports: module.exports, window: browser, URLSearchParams, FormData, Blob, File, crypto: require('node:crypto').webcrypto, ...globals,
     require: id => Object.hasOwn(mocks, id) ? mocks[id] : frontendRequire(id),
@@ -54,7 +54,7 @@ function menuLabels(markup) {
 }
 
 test('DingTalk employees see all non-settings menus including handovers', () => {
-  assert.deepEqual(menuLabels(sidebarMarkup({ dingtalkLogin: true, permissions: [] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '用户', '日志', '数据']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ dingtalkLogin: true, permissions: [] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '岗位配发模板', '保修与供应商', '管理统计', '用户', '日志', '数据']);
 });
 
 test('collapsed DingTalk menus retain their labels and accessible names', () => {
@@ -65,14 +65,14 @@ test('collapsed DingTalk menus retain their labels and accessible names', () => 
 });
 
 test('password login retains existing permission-based menus', () => {
-  assert.deepEqual(menuLabels(sidebarMarkup()), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理']);
-  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: [] })), ['驾驶舱', '员工自助', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理']);
-  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '数据']);
+  assert.deepEqual(menuLabels(sidebarMarkup()), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: [] })), ['驾驶舱', '我的待办', '员工自助', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '数据']);
 });
 
 test('administrator keeps the settings menu with either login method', () => {
   for (const dingtalkLogin of [true, false]) {
-    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '用户', '日志', '设置', '数据']);
+    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '岗位配发模板', '保修与供应商', '管理统计', '用户', '日志', '设置', '数据']);
   }
 });
 
@@ -88,8 +88,9 @@ test('every visible DingTalk menu navigates to its own section', () => {
     onSection: value => sections.push(value), onFilter: value => filters.push(value),
   });
   const nav = tree.props.children.find(child => child.type === 'nav');
-  for (const button of nav.props.children.filter(Boolean)) button.props.onClick();
-  assert.deepEqual(sections, ['dashboard', 'selfService', 'assets', 'handover', 'operations', 'inventory', 'repair', 'consumables', 'users', 'logs', 'transfer']);
+  const click = children => React.Children.forEach(children, child => { if (!child) return; if (child.type === 'button') child.props.onClick(); else if (child.props?.children) click(child.props.children); });
+  click(nav.props.children);
+  assert.deepEqual(sections, ['dashboard', 'workbench', 'selfService', 'assets', 'handover', 'operations', 'inventory', 'repair', 'consumables', 'procurement', 'kits', 'support', 'reports', 'users', 'logs', 'transfer']);
   assert.deepEqual(filters, ['all']);
 });
 
@@ -100,22 +101,26 @@ function appMarkup(section, overrides = {}) {
     permissions: ['ASSET_VIEW'], dataScope: 'SELF', departments: [], ...overrides,
   };
   let stateIndex = 0;
+  const changes = [], componentProps = {};
   const react = { ...React, useState(initial) {
     const index = stateIndex++;
-    return React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : initial);
+    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : initial);
+    return [value, next => changes.push({ index, value: typeof next === 'function' ? next(value) : next })];
   } };
   const icons = load('components/Icons.tsx');
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons });
   const rendered = [];
-  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage'];
+  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage'];
   const mocks = { react, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: {}, ApiError: class extends Error {} } };
-  for (const name of componentNames) mocks[`./components/${name}`] = { [name]: () => {
+  for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
+    componentProps[name] = props;
     return React.createElement('div', null, name);
   } };
+  mocks['./components/OperationPage'].canManageWorkflows = user => user.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'].every(permission => user.permissions.includes(permission));
   const loaded = load('App.tsx', mocks);
   const App = loaded.default || loaded;
-  return { markup: renderToStaticMarkup(React.createElement(App)), rendered };
+  return { markup: renderToStaticMarkup(React.createElement(App)), rendered, componentProps, changes };
 }
 
 for (const section of ['users', 'logs', 'transfer', 'settings']) {
@@ -165,7 +170,7 @@ function handoverMarkup({ manager = false, selected = null, creating = false, cu
   } };
   const { HandoverPage } = load('components/HandoverPage.tsx', {
     react, './Icons': load('components/Icons.tsx'), '../api': { api: {}, ApiError: class extends Error {} },
-    './ConfirmDialog': { ConfirmDialog: () => null }, './HandoverPage.css': {},
+    './ConfirmDialog': { ConfirmDialog: () => null }, './HandoverPage.css': {}, './EquipmentKitPage': { HandoverKitPicker: () => null },
   });
   return renderToStaticMarkup(React.createElement(HandoverPage, { currentUserId, assets: [], onNotify() {} }));
 }
@@ -300,7 +305,7 @@ test('personal handover view requests only own records and rejects an unscoped b
     };
     const { HandoverPage } = load('components/HandoverPage.tsx', {
       react, './Icons': load('components/Icons.tsx'), './HandoverPage.css': {},
-      './ConfirmDialog': { ConfirmDialog: () => null },
+      './ConfirmDialog': { ConfirmDialog: () => null }, './EquipmentKitPage': { HandoverKitPicker: () => null },
       '../api': { ApiError: class extends Error {}, api: { async listHandovers(...args) {
         calls.push(args); return { items: [{ employeeUserId: invalidScope ? 2 : 1 }], page: 0,
           totalElements: 1, totalPages: 1, canManage: invalidScope };
@@ -451,5 +456,114 @@ test('registration multipart and review APIs keep CSRF and explicit versions wit
   assert.equal(JSON.parse(await writes[0].options.body.get('data').text()).requestKey, 'uuid');
   assert.equal(JSON.parse(writes[1].options.body).assetVersion, 7);
   for (const call of writes) assert.equal(call.options.headers['X-CSRF-TOKEN'], 'csrf');
+  assert.ok(!calls.some(call => call.url.startsWith('/api/assets')));
+});
+
+for (const [section, component] of [['workbench', 'WorkbenchPage'], ['kits', 'EquipmentKitPage'], ['support', 'AssetSupportPage'], ['reports', 'ManagementReportPage'], ['procurement', 'ProcurementPage'], ['registrations', 'RegistrationPage']]) {
+  test(`${section} mounts its dedicated management component`, () => {
+    assert.deepEqual(appMarkup(section).rendered, [component]);
+  });
+}
+
+test('workbench navigation retains record identity and uses personal mode for supplemental registration', () => {
+  const reviewer = { dataScope: 'ALL', permissions: ['ASSET_VIEW', 'ASSET_CREATE', 'ASSET_CHECKOUT'] };
+  for (const [state, expectedReview] of [['SUBMITTED', true], ['NEEDS_INFO', false]]) {
+    const view = appMarkup('workbench', reviewer);
+    view.componentProps.WorkbenchPage.onOpen('registrations', 8, state);
+    assert.equal(view.changes.find(c => c.index === 5).value, 'registrations');
+    assert.deepEqual(JSON.parse(JSON.stringify(view.changes.find(c => c.index === 6).value)), { name: 'list', taskId: 8, review: expectedReview });
+  }
+  const ordinary = appMarkup('workbench');
+  ordinary.componentProps.WorkbenchPage.onOpen('registrations', 8, 'SUBMITTED');
+  assert.equal(ordinary.changes.find(c => c.index === 6).value.review, false);
+});
+
+function managementMarkup(file, component, { data = null, state = {}, user = workflowUser(), props = {}, error = '' } = {}) {
+  let index = 0;
+  const enabledCalls = [];
+  const react = { ...React, useState(initial) { const position = index++; return React.useState(Object.hasOwn(state, position) ? state[position] : initial); } };
+  const shared = load('components/ManagementShared.tsx', { './WorkflowPages.css': {} });
+  const { [component]: Page } = load(`components/${file}.tsx`, {
+    react, '../api': { api: {}, ApiError: class extends Error {} },
+    './ManagementShared': { ...shared, useRemote: (_loader, _deps, enabled = true) => { enabledCalls.push(enabled); return { data, loading: false, error, refresh() {} }; } },
+    './OperationPage': { canManageWorkflows: u => u.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'].every(permission => u.permissions.includes(permission)) },
+    './HandoverPage': { requestKey: () => '11111111-1111-4111-8111-111111111111' },
+    './AssetSupportPage': { SupplierSelect: () => null },
+    './ConfirmDialog': { ConfirmDialog: () => React.createElement('div', null, '再次确认弹窗') },
+  });
+  return { markup: renderToStaticMarkup(React.createElement(Page, { user, assets: [], onNotify() {}, ...props })), enabledCalls };
+}
+
+test('sensitive management pages deny ordinary employees and disable all data loaders', () => {
+  for (const name of ['EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage']) {
+    const view = managementMarkup(name, name);
+    assert.match(view.markup, /未获得此功能的管理权限/);
+    assert.ok(view.enabledCalls.length > 0);
+    assert.ok(view.enabledCalls.every(enabled => !enabled));
+  }
+});
+
+test('disabled or failed remote loads never retain unauthorized or stale records', async () => {
+  for (const enabled of [false, true]) {
+    const values = [], effects = []; let position = 0, calls = 0;
+    const react = { useState(initial) { const index = position++; values[index] = initial; return [initial, value => { values[index] = value; }]; }, useRef: initial => ({ current: initial }), useEffect: callback => effects.push(callback) };
+    const { useRemote } = load('components/ManagementShared.tsx', { react, './WorkflowPages.css': {} }, false, { Error });
+    useRemote(async () => { calls++; throw new Error('已失去权限'); }, [], enabled);
+    effects[0](); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls, enabled ? 1 : 0); assert.equal(values[0], null); assert.equal(values[1], false);
+    assert.equal(values[2], enabled ? '已失去权限' : '');
+  }
+});
+
+test('active equipment templates are selectable but do not allocate real assets or stock', () => {
+  const kit = { id: 1, version: 2, name: '开发岗位', active: true, notes: '', items: [{ name: '电脑', quantity: 1 }], manualItems: ['电脑'] };
+  const data = { items: [kit, { ...kit, id: 2, name: '已停用的模板', active: false }], totalPages: 1, totalElements: 2, page: 0 };
+  const { markup } = managementMarkup('EquipmentKitPage', 'HandoverKitPicker', { data, state: { 1: 1 }, props: { disabled: false, onApply() {} } });
+  assert.match(markup, /开发岗位/); assert.ok(!markup.includes('已停用的模板')); assert.match(markup, /只追加手工准备项，不自动选择实物、不扣库存/);
+  assert.match(markup, /class="button ghost">追加到准备清单/);
+});
+
+const procurementFixture = overrides => ({ order: { id: 7, version: 3, ownerId: 1, ownerName: '员工', kind: 'ASSET', state: 'ORDERED', title: '电脑采购', quantity: 1, unit: '台', estimatedUnitPrice: 5000, neededDate: null, createdAt: '2026-10-18T09:00:00', ...overrides }, reason: '办公使用', orderNumber: 'ORDER-1', supplierName: '供应商', expectedDate: '2026-11-01', orderedUnitPrice: 4900, assetIds: [], events: [] });
+test('procurement receipt stays disabled without explicit confirmation and excludes historical equipment', () => {
+  const data = { items: [], page: 0, totalPages: 0, totalElements: 0, canManage: true };
+  const assets = [selfAsset({ id: 1, assetTag: 'NEW-RECEIPT', assignedUserId: null, assignedTo: '', checkedOut: false, status: { name: '当前可用' }, createdAt: '2026-10-18T10:00:00' }), selfAsset({ id: 2, assetTag: 'OLD-LEDGER', assignedUserId: null, checkedOut: false, status: { name: '当前可用' }, createdAt: '2026-10-17T10:00:00' })];
+  const options = { data, user: workflowUser(true), state: { 3: procurementFixture(), 6: '实物核对完成', 13: [1] }, props: { assets } };
+  const locked = managementMarkup('ProcurementPage', 'ProcurementPage', options).markup;
+  assert.match(locked, /NEW-RECEIPT/); assert.ok(!locked.includes('OLD-LEDGER')); assert.match(locked, /disabled="">整单验收并记录入库/);
+  const ready = managementMarkup('ProcurementPage', 'ProcurementPage', { ...options, state: { ...options.state, 14: true, 15: 'RECEIVE' } }).markup;
+  assert.match(ready, /class="button primary">整单验收并记录入库/); assert.match(ready, /再次确认弹窗/);
+  assert.match(ready, /不代替公司财务审批、付款或供应商下单/);
+});
+test('ordinary procurement users have only their own cancellation, not approval or receipt controls', () => {
+  const view = managementMarkup('ProcurementPage', 'ProcurementPage', { data: { items: [], canManage: false }, state: { 3: procurementFixture({ state: 'SUBMITTED' }), 6: '不再需要' } }).markup;
+  assert.match(view, /取消并保留历史/); assert.ok(!view.includes('内部需求审核通过</button>')); assert.ok(!view.includes('整单验收并记录入库</button>'));
+});
+
+test('asset history is loaded only after the detail history section is opened', () => {
+  for (const opened of [false, true]) {
+    let index = 0, historyMounts = 0;
+    const react = { ...React, useState(initial) { return React.useState(index++ === 2 ? opened : initial); } };
+    const { AssetDetail } = load('components/AssetDetail.tsx', { react, './Icons': load('components/Icons.tsx'), './AssetImageLightbox': { AssetImageLightbox: () => null }, './AssetHistoryPanel': { AssetHistoryPanel: () => { historyMounts++; return null; } } });
+    renderToStaticMarkup(React.createElement(AssetDetail, { asset: selfAsset({ company: { name: '公司' }, createdAt: '2026-10-18T10:00:00', updatedAt: '2026-10-18T10:00:00' }), onClose() {} }));
+    assert.equal(historyMounts, opened ? 1 : 0);
+  }
+});
+
+test('management and procurement APIs retain CSRF, versions and independent endpoints', async () => {
+  const calls = [];
+  const { api } = load('api.ts', {}, false, { fetch: async (url, options) => {
+    calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf' } : {} };
+  } });
+  await api.workbench(); await api.assetHistory(9); await api.managementReports(); await api.listWarranties(1, 'due'); await api.listProcurements(2, true);
+  await api.saveKit(3, { requestKey: 'uuid', version: 2, name: '岗位', active: true, items: [] });
+  await api.saveSupplier(null, { requestKey: 'uuid-supplier', name: '供应商', active: true });
+  await api.saveWarranty(9, { version: 4, warrantyEnd: '2027-01-01' });
+  await api.procurementAction(7, { version: 3, action: 'RECEIVE', note: '核对', confirmed: true, consumableId: 2, consumableVersion: 5 });
+  assert.equal(calls[0].url, '/api/management/workbench'); assert.equal(calls[1].url, '/api/management/history/9');
+  assert.equal(new URL(calls[4].url, 'http://localhost').searchParams.get('mine'), 'true');
+  const writes = calls.filter(call => ['POST', 'PUT'].includes(call.options.method));
+  assert.deepEqual(writes.map(call => call.url), ['/api/management/kits/3', '/api/management/suppliers', '/api/management/warranties/9', '/api/procurements/7/actions']);
+  for (const call of writes) { assert.equal(call.options.headers['X-CSRF-TOKEN'], 'csrf'); assert.equal(call.options.credentials, 'include'); }
+  assert.equal(JSON.parse(writes[2].options.body).version, 4); assert.equal(JSON.parse(writes[3].options.body).consumableVersion, 5);
   assert.ok(!calls.some(call => call.url.startsWith('/api/assets')));
 });

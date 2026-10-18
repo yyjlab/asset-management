@@ -9,9 +9,9 @@ import './WorkflowPages.css'
 const empty: ConsumablePageData = { items: [], page: 0, totalElements: 0, totalPages: 0, canManage: false }
 const emptyMovements: ConsumableMovementPage = { items: [], page: 0, totalElements: 0, totalPages: 0, canManage: false }
 const message = (error: unknown) => error instanceof Error ? error.message : '耗材操作失败'
-interface Props { user: AuthUser; onNotify: (text: string, kind?: 'ok' | 'error') => void }
+interface Props { user: AuthUser; initialId?: number; onNotify: (text: string, kind?: 'ok' | 'error') => void }
 
-export function ConsumablePage({ user, onNotify }: Props) {
+export function ConsumablePage({ user, initialId, onNotify }: Props) {
   const [data, setData] = useState(empty)
   const [movements, setMovements] = useState(emptyMovements)
   const [tab, setTab] = useState<'stock' | 'movements'>('stock')
@@ -48,6 +48,7 @@ export function ConsumablePage({ user, onNotify }: Props) {
     const token = ++selection.current; setOpening(true); setSelected(null); resetMove()
     try { const value = await api.getConsumable(id); if (token === selection.current) setSelected(value) } catch (failure) { if (token === selection.current) { setSelected(null); onNotify(message(failure), 'error') } } finally { if (token === selection.current) setOpening(false) }
   }
+  useEffect(() => { if (initialId) void open(initialId) }, [initialId])
   const moveStock = async () => {
     if (!selected || lock.current) return
     lock.current = true; setBusy(true)

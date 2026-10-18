@@ -10,9 +10,9 @@ const empty: InventoryPageData = { items: [], page: 0, totalElements: 0, totalPa
 const results = { PRESENT: '设备在手', MISSING: '设备缺失', MISMATCH: '信息不符' }
 const states = { OPEN: '盘点中', COMPLETED: '已完成', CANCELLED: '已取消' }
 const message = (error: unknown) => error instanceof Error ? error.message : '盘点操作失败'
-interface Props { user: AuthUser; onNotify: (text: string, kind?: 'ok' | 'error') => void }
+interface Props { user: AuthUser; initialId?: number; onNotify: (text: string, kind?: 'ok' | 'error') => void }
 
-export function InventoryPage({ user, onNotify }: Props) {
+export function InventoryPage({ user, initialId, onNotify }: Props) {
   const [data, setData] = useState(empty)
   const [page, setPage] = useState(0)
   const [revision, setRevision] = useState(0)
@@ -45,6 +45,7 @@ export function InventoryPage({ user, onNotify }: Props) {
       setSelected(value)
     } } catch (failure) { if (token === selection.current) { setSelected(null); onNotify(message(failure), 'error') } } finally { if (token === selection.current) setOpening(false) }
   }
+  useEffect(() => { if (initialId) void open(initialId) }, [initialId])
   const action = async (actionName: InventoryAction['action']) => {
     if (!selected || mutation.current) return
     const payload: InventoryAction = { version: selected.batch.version, action: actionName, note: ['CLOSE', 'CANCEL'].includes(actionName) ? summary : note,

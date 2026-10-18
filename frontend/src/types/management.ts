@@ -1,0 +1,16 @@
+export interface Paged<T> { items: T[]; page: number; totalElements: number; totalPages: number }
+export interface Kit { id: number; version: number; name: string; notes: string; active: boolean; items: { name: string; quantity: number }[]; manualItems: string[] }
+export interface KitWrite { requestKey: string; version?: number; name: string; notes: string; active: boolean; items: { name: string; quantity: number }[] }
+export interface Supplier { id: number; version: number; name: string; contact: string; phone: string; email: string; notes: string; active: boolean }
+export interface SupplierWrite { requestKey: string; version?: number; name: string; contact: string; phone: string; email: string; notes: string; active: boolean }
+export interface ManagementEvent { occurredAt: string; actor: string; description: string }
+export interface Warranty { assetId: number; version: number; assetTag: string; supplierId: number | null; supplierName: string; purchaseDate: string | null; warrantyEnd: string; notes: string; expired: boolean; dueSoon: boolean; events: ManagementEvent[] }
+export interface WarrantyWrite { version?: number; supplierId: number | null; purchaseDate: string | null; warrantyEnd: string; notes: string }
+export type WorkbenchSection = 'operations' | 'registrations' | 'handover' | 'inventory' | 'procurement' | 'consumables' | 'support'
+export interface Workbench { total: number; groups: { section: WorkbenchSection; title: string; total: number; items: { id: number; title: string; state: string; updatedAt: string }[] }[] }
+export interface AssetHistory { assetId: number; assetTag: string; notice: string; events: (ManagementEvent & { kind: string; referenceId: number })[] }
+export interface ManagementReport { generatedAt: string; assets: number; idle: number; unlinkedCheckedOut: number; lowStock: number; openDiscrepancies: number; completedRepairCost: number; statuses: { label: string; count: number }[]; departments: { name: string; assets: number; checkedOut: number }[]; procurements: { label: string; count: number }[]; notice: string }
+export interface ProcurementSummary { id: number; version: number; ownerId: number; ownerName: string; kind: 'ASSET' | 'CONSUMABLE'; state: 'SUBMITTED' | 'APPROVED' | 'ORDERED' | 'RECEIVED' | 'REJECTED' | 'CANCELLED'; title: string; quantity: number; unit: string; estimatedUnitPrice: number; neededDate: string | null; createdAt: string; updatedAt: string }
+export interface ProcurementDetail { order: ProcurementSummary; reason: string; supplierId: number | null; supplierName: string; orderNumber: string; expectedDate: string | null; orderedUnitPrice: number | null; consumableId: number | null; receiptMovementId: number | null; assetIds: number[]; events: ManagementEvent[] }
+export interface ProcurementCreate { requestKey: string; kind: 'ASSET' | 'CONSUMABLE'; title: string; reason: string; quantity: number; unit: string; estimatedUnitPrice: number; neededDate: string | null }
+export interface ProcurementAction { version: number; action: 'APPROVE' | 'ORDER' | 'RECEIVE' | 'REJECT' | 'CANCEL'; note: string; supplierId?: number; orderNumber?: string; expectedDate?: string; orderedUnitPrice?: number; consumableId?: number; consumableVersion?: number; assetIds?: number[]; confirmed?: boolean }

@@ -11,9 +11,9 @@ const correctionFields = { cpu: 'CPU', memory: '内存', storage: '硬盘', owne
 const empty: OperationPageData = { items: [], page: 0, totalElements: 0, totalPages: 0, canManage: false }
 export const canManageWorkflows = (user: AuthUser) => user.dataScope === 'ALL' && (['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'] as Permission[]).every(value => user.permissions.includes(value))
 const message = (error: unknown) => error instanceof Error ? error.message : '工单操作失败'
-interface Props { user: AuthUser; assets: Asset[]; repair?: boolean; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
+interface Props { user: AuthUser; assets: Asset[]; repair?: boolean; initialId?: number; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
 
-export function OperationPage({ user, assets, repair = false, onNotify, onAssetsChanged }: Props) {
+export function OperationPage({ user, assets, repair = false, initialId, onNotify, onAssetsChanged }: Props) {
   const [data, setData] = useState(empty)
   const [page, setPage] = useState(0)
   const [kind, setKind] = useState(repair ? 'REPAIR' : '')
@@ -54,6 +54,7 @@ export function OperationPage({ user, assets, repair = false, onNotify, onAssets
     } } catch (failure) { if (token === selection.current) { setSelected(null); onNotify(message(failure), 'error') } }
     finally { if (token === selection.current) setOpening(false) }
   }
+  useEffect(() => { if (initialId) void open(initialId) }, [initialId])
   const action = async (actionName: OperationAction['action']) => {
     if (!selected || mutation.current) return
     const chosen = available.find(asset => asset.id === Number(assetId))
