@@ -117,18 +117,22 @@ public class AssetService {
         return response(saved);
     }
 
-    public AssetResponse returnAsset(Long id) {
-        return returnAsset(findAsset(id));
+    public AssetResponse returnAsset(Long id, String version) {
+        return returnAsset(findAsset(id), version);
     }
 
-    public AssetResponse returnAssetByQrToken(String qrToken) {
+    public AssetResponse returnAssetByQrToken(String qrToken, String version) {
         Asset asset = assetRepository.findByQrToken(qrToken)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "二维码对应的资产不存在或已被删除"));
         access.require(asset);
-        return returnAsset(asset);
+        return returnAsset(asset, version);
     }
 
-    private AssetResponse returnAsset(Asset asset) {
+    private AssetResponse returnAsset(Asset asset, String version) {
+        if (version == null) throw new ApiException(HttpStatus.PRECONDITION_REQUIRED, "请刷新资产后重新归还");
+        if (!Long.toString(asset.getVersion()).equals(version.replace("\"", ""))) {
+            throw new ApiException(HttpStatus.CONFLICT, "资产已被其他操作更新，请刷新后重新核对领用人");
+        }
         Map<String, Object> before = snapshot(asset);
         if (!asset.isCheckedOut()) {
             throw new ApiException(HttpStatus.CONFLICT, "该资产当前未领出，无需归还");
@@ -136,7 +140,7 @@ public class AssetService {
         asset.setCheckedOut(false);
         asset.setAssignedTo(null);
         asset.setAssignedUserId(null);
-        lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "当前可用")
+        if (!asset.isInMaintenanceOrScrapped()) lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "当前可用")
                 .or(() -> lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "可领用"))
                 .ifPresent(asset::setStatus);
         Asset saved = assetRepository.saveAndFlush(asset);
@@ -223,6 +227,9 @@ public class AssetService {
         Long ownerId = null;
         String ownerName = clean(request.assignedTo());
         boolean checkedOut = isCheckedOutStatus(findLookup(request.statusId(), LookupType.STATUS));
+        // A metadata edit must not silently release a custodian kept by a repair/scrap workflow.
+        if (asset.isCheckedOut() && asset.isInMaintenanceOrScrapped()
+                && Objects.equals(asset.getStatus().getId(), request.statusId())) checkedOut = true;
         if (checkedOut && request.assignedUserId() != null) {
             var owner = users.findById(request.assignedUserId()).orElse(null);
             boolean unchangedOwner = Objects.equals(asset.getAssignedUserId(), request.assignedUserId());

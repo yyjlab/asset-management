@@ -196,6 +196,10 @@ public class Asset {
     public BigDecimal getCurrentValue() { return currentValue; }
     public void setCurrentValue(BigDecimal currentValue) { this.currentValue = currentValue; }
     public boolean isCheckedOut() { return checkedOut; }
+    public boolean isInMaintenanceOrScrapped() {
+        String name = status.getName();
+        return name.contains("维修") || name.contains("维护") || name.contains("报废");
+    }
     public void setCheckedOut(boolean checkedOut) { this.checkedOut = checkedOut; }
     public String getAssignedTo() { return assignedTo; }
     public Long getAssignedUserId() { return assignedUserId; }

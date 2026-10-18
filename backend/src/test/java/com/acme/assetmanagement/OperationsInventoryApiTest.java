@@ -219,6 +219,37 @@ class OperationsInventoryApiTest {
         assertEquals(receiver.getId(), own.getAssignedUserId()); assertTrue(own.isCheckedOut()); historicalFieldsUnchanged(own);
     }
 
+    @Test void returnCompletionDoesNotMakeScrappedOrRepairEquipmentAvailable() throws Exception {
+        var owner = employee("unavailable-return-owner");
+        int index = 0;
+        for (String name : List.of("维修中", "已报废")) {
+            var own = asset("OP-UNAVAILABLE-RETURN-" + index++, owner);
+            own.setStatus(lookupStatus(name)); assets.saveAndFlush(own);
+            var task = createOperation(owner, operation("RETURN", own));
+            task = act(task, admin(), "APPROVE", Map.of());
+            task = act(task, owner, "CONFIRM", Map.of("confirmed", true));
+            act(task, admin(), "COMPLETE", Map.of("note", "只收回实物，保留维修或报废结果", "confirmed", true, "assetVersion", own.getVersion()));
+            assertEquals(name, own.getStatus().getName());
+            assertFalse(own.isCheckedOut()); assertNull(own.getAssignedUserId());
+            historicalFieldsUnchanged(own);
+        }
+    }
+
+    @Test void transferringCustodyDoesNotUndoRepairOrScrapResults() throws Exception {
+        var owner = employee("unavailable-transfer-owner"); var receiver = employee("unavailable-transfer-receiver");
+        int index = 0;
+        for (String name : List.of("维修中", "已报废")) {
+            var own = asset("OP-UNAVAILABLE-TRANSFER-" + index++, owner);
+            own.setStatus(lookupStatus(name)); assets.saveAndFlush(own);
+            var body = operation("TRANSFER", own); body.put("targetUsername", receiver.getUsername());
+            var task = createOperation(owner, body); task = act(task, admin(), "APPROVE", Map.of());
+            task = act(task, receiver, "CONFIRM", Map.of("confirmed", true));
+            act(task, admin(), "COMPLETE", Map.of("note", "移交实物保管，保留维修或报废结果", "confirmed", true, "assetVersion", own.getVersion()));
+            assertEquals(name, own.getStatus().getName()); assertTrue(own.isCheckedOut());
+            assertEquals(receiver.getId(), own.getAssignedUserId()); historicalFieldsUnchanged(own);
+        }
+    }
+
     @Test void concurrentAssetChangeCannotBeOverwrittenByAConfirmedOperation() throws Exception {
         var owner = employee("stale-owner"); var own = asset("OP-STALE", owner);
         var task = createOperation(owner, operation("RETURN", own)); task = act(task, admin(), "APPROVE", Map.of());

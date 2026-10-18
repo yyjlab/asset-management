@@ -117,6 +117,8 @@ public class DataInitializer implements CommandLineRunner {
         if (available == null || checkedOut == null) return;
 
         for (Asset asset : assetRepository.findAll()) {
+            // These lifecycle states may still retain a custodian until the physical return.
+            if (asset.isInMaintenanceOrScrapped()) continue;
             String statusName = asset.getStatus().getName();
             boolean statusMeansCheckedOut = statusName.contains("在用") || statusName.contains("领出");
             if (asset.isCheckedOut()) {

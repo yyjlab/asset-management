@@ -82,17 +82,18 @@ export function PublicAssetPage({ qrToken }: Props) {
   }
 
   const confirmReturn = async () => {
+    if (!asset) return
     setReturning(true)
     setActionError('')
     try {
-      const updated = await api.returnAssetByQrToken(qrToken)
+      const updated = await api.returnAssetByQrToken(qrToken, asset.version)
       setAsset(current => current ? {
         ...current, checkedOut: updated.checkedOut, assignedTo: updated.assignedTo,
-        status: updated.status.name, updatedAt: updated.updatedAt,
+        status: updated.status.name, updatedAt: updated.updatedAt, version: updated.version,
         boundDisplays: updated.boundDisplays, boundComputer: updated.boundComputer,
       } : current)
       setConfirmOpen(false)
-      setSuccess('资产已经归还，领用人已清空并恢复为当前可用')
+      setSuccess(`资产已经归还，领用人已清空，状态：${updated.status.name}`)
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : '归还失败，请稍后重试')
     } finally {
@@ -168,11 +169,11 @@ export function PublicAssetPage({ qrToken }: Props) {
           <div className="public-action-copy">
             <span>{asset.checkedOut ? 'MOBILE RETURN' : 'ASSET AVAILABLE'}</span>
             <h2>{asset.checkedOut ? '确认设备无误后，可直接用手机归还' : '该资产当前无需归还'}</h2>
-            <p>{asset.checkedOut ? `当前领用人：${value(asset.assignedTo)}。实际归还前需要登录并再次确认。` : '资产已经处于当前可用状态，系统不会重复执行归还。'}</p>
+            <p>{asset.checkedOut ? `当前领用人：${value(asset.assignedTo)}。实际归还前需要登录并再次确认。` : '资产当前没有领用记录，系统不会重复执行归还。'}</p>
           </div>
           {asset.checkedOut
             ? <button className="public-return-cta" type="button" disabled={!authReady} onClick={requestReturn}><span>{authReady ? '归还资产' : '正在验证权限'}</span><b><ReturnIcon /></b></button>
-            : <div className="public-action-complete"><CheckIcon /><span>当前可用</span></div>}
+            : <div className="public-action-complete"><CheckIcon /><span>{stateLabel(asset)}</span></div>}
         </div>
         {success && <div className="public-action-message success" role="status"><CheckIcon /><span>{success}</span></div>}
         {actionError && !loginOpen && !confirmOpen && <div className="public-action-message error" role="alert"><span>{actionError}</span></div>}
@@ -206,7 +207,7 @@ export function PublicAssetPage({ qrToken }: Props) {
           <div className="public-modal-icon return"><ReturnIcon /></div>
           <span className="public-modal-eyebrow">FINAL CONFIRMATION</span>
           <h2 id="public-return-title">确认归还这项资产？</h2>
-          <p>请最后核对标签和实物。确认后将清空当前领用人，并把资产恢复为当前可用。</p>
+          <p>请最后核对标签和实物。确认后将清空当前领用人；维修、维护和报废状态保留，其他资产恢复为当前可用。</p>
           <div className="public-return-summary">
             <div><span>资产编号</span><strong>{asset.assetTag}</strong></div>
             <div><span>资产名称</span><strong>{asset.name}</strong></div>

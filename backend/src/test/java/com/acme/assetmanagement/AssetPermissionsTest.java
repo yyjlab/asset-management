@@ -64,7 +64,7 @@ class AssetPermissionsTest {
         own.setStatus(lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "在用").orElseThrow());
         assets.saveAndFlush(own);
         var session = login(employee);
-        mvc.perform(post("/api/assets/qr/{token}/return", own.getQrToken()).session(session).with(csrf()))
+        mvc.perform(post("/api/assets/qr/{token}/return", own.getQrToken()).session(session).with(csrf()).header("If-Match", own.getVersion()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.checkedOut").value(false))
                 .andExpect(jsonPath("$.assignedUserId").doesNotExist());
         mvc.perform(get("/api/public/assets/{token}", own.getQrToken()).session(session))

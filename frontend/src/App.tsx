@@ -355,8 +355,8 @@ export default function App() {
     if (!returnTarget) return
     setReturningId(returnTarget.id)
     try {
-      const updated = await api.returnAsset(returnTarget.id)
-      notify(`${returnTarget.assetTag} 已归还，领用人已清空并恢复为当前可用`)
+      const updated = await api.returnAsset(returnTarget.id, returnTarget.version)
+      notify(`${returnTarget.assetTag} 已归还，领用人已清空，状态：${updated.status.name}`)
       setReturnTarget(null); showView('assets', { name: 'detail', asset: updated }, 'replace'); await load(search)
     } catch (error) { notify(error instanceof Error ? error.message : '归还失败', 'error') }
     finally { setReturningId(null) }
@@ -401,7 +401,7 @@ export default function App() {
       : section === 'kits' ? <EquipmentKitPage key={accessKey} user={authUser} onNotify={notify} />
         : section === 'support' ? <AssetSupportPage key={`${accessKey}:${taskId || ''}`} user={authUser} assets={suggestionAssets} initialId={taskId} onNotify={notify} />
           : section === 'reports' ? <ManagementReportPage key={accessKey} user={authUser} />
-            : section === 'procurement' ? <ProcurementPage key={`${accessKey}:${taskId || ''}`} user={authUser} assets={suggestionAssets} initialId={taskId} onNotify={notify} />
+            : section === 'procurement' ? <ProcurementPage key={`${accessKey}:${taskId || ''}`} user={authUser} assets={suggestionAssets} initialId={taskId} onNotify={notify} onAssetsChanged={() => void load('')} />
               : <RegistrationPage key={`${accessKey}:${taskId || ''}`} user={authUser} assets={suggestionAssets} lookups={lookups} review={page.name === 'list' && page.review} initialId={taskId} onNotify={notify} onAssetsChanged={() => void load('')} />}</div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
@@ -507,7 +507,7 @@ export default function App() {
     <LookupModal type={lookupType} loading={lookupLoading} onClose={() => setLookupType(null)} onCreate={createLookup} />
     {returnTarget && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setReturnTarget(null)}><div className="return-card">
       <div className="return-icon"><ReturnIcon /></div><button className="icon-button modal-close" onClick={() => setReturnTarget(null)}><CloseIcon /></button>
-      <span className="eyebrow">RETURN ASSET</span><h3>确认归还这项资产？</h3><p>归还后将清空领用人，并把资产同步更新为“当前可用”。CPU、价格等其他档案不会改变。</p>
+      <span className="eyebrow">RETURN ASSET</span><h3>确认归还这项资产？</h3><p>归还后清空领用人；维修、维护和报废状态保留，其他资产恢复为当前可用。CPU、价格等其他档案不会改变。</p>
       <div className="return-asset"><BoxesIcon /><div><strong>{returnTarget.name}</strong><span>{returnTarget.assetTag} · 当前领用人：{returnTarget.assignedTo || '—'}</span></div></div>
       <div className="modal-actions"><button className="button ghost" onClick={() => setReturnTarget(null)}>取消</button><button className="button primary" disabled={returningId === returnTarget.id} onClick={() => void returnAsset()}><ReturnIcon />{returningId === returnTarget.id ? '归还中…' : '确认归还'}</button></div>
     </div></div>}

@@ -97,6 +97,56 @@ class AssetApiTest {
     }
 
     @Test
+    void editingAndReturningUnavailableEquipmentPreservesItsLifecycleStatus() throws Exception {
+        var asset = assetRepository.findByAssetTagIgnoreCase("202609010001").orElseThrow();
+        for (String name : java.util.List.of("维修中", "已报废")) {
+            asset.setStatus(lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, name).orElseThrow());
+            asset.setCheckedOut(true);
+            asset.setAssignedTo("待交还员工");
+            asset.setAssignedUserId(123L);
+            assetRepository.saveAndFlush(asset);
+            String body = """
+                    {"assetTag":"%s","name":"维修记录补充","companyId":%d,"modelId":%d,
+                     "categoryId":%d,"statusId":%d,"locationId":%d,"checkedOut":true,
+                     "assignedTo":"待交还员工","assignedUserId":123,"notes":"仅补充备注"}
+                    """.formatted(asset.getAssetTag(), asset.getCompany().getId(), asset.getModel().getId(),
+                    asset.getCategory().getId(), asset.getStatus().getId(), asset.getLocation().getId());
+            mockMvc.perform(put("/api/assets/{id}", asset.getId()).with(assetUser()).with(csrf())
+                            .header("If-Match", asset.getVersion()).contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.checkedOut").value(true))
+                    .andExpect(jsonPath("$.assignedUserId").value(123)).andExpect(jsonPath("$.status.name").value(name));
+            String endpoint = "维修中".equals(name) ? "/api/assets/" + asset.getId() + "/return"
+                    : "/api/assets/qr/" + asset.getQrToken() + "/return";
+            mockMvc.perform(post(endpoint).with(assetUser()).with(csrf()).header("If-Match", asset.getVersion()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.checkedOut").value(false))
+                    .andExpect(jsonPath("$.assignedUserId").doesNotExist()).andExpect(jsonPath("$.status.name").value(name));
+        }
+    }
+
+    @Test
+    void staleQuickReturnsCannotClearANewAssigneeThroughEitherEndpoint() throws Exception {
+        var asset = assetRepository.findByAssetTagIgnoreCase("202609010001").orElseThrow();
+        asset.setStatus(lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "在用").orElseThrow());
+        asset.setCheckedOut(true);
+        asset.setAssignedTo("原领用人");
+        assetRepository.saveAndFlush(asset);
+        long oldVersion = asset.getVersion();
+        asset.setAssignedTo("新领用人");
+        asset.setAssignedUserId(123L);
+        assetRepository.saveAndFlush(asset);
+        for (String endpoint : java.util.List.of("/api/assets/" + asset.getId() + "/return",
+                "/api/assets/qr/" + asset.getQrToken() + "/return")) {
+            mockMvc.perform(post(endpoint).with(assetUser()).with(csrf()).header("If-Match", oldVersion))
+                    .andExpect(status().isConflict());
+            mockMvc.perform(post(endpoint).with(assetUser()).with(csrf()))
+                    .andExpect(status().isPreconditionRequired());
+            assertTrue(asset.isCheckedOut());
+            assertEquals("新领用人", asset.getAssignedTo());
+            assertEquals(123L, asset.getAssignedUserId());
+        }
+    }
+
+    @Test
     void staleEditCannotUndoReturn() throws Exception {
         var asset = assetRepository.findByAssetTagIgnoreCase("202609010001").orElseThrow();
         asset.setStatus(lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "在用").orElseThrow());
@@ -109,7 +159,7 @@ class AssetApiTest {
                  "categoryId":%d,"statusId":%d,"locationId":%d,"checkedOut":true,"assignedTo":"旧领用人"}
                 """.formatted(asset.getAssetTag(), asset.getCompany().getId(), asset.getModel().getId(),
                 asset.getCategory().getId(), asset.getStatus().getId(), asset.getLocation().getId());
-        mockMvc.perform(post("/api/assets/{id}/return", asset.getId()).with(assetUser()).with(csrf()))
+        mockMvc.perform(post("/api/assets/{id}/return", asset.getId()).with(assetUser()).with(csrf()).header("If-Match", version))
                 .andExpect(status().isOk());
         mockMvc.perform(put("/api/assets/{id}", asset.getId()).with(assetUser()).with(csrf())
                         .header("If-Match", version).contentType(MediaType.APPLICATION_JSON).content(body))
@@ -608,7 +658,8 @@ class AssetApiTest {
         mockMvc.perform(post("/api/assets/qr/{qrToken}/return", qrToken).with(csrf()))
                 .andExpect(status().isUnauthorized());
 
-        mockMvc.perform(post("/api/assets/qr/{qrToken}/return", qrToken).with(assetUser()).with(csrf()))
+        mockMvc.perform(post("/api/assets/qr/{qrToken}/return", qrToken).with(assetUser()).with(csrf())
+                        .header("If-Match", assetRepository.findById(assetId).orElseThrow().getVersion()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.checkedOut").value(false))
                 .andExpect(jsonPath("$.assignedTo").doesNotExist())

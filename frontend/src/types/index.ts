@@ -112,6 +112,7 @@ export interface CustomParameter {
 }
 
 export interface PublicAsset {
+  version: number
   assetTag: string
   name: string
   manufacturerSerialNumber: string | null

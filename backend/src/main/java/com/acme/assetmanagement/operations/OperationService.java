@@ -139,8 +139,8 @@ public class OperationService {
                 else {
                     ownership(t, a);
                     switch (t.kind) {
-                        case "RETURN" -> { a.setCheckedOut(false); a.setAssignedUserId(null); a.setAssignedTo(null); a.setStatus(status("当前可用")); }
-                        case "TRANSFER" -> { a.setAssignedUserId(t.targetId); a.setAssignedTo(enabled(t.targetId).getDisplayName()); a.setCheckedOut(true); a.setStatus(status("已经领出")); }
+                        case "RETURN" -> { a.setCheckedOut(false); a.setAssignedUserId(null); a.setAssignedTo(null); if (!a.isInMaintenanceOrScrapped()) a.setStatus(status("当前可用")); }
+                        case "TRANSFER" -> { a.setAssignedUserId(t.targetId); a.setAssignedTo(enabled(t.targetId).getDisplayName()); a.setCheckedOut(true); if (!a.isInMaintenanceOrScrapped()) a.setStatus(status("已经领出")); }
                         case "REPAIR" -> a.setStatus(status("SCRAP".equals(t.outcome) ? "已报废" : a.isCheckedOut() ? "已经领出" : "当前可用"));
                         case "CORRECTION" -> t.proposed.forEach((key, value) -> { switch (key) {
                             case "cpu" -> a.setCpu(value.trim()); case "memory" -> a.setMemory(value.trim());

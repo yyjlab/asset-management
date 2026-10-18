@@ -105,14 +105,16 @@ public class AssetController {
 
     @PostMapping("/{id}/return")
     @PreAuthorize("hasAuthority('ASSET_RETURN')")
-    public AssetResponse returnAsset(@PathVariable Long id) {
-        return service.returnAsset(id);
+    public AssetResponse returnAsset(@PathVariable Long id,
+                                     @RequestHeader(value = "If-Match", required = false) String version) {
+        return service.returnAsset(id, version);
     }
 
     @PostMapping("/qr/{qrToken}/return")
     @PreAuthorize("hasAuthority('ASSET_RETURN')")
-    public AssetResponse returnAssetByQrToken(@PathVariable String qrToken) {
-        return service.returnAssetByQrToken(qrToken);
+    public AssetResponse returnAssetByQrToken(@PathVariable String qrToken,
+                                              @RequestHeader(value = "If-Match", required = false) String version) {
+        return service.returnAssetByQrToken(qrToken, version);
     }
 
     @DeleteMapping("/{id}")

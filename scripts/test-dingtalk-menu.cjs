@@ -567,3 +567,59 @@ test('management and procurement APIs retain CSRF, versions and independent endp
   assert.equal(JSON.parse(writes[2].options.body).version, 4); assert.equal(JSON.parse(writes[3].options.body).consumableVersion, 5);
   assert.ok(!calls.some(call => call.url.startsWith('/api/assets')));
 });
+
+test('simultaneous writes share one CSRF request rather than overwriting its cookie', async () => {
+  let reads = 0;
+  const writes = [];
+  const { api } = load('api.ts', {}, false, { fetch: async (url, options) => {
+    if (url === '/api/auth/csrf') { reads++; await new Promise(resolve => setImmediate(resolve)); }
+    else writes.push(options);
+    return { ok: true, status: 200, json: async () => ({ headerName: 'X-CSRF-TOKEN', token: 'csrf' }) };
+  } });
+  await Promise.all([api.createProcurement({}), api.uploadMyAvatar(new File(['photo'], 'photo.png'))]);
+  assert.equal(reads, 1);
+  assert.equal(writes.length, 2);
+  for (const options of writes) assert.equal(options.headers['X-CSRF-TOKEN'], 'csrf');
+});
+
+test('a rejected multipart write refreshes CSRF on the next explicit attempt', async () => {
+  let reads = 0, writes = 0;
+  const { api, ApiError } = load('api.ts', {}, false, { fetch: async (url, options) => {
+    if (url === '/api/auth/csrf') { reads++; return { ok: true, status: 200, json: async () => ({ headerName: 'X-CSRF-TOKEN', token: `csrf-${reads}` }) }; }
+    writes++;
+    return { ok: writes > 1, status: writes > 1 ? 200 : 403, json: async () => ({}) };
+  } });
+  await assert.rejects(api.uploadMyAvatar(new File(['photo'], 'photo.png')), error => error instanceof ApiError && error.status === 403);
+  await api.uploadMyAvatar(new File(['photo'], 'photo.png'));
+  assert.equal(writes, 2);
+  assert.equal(reads, 2);
+});
+
+test('both quick return APIs send the version the user actually reviewed', async () => {
+  const writes = [];
+  const { api } = load('api.ts', {}, false, { fetch: async (url, options) => {
+    if (options.method === 'POST') writes.push({ url, options });
+    return { ok: true, status: 200, json: async () => ({ headerName: 'X-CSRF-TOKEN', token: 'csrf' }) };
+  } });
+  await api.returnAsset(3, 7);
+  await api.returnAssetByQrToken('qr-token', 9);
+  assert.deepEqual(writes.map(call => call.options.headers['If-Match']), ['7', '9']);
+});
+
+test('procurement refresh also refreshes the asset choices after another person creates equipment', () => {
+  let assetRefreshes = 0, orderRefreshes = 0;
+  const { ProcurementPage } = load('components/ProcurementPage.tsx', {
+    react: { useState: initial => [initial, () => {}], useRef: initial => ({ current: initial }), useEffect() {} },
+    '../api': { api: {} }, './OperationPage': { canManageWorkflows: () => true },
+    './HandoverPage': { requestKey: () => 'uuid' }, './AssetSupportPage': { SupplierSelect: () => null },
+    './ConfirmDialog': { ConfirmDialog: () => null },
+    './ManagementShared': { useRemote: () => ({ data: { items: [], canManage: true }, refresh: () => orderRefreshes++ }) },
+  });
+  const tree = ProcurementPage({ user: workflowUser(true), assets: [], onNotify() {}, onAssetsChanged: () => assetRefreshes++ });
+  const refresh = tree.props.children[0].props.children[1].props.children[0];
+  assert.equal(refresh.props.children, '刷新');
+  refresh.props.onClick();
+  assert.equal(orderRefreshes, 1);
+  assert.equal(assetRefreshes, 1);
+  assert.equal(typeof appMarkup('procurement').componentProps.ProcurementPage.onAssetsChanged, 'function');
+});

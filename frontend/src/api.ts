@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-let csrf: { headerName: string; token: string } | null = null
+let csrf: Promise<{ headerName: string; token: string }> | null = null
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -27,7 +27,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 async function csrfToken() {
-  if (!csrf) csrf = await request<{ headerName: string; token: string }>('/api/auth/csrf')
+  if (!csrf) csrf = request<{ headerName: string; token: string }>('/api/auth/csrf').catch(error => { csrf = null; throw error })
   return csrf
 }
 
@@ -47,6 +47,7 @@ async function mutateForm<T>(path: string, form: FormData, method: 'POST' | 'PUT
     method, body: form, credentials: 'include', headers: { [token.headerName]: token.token },
   })
   if (!response.ok) {
+    if (response.status === 403) csrf = null
     const body = await response.json().catch(() => null)
     throw new ApiError(body?.message || `请求失败（${response.status}）`, response.status)
   }
@@ -154,9 +155,9 @@ export const api = {
     mutate<Asset>(`/api/assets${cloneSourceId ? `?cloneSourceId=${cloneSourceId}` : ''}`, { method: 'POST', body: JSON.stringify(payload) }),
   updateAsset: (id: number, payload: AssetPayload) =>
     mutate<Asset>(`/api/assets/${id}`, { method: 'PUT', headers: { 'If-Match': String(payload.version) }, body: JSON.stringify({ ...payload, version: undefined }) }),
-  returnAsset: (id: number) => mutate<Asset>(`/api/assets/${id}/return`, { method: 'POST' }),
-  returnAssetByQrToken: (qrToken: string) =>
-    mutate<Asset>(`/api/assets/qr/${encodeURIComponent(qrToken)}/return`, { method: 'POST' }),
+  returnAsset: (id: number, version: number) => mutate<Asset>(`/api/assets/${id}/return`, { method: 'POST', headers: { 'If-Match': String(version) } }),
+  returnAssetByQrToken: (qrToken: string, version: number) =>
+    mutate<Asset>(`/api/assets/qr/${encodeURIComponent(qrToken)}/return`, { method: 'POST', headers: { 'If-Match': String(version) } }),
   deleteAsset: (id: number) => mutate<void>(`/api/assets/${id}`, { method: 'DELETE' }),
   downloadAssetCsv: () => download('/api/assets/export.csv', 'asset-data.csv'),
   previewAssetCsv: (file: File) => {
