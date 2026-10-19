@@ -33,11 +33,16 @@ export function LoginPage({ loading, error, onLogin }: Props) {
     catch (failure) { if (revision === qrRequest.current) setQrError(failure instanceof Error ? failure.message : '二维码初始化失败，请重试') }
     finally { if (revision === qrRequest.current) { qrBusy.current = false; setQrLoading(false) } }
   }
+  const startQuickLogin = () => {
+    if (loading || qrBusy.current) return
+    window.location.assign('/api/v1/auth/dingtalk/login')
+  }
 
   return <main className="login-page">
     <section className={`login-card${qrMode ? ' qr-mode' : ''}`}>
       <h1>Asset Management</h1>
       {qrMode ? <div className="dingtalk-login">
+        <button type="button" className="button primary" disabled={loading || qrLoading} onClick={startQuickLogin}>使用电脑钉钉快捷登录</button>
         {qrLoading && <p role="status">正在加载钉钉二维码…</p>}
         {qrError && <><p className="login-error" role="alert">{qrError}</p><button type="button" className="button primary" onClick={() => void startQr()}>重试扫码登录</button></>}
         {qr && <DingTalkQrLogin key={qr.state} authorization={qr} onRefresh={() => void startQr()} />}
@@ -51,7 +56,9 @@ export function LoginPage({ loading, error, onLogin }: Props) {
         </button>
       </form>
       {dingtalkEnabled && <div className="dingtalk-login">
-        <button type="button" className="button primary" disabled={loading} onClick={() => void startQr()}>钉钉登录</button>
+        <button type="button" className="button primary" disabled={loading} onClick={startQuickLogin}>钉钉登录</button>
+        <small>优先通过钉钉官方页面识别已登录账号并确认授权，无需强制扫码。</small>
+        <button type="button" className="button ghost" disabled={loading} onClick={() => void startQr()}>改用扫码登录</button>
         <small>本企业员工首次钉钉登录后自动创建普通账号；已有本地账号可登录后在头像窗口绑定钉钉。</small>
       </div>}</>}
     </section>

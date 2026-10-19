@@ -626,18 +626,25 @@ function loginHarness(api) {
   const { LoginPage } = load('components/LoginPage.tsx', { react, '../api': { api }, './DingTalkQrLogin': { DingTalkQrLogin: Qr } }, false, { Error, window: { location: { assign: value => assigned.push(value) } } });
   return { states, assigned, effects, Qr, render() { stateIndex = 0; refIndex = 0; return treeElements(LoginPage({ loading: false, error: '', onLogin: async () => { throw new Error('Unexpected password login'); } })); } };
 }
-test('clicking DingTalk login directly opens QR mode, prevents double initialization and preserves password login', async () => {
+test('default DingTalk login preserves official desktop quick authorization without initializing a QR code', () => {
+  let qrCalls = 0; const view = loginHarness({ beginDingtalkQr: async () => { qrCalls++; return qrFixture(); } });
+  view.render().find(item => item.type === 'button' && item.props.children === '钉钉登录').props.onClick();
+  assert.deepEqual(view.assigned, ['/api/v1/auth/dingtalk/login']); assert.equal(qrCalls, 0); assert.equal(view.states[3], false);
+});
+test('explicit QR fallback prevents double initialization and preserves password and quick authorization options', async () => {
   let calls = 0; const authorization = qrFixture();
   const view = loginHarness({ beginDingtalkQr: async () => { calls++; return authorization; } });
-  const button = view.render().find(item => item.type === 'button' && item.props.children === '钉钉登录'); button.props.onClick(); button.props.onClick();
+  const button = view.render().find(item => item.type === 'button' && item.props.children === '改用扫码登录'); button.props.onClick(); button.props.onClick();
   await new Promise(resolve => setImmediate(resolve)); assert.equal(calls, 1); assert.deepEqual(view.assigned, []);
   const tree = view.render(), qr = tree.find(item => item.type === view.Qr); assert.equal(qr.props.authorization, authorization); assert.ok(!tree.some(item => item.type === 'form'));
+  tree.find(item => item.type === 'button' && item.props.children === '使用电脑钉钉快捷登录').props.onClick();
+  assert.deepEqual(view.assigned, ['/api/v1/auth/dingtalk/login']); assert.equal(calls, 1);
   tree.find(item => item.type === 'button' && item.props.children === '返回账号密码登录').props.onClick();
   assert.ok(view.render().some(item => item.type === 'form')); assert.equal(view.states[4], null);
 });
 test('QR initialization errors expose retry rather than falling back to the unwanted account-selection page', async () => {
   const view = loginHarness({ beginDingtalkQr: async () => { throw new Error('网络连接失败'); } });
-  view.render().find(item => item.type === 'button' && item.props.children === '钉钉登录').props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  view.render().find(item => item.type === 'button' && item.props.children === '改用扫码登录').props.onClick(); await new Promise(resolve => setImmediate(resolve));
   const tree = view.render(); assert.ok(tree.some(item => item.props.role === 'alert' && item.props.children === '网络连接失败'));
   assert.ok(tree.some(item => item.type === 'button' && item.props.children === '重试扫码登录')); assert.deepEqual(view.assigned, []);
 });

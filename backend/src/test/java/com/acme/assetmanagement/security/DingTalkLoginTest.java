@@ -57,6 +57,8 @@ class DingTalkLoginTest {
         var second = begin();
         var url = UriComponentsBuilder.fromUriString(first.getResponse().getRedirectedUrl()).build();
         assertEquals("login.dingtalk.com", url.getHost());
+        assertFalse(url.getQueryParams().containsKey("iframe"), "默认授权入口不能强制进入纯扫码模式");
+        assertEquals("consent", url.getQueryParams().getFirst("prompt"));
         assertNotEquals(state(first), state(second));
         assertTrue(first.getResponse().getRedirectedUrl().contains("response_type=code"));
         assertFalse(first.getResponse().getRedirectedUrl().contains("test-secret"));
