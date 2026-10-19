@@ -55,16 +55,23 @@ public class DingTalkController {
     public void login(HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
-        response.sendRedirect(begin(request, null));
+        response.sendRedirect(begin(request, null, false).authorizationUrl());
+    }
+
+    @PostMapping("/qr")
+    public QrAuthorization qr(HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Referrer-Policy", "no-referrer");
+        return begin(request, null, true);
     }
 
     @PostMapping("/bind")
     public Map<String, String> bind(@AuthenticationPrincipal AccountPrincipal principal, HttpServletRequest request) {
         if (principal == null) throw new ApiException(HttpStatus.UNAUTHORIZED, "请先用账号密码登录");
-        return Map.of("authorizationUrl", begin(request, principal));
+        return Map.of("authorizationUrl", begin(request, principal, false).authorizationUrl());
     }
 
-    private String begin(HttpServletRequest request, AccountPrincipal principal) {
+    private QrAuthorization begin(HttpServletRequest request, AccountPrincipal principal, boolean embedded) {
         if (!properties.enabled()) throw new ApiException(HttpStatus.NOT_FOUND, "钉钉登录未启用");
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
@@ -73,11 +80,13 @@ public class DingTalkController {
                 principal == null ? null : principal.id(), principal == null ? null : principal.password());
         var session = request.getSession(true);
         synchronized (session) { session.setAttribute(PENDING, pending); }
-        return UriComponentsBuilder.fromUriString("https://login.dingtalk.com/oauth2/auth")
+        var url = UriComponentsBuilder.fromUriString("https://login.dingtalk.com/oauth2/auth")
                 .queryParam("client_id", properties.clientId()).queryParam("response_type", "code")
                 .queryParam("scope", "openid").queryParam("prompt", "consent")
-                .queryParam("redirect_uri", properties.redirectUri()).queryParam("state", state)
-                .build().encode().toUriString();
+                .queryParam("redirect_uri", properties.redirectUri()).queryParam("state", state);
+        if (embedded) url.queryParam("iframe", "true");
+        return new QrAuthorization(url.build().encode().toUriString(), properties.redirectUri(), state,
+                (pending.createdAt() + properties.stateTtlSeconds()) * 1000);
     }
 
     @GetMapping("/callback")
@@ -138,4 +147,5 @@ public class DingTalkController {
     }
 
     record Pending(String state, long createdAt, Long userId, String passwordHash) implements Serializable {}
+    public record QrAuthorization(String authorizationUrl, String redirectUri, String state, long expiresAt) {}
 }

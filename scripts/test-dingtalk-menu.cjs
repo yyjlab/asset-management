@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx'].map(async file => {
+  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
       build: {
@@ -566,6 +566,85 @@ test('management and procurement APIs retain CSRF, versions and independent endp
   for (const call of writes) { assert.equal(call.options.headers['X-CSRF-TOKEN'], 'csrf'); assert.equal(call.options.credentials, 'include'); }
   assert.equal(JSON.parse(writes[2].options.body).version, 4); assert.equal(JSON.parse(writes[3].options.body).consumableVersion, 5);
   assert.ok(!calls.some(call => call.url.startsWith('/api/assets')));
+});
+
+function qrFixture(overrides = {}) {
+  const state = 'A'.repeat(43), redirectUri = 'http://asset.wfq.com/api/v1/auth/dingtalk/callback';
+  return { state, redirectUri, expiresAt: Date.now() + 600_000,
+    authorizationUrl: `https://login.dingtalk.com/oauth2/auth?${new URLSearchParams({ iframe: 'true', client_id: 'public-test-client', redirect_uri: redirectUri, response_type: 'code', scope: 'openid', prompt: 'consent', state })}`, ...overrides };
+}
+const qrSuccess = authorization => ({ success: true, redirectUrl: `${authorization.redirectUri}?${new URLSearchParams({ state: authorization.state, authCode: 'temporary-test-code' })}` });
+function qrExports(mocks = {}, globals = {}) {
+  return load('components/DingTalkQrLogin.tsx', mocks, false, { URL, Error, window: { location: { origin: 'http://asset.wfq.com' } }, ...globals });
+}
+test('QR iframe uses only the official embedded page and requires a same-origin callback', () => {
+  const { qrFrameUrl } = qrExports(), authorization = qrFixture();
+  assert.match(qrFrameUrl(authorization, 'http://asset.wfq.com'), /^https:\/\/login\.dingtalk\.com\/oauth2\/auth\?/);
+  for (const origin of ['https://asset.wfq.com', 'http://asset.wfq.com:8081', 'http://172.168.30.202']) assert.throws(() => qrFrameUrl(authorization, origin), /域名、协议和端口/);
+  for (const authorizationUrl of [authorization.authorizationUrl.replace('login.dingtalk.com', 'login.dingtalk.com.evil.example'), authorization.authorizationUrl.replace('iframe=true', 'iframe=false'), authorization.authorizationUrl.replace('scope=openid', 'scope=openid+corpid')]) {
+    assert.throws(() => qrFrameUrl({ ...authorization, authorizationUrl }, 'http://asset.wfq.com'), /参数无效/);
+  }
+});
+test('QR callback rejects state tampering, duplicate codes and redirects outside the configured callback', () => {
+  const { qrCallbackUrl } = qrExports(), authorization = qrFixture(), message = qrSuccess(authorization);
+  const accepted = new URL(qrCallbackUrl(message, authorization), 'http://asset.wfq.com');
+  assert.equal(accepted.pathname, '/api/v1/auth/dingtalk/callback'); assert.equal(accepted.searchParams.get('state'), authorization.state);
+  for (const redirectUrl of [message.redirectUrl.replace('asset.wfq.com', 'evil.example'), message.redirectUrl.replace('/callback?', '/callback/evil?'), message.redirectUrl.replace(authorization.state, 'B'.repeat(43)), `${message.redirectUrl}&state=${authorization.state}`, `${message.redirectUrl}&authCode=other`, `${message.redirectUrl}&code=other`, `${message.redirectUrl}&error=denied`, `${message.redirectUrl}#fragment`, 'javascript:alert(1)']) {
+    assert.equal(qrCallbackUrl({ success: true, redirectUrl }, authorization), null);
+  }
+  for (const data of [null, 'untrusted', { success: false }, { success: 'true', redirectUrl: message.redirectUrl }]) assert.equal(qrCallbackUrl(data, authorization), null);
+});
+test('QR messages require the exact provider origin and current iframe and listeners are removed on close', () => {
+  const authorization = qrFixture(), iframeWindow = {}, assigned = [], effects = [], listeners = new Map(); let cleanupCount = 0;
+  const react = { useRef: () => ({ current: { contentWindow: iframeWindow } }), useState: initial => [initial, () => {}], useEffect: effect => effects.push(effect) };
+  const browser = { location: { origin: 'http://asset.wfq.com', assign: value => assigned.push(value) }, setTimeout: () => 1, clearTimeout() {}, addEventListener: (name, listener) => listeners.set(name, listener), removeEventListener(name, listener) { assert.equal(listeners.get(name), listener); listeners.delete(name); cleanupCount++; } };
+  const { DingTalkQrLogin } = qrExports({ react }, { window: browser });
+  DingTalkQrLogin({ authorization, onRefresh() {} }); const cleanup = effects[0](), receive = listeners.get('message');
+  for (const origin of ['https://evil.example', 'https://login.dingtalk.com.evil.example', 'http://login.dingtalk.com']) receive({ origin, source: iframeWindow, data: qrSuccess(authorization) });
+  receive({ origin: 'https://login.dingtalk.com', source: {}, data: qrSuccess(authorization) }); assert.equal(assigned.length, 0);
+  receive({ origin: 'https://login.dingtalk.com', source: iframeWindow, data: qrSuccess(authorization) });
+  receive({ origin: 'https://login.dingtalk.com', source: iframeWindow, data: qrSuccess(authorization) }); assert.equal(assigned.length, 1);
+  assert.match(assigned[0], /^\/api\/v1\/auth\/dingtalk\/callback\?/); cleanup(); assert.equal(cleanupCount, 1);
+  receive({ origin: 'https://login.dingtalk.com', source: iframeWindow, data: qrSuccess(authorization) }); assert.equal(assigned.length, 1);
+});
+test('expired QR sessions cannot navigate even when a late provider message arrives', () => {
+  const authorization = qrFixture({ expiresAt: Date.now() - 1 }), effects = [], changes = [], assigned = [], iframeWindow = {}; let receive, timeout;
+  const react = { useRef: () => ({ current: { contentWindow: iframeWindow } }), useState: initial => [initial, value => changes.push(value)], useEffect: effect => effects.push(effect) };
+  const browser = { location: { origin: 'http://asset.wfq.com', assign: value => assigned.push(value) }, setTimeout: callback => { timeout = callback; return 1; }, clearTimeout() {}, addEventListener: (_name, callback) => { receive = callback; }, removeEventListener() {} };
+  qrExports({ react }, { window: browser }).DingTalkQrLogin({ authorization, onRefresh() {} }); effects[0](); timeout();
+  receive({ origin: 'https://login.dingtalk.com', source: iframeWindow, data: qrSuccess(authorization) }); assert.deepEqual(assigned, []); assert.ok(changes.includes(true));
+});
+function treeElements(tree) {
+  const result = [];
+  React.Children.forEach(tree, child => { if (!child || typeof child !== 'object') return; result.push(child); result.push(...treeElements(child.props?.children)); });
+  return result;
+}
+function loginHarness(api) {
+  const states = ['', '', true], refs = [], effects = [], assigned = []; let stateIndex = 0, refIndex = 0;
+  const react = { useState(initial) { const index = stateIndex++; if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial; return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }]; }, useRef(initial) { const index = refIndex++; return refs[index] ||= { current: initial }; }, useEffect: callback => effects.push(callback) };
+  const Qr = () => null;
+  const { LoginPage } = load('components/LoginPage.tsx', { react, '../api': { api }, './DingTalkQrLogin': { DingTalkQrLogin: Qr } }, false, { Error, window: { location: { assign: value => assigned.push(value) } } });
+  return { states, assigned, effects, Qr, render() { stateIndex = 0; refIndex = 0; return treeElements(LoginPage({ loading: false, error: '', onLogin: async () => { throw new Error('Unexpected password login'); } })); } };
+}
+test('clicking DingTalk login directly opens QR mode, prevents double initialization and preserves password login', async () => {
+  let calls = 0; const authorization = qrFixture();
+  const view = loginHarness({ beginDingtalkQr: async () => { calls++; return authorization; } });
+  const button = view.render().find(item => item.type === 'button' && item.props.children === '钉钉登录'); button.props.onClick(); button.props.onClick();
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(calls, 1); assert.deepEqual(view.assigned, []);
+  const tree = view.render(), qr = tree.find(item => item.type === view.Qr); assert.equal(qr.props.authorization, authorization); assert.ok(!tree.some(item => item.type === 'form'));
+  tree.find(item => item.type === 'button' && item.props.children === '返回账号密码登录').props.onClick();
+  assert.ok(view.render().some(item => item.type === 'form')); assert.equal(view.states[4], null);
+});
+test('QR initialization errors expose retry rather than falling back to the unwanted account-selection page', async () => {
+  const view = loginHarness({ beginDingtalkQr: async () => { throw new Error('网络连接失败'); } });
+  view.render().find(item => item.type === 'button' && item.props.children === '钉钉登录').props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  const tree = view.render(); assert.ok(tree.some(item => item.props.role === 'alert' && item.props.children === '网络连接失败'));
+  assert.ok(tree.some(item => item.type === 'button' && item.props.children === '重试扫码登录')); assert.deepEqual(view.assigned, []);
+});
+test('QR initialization is CSRF protected and never navigates to the generic authorization page', async () => {
+  const calls = []; const { api } = load('api.ts', {}, false, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf' } : qrFixture() }; } });
+  await api.beginDingtalkQr(); assert.deepEqual(calls.map(call => call.url), ['/api/auth/csrf', '/api/v1/auth/dingtalk/qr']);
+  assert.equal(calls[1].options.method, 'POST'); assert.equal(calls[1].options.headers['X-CSRF-TOKEN'], 'csrf'); assert.equal(calls[1].options.credentials, 'include');
 });
 
 test('simultaneous writes share one CSRF request rather than overwriting its cookie', async () => {

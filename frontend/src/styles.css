@@ -630,6 +630,11 @@ input, select, textarea { font-size: 14px; }
 .login-card { width: min(440px,calc(100vw - 40px)); padding: 42px 42px 36px; text-align: left; }
 .login-card h1 { margin: 0; white-space: nowrap; text-align: center; font-size: 28px; line-height: 1.2; letter-spacing: -.8px; }
 .login-card > p { margin: 5px 0 28px; text-align: center; }
+.login-card.qr-mode { padding-left: 18px; padding-right: 18px; }
+.dingtalk-qr-login { display: grid; justify-items: center; gap: 12px; text-align: center; }
+.dingtalk-qr-login h2, .dingtalk-qr-login p { margin: 0; }
+.dingtalk-qr-login p { font-size: 13px; line-height: 1.6; }
+.dingtalk-qr-frame { width: 300px; max-width: 100%; height: 300px; border: 0; border-radius: 12px; background: #fff; }
 
 /* Compact shell requested for the full-width asset workspace */
 .sidebar .nav-caption { display: none; }

@@ -1,6 +1,7 @@
 import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
 import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData } from './types'
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
+import type { DingTalkQrAuthorization } from './types'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
@@ -134,6 +135,7 @@ export const api = {
   getPublicAsset: (qrToken: string) => request<PublicAsset>(`/api/public/assets/${encodeURIComponent(qrToken)}`),
   me: () => request<AuthUser>('/api/auth/me'),
   dingtalkStatus: () => request<{ enabled: boolean; bound: boolean }>('/api/v1/auth/dingtalk/status'),
+  beginDingtalkQr: () => mutate<DingTalkQrAuthorization>('/api/v1/auth/dingtalk/qr', { method: 'POST' }),
   bindDingtalk: () => mutate<{ authorizationUrl: string }>('/api/v1/auth/dingtalk/bind', { method: 'POST' }),
   login: (username: string, password: string) =>
     mutate<AuthUser>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),

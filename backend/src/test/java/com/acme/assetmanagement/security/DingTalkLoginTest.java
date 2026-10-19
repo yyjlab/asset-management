@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Instant;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -42,6 +43,7 @@ class DingTalkLoginTest {
     @Autowired UserRepository users;
     @Autowired PasswordEncoder encoder;
     @Autowired DingTalkAccountService accounts;
+    @Autowired ObjectMapper json;
     @MockitoBean DingTalkClient provider;
 
     @Test void statusDoesNotExposeCredentials() throws Exception {
@@ -59,6 +61,58 @@ class DingTalkLoginTest {
         assertTrue(first.getResponse().getRedirectedUrl().contains("response_type=code"));
         assertFalse(first.getResponse().getRedirectedUrl().contains("test-secret"));
         assertEquals("no-store", first.getResponse().getHeader("Cache-Control"));
+    }
+
+    @Test void embeddedQrIsPublicButCsrfProtectedAndNeverReturnsSecretsOrChangesAccounts() throws Exception {
+        long count = users.count();
+        mvc.perform(post(ROOT + "/qr")).andExpect(status().isForbidden());
+        var first = mvc.perform(post(ROOT + "/qr").with(csrf())).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Referrer-Policy", "no-referrer"))
+                .andExpect(jsonPath("$.redirectUri").value("http://asset.wfq.com/api/v1/auth/dingtalk/callback"))
+                .andExpect(jsonPath("$.clientSecret").doesNotExist()).andReturn();
+        var body = json.readTree(first.getResponse().getContentAsString());
+        var uri = UriComponentsBuilder.fromUriString(body.path("authorizationUrl").asString()).build();
+        assertEquals("https", uri.getScheme()); assertEquals("login.dingtalk.com", uri.getHost());
+        assertEquals("true", uri.getQueryParams().getFirst("iframe"));
+        assertEquals("openid", uri.getQueryParams().getFirst("scope"));
+        assertEquals(body.path("state").asString(), uri.getQueryParams().getFirst("state"));
+        assertTrue(body.path("state").asString().matches("[A-Za-z0-9_-]{43}"));
+        assertTrue(body.path("expiresAt").asLong() > System.currentTimeMillis() + 590_000);
+        assertFalse(first.getResponse().getContentAsString().contains("test-secret"));
+        assertEquals(count, users.count()); verifyNoInteractions(provider);
+    }
+
+    @Test void embeddedQrCallbackKeepsExistingIdentityChecksSessionRotationAndSingleUse() throws Exception {
+        var account = create("qr-bound-user"); accounts.resolve("qr-bound-identity", account.getId(), account.getPasswordHash());
+        when(provider.unionId("qr-good")).thenReturn("qr-bound-identity");
+        var start = mvc.perform(post(ROOT + "/qr").with(csrf())).andExpect(status().isOk()).andReturn();
+        var state = json.readTree(start.getResponse().getContentAsString()).path("state").asString();
+        var browser = session(start); String before = browser.getId();
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state).param("authCode", "qr-good")).andExpect(redirectedUrl("/"));
+        assertNotEquals(before, browser.getId());
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("qr-bound-user")).andExpect(jsonPath("$.dingtalkLogin").value(true));
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state).param("authCode", "qr-good")).andExpect(redirectedUrlPattern("/?dingtalkError=*"));
+        verify(provider, times(1)).unionId("qr-good");
+    }
+
+    @Test void refreshingQrReplacesOldStateAndCodesFromOtherSessionsAreRejected() throws Exception {
+        var first = mvc.perform(post(ROOT + "/qr").with(csrf())).andExpect(status().isOk()).andReturn();
+        String oldState = json.readTree(first.getResponse().getContentAsString()).path("state").asString();
+        var second = mvc.perform(post(ROOT + "/qr").session(session(first)).with(csrf())).andExpect(status().isOk()).andReturn();
+        String freshState = json.readTree(second.getResponse().getContentAsString()).path("state").asString();
+        assertNotEquals(oldState, freshState);
+        mvc.perform(get(ROOT + "/callback").param("state", freshState).param("authCode", "wrong-browser")).andExpect(redirectedUrlPattern("/?dingtalkError=*"));
+        mvc.perform(get(ROOT + "/callback").session(session(first)).param("state", oldState).param("authCode", "old-qr")).andExpect(redirectedUrlPattern("/?dingtalkError=*"));
+        verifyNoInteractions(provider);
+    }
+
+    @Test void disabledDingtalkCannotStartEmbeddedQr() {
+        var controller = new DingTalkController(new DingTalkProperties(false, null, null, null, 600, 10), provider, accounts, users, null);
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        var failure = assertThrows(ApiException.class, () -> controller.qr(request, new org.springframework.mock.web.MockHttpServletResponse()));
+        assertEquals(HttpStatus.NOT_FOUND, failure.getStatus()); assertNull(request.getSession(false)); verifyNoInteractions(provider);
     }
 
     @Test void stateRequiresSameSessionAndIsSingleUse() throws Exception {

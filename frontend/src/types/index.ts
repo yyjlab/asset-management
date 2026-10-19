@@ -238,6 +238,13 @@ export interface DashboardOverview {
 export interface RankedItem { label: string; count: number; percent: number }
 export type UserRole = 'SUPER_ADMIN' | 'USER'
 
+export interface DingTalkQrAuthorization {
+  authorizationUrl: string
+  redirectUri: string
+  state: string
+  expiresAt: number
+}
+
 export interface AuthUser {
   displayName: string
   dataScope: DataScope
