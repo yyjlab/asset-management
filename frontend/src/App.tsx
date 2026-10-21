@@ -29,8 +29,9 @@ import { AssetSupportPage } from './components/AssetSupportPage'
 import { ManagementReportPage } from './components/ManagementReportPage'
 import { ProcurementPage } from './components/ProcurementPage'
 import { RegistrationPage } from './components/RegistrationPage'
+import { DingTalkOaPage } from './components/DingTalkOaPage'
 
-type Page = { name: 'list'; taskId?: number; review?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean } | { name: 'detail'; asset: Asset }
+type Page = { name: 'list'; taskId?: number; review?: boolean; oa?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean } | { name: 'detail'; asset: Asset }
 type AppHistoryState = { assetManagement: true; section: AppSection; page: Page; depth: number }
 type LookupDeleteRequest = { lookup: LookupValue; resolve: (deleted: boolean) => void }
 
@@ -395,6 +396,12 @@ export default function App() {
   </div>
 
   const taskId = page.name === 'list' && Number.isSafeInteger(page.taskId) && (page.taskId ?? 0) > 0 ? page.taskId : undefined
+  const openOa = () => showView('handover', { name: 'list', oa: true })
+  if (section === 'handover' && page.name === 'list' && page.oa) return <div className="app-shell">
+    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><DingTalkOaPage key={accessKey} user={authUser} onBack={() => showView('handover', { name: 'list' })} onNotify={notify} onAssetsChanged={() => void load('')} /></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
   if (section === 'workbench' || section === 'kits' || section === 'support' || section === 'reports' || section === 'procurement' || section === 'registrations') return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content">{section === 'workbench' ? <WorkbenchPage key={accessKey} onOpen={(next, id, state) => showView(next, { name: 'list', taskId: id || undefined, review: next === 'registrations' && state !== 'NEEDS_INFO' && authUser.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_CREATE', 'ASSET_CHECKOUT'].every(value => authUser.permissions.includes(value as Permission)) })} />
@@ -408,13 +415,13 @@ export default function App() {
 
   if (section === 'selfService') return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><SelfServicePage key={accessKey} user={authUser} assets={suggestionAssets} lookups={lookups} loading={loading} error={assetLoadError} onRefresh={() => void load('')} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onNotify={notify} /></div></main>
+    <main className="main-content">{topbar}<div className="content"><SelfServicePage key={accessKey} user={authUser} assets={suggestionAssets} lookups={lookups} loading={loading} error={assetLoadError} onRefresh={() => void load('')} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onNotify={notify} onOpenOa={openOa} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'handover') return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><HandoverPage key={`${accessKey}:${taskId || ''}`} initialId={taskId} canUseKits={canManageWorkflows(authUser)} currentUserId={authUser.id} assets={suggestionAssets} onNotify={notify} /></div></main>
+    <main className="main-content">{topbar}<div className="content"><HandoverPage key={`${accessKey}:${taskId || ''}`} initialId={taskId} canUseKits={canManageWorkflows(authUser)} currentUserId={authUser.id} assets={suggestionAssets} onNotify={notify} onOpenOa={openOa} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
@@ -423,7 +430,7 @@ export default function App() {
     <main className="main-content">{topbar}<div className="content">{section === 'inventory'
       ? <InventoryPage key={`${accessKey}:inventory:${taskId || ''}`} initialId={taskId} user={authUser} onNotify={notify} />
       : section === 'consumables' ? <ConsumablePage key={`${accessKey}:consumables:${taskId || ''}`} initialId={taskId} user={authUser} onNotify={notify} />
-        : <OperationPage key={`${accessKey}:${section}:${taskId || ''}`} initialId={taskId} user={authUser} assets={suggestionAssets} repair={section === 'repair'} onNotify={notify} onAssetsChanged={() => void load('')} />}</div></main>
+        : <OperationPage key={`${accessKey}:${section}:${taskId || ''}`} initialId={taskId} user={authUser} assets={suggestionAssets} repair={section === 'repair'} onNotify={notify} onAssetsChanged={() => void load('')} onOpenOa={openOa} />}</div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

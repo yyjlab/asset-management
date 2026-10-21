@@ -54,6 +54,8 @@ public class DingTalkAccountService {
             repository.saveAndFlush(account);
         }
         if (!account.isEnabled()) throw new ApiException(HttpStatus.FORBIDDEN, "账号已停用");
+        account.setDingtalkUnionId(unionId);
+        repository.saveAndFlush(account);
         return AccountPrincipal.from(account);
     }
 

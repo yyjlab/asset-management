@@ -50,3 +50,16 @@ app:
     redirect-uri: ${DINGTALK_LOGIN_REDIRECT_URI:}
     state-ttl-seconds: ${DINGTALK_LOGIN_STATE_TTL_SECONDS:600}
     timeout-seconds: ${DINGTALK_LOGIN_TIMEOUT_SECONDS:10}
+  dingtalk-oa:
+    enabled: ${DINGTALK_OA_ENABLED:false}
+    stream-enabled: ${DINGTALK_OA_STREAM_ENABLED:true}
+    corp-id: ${DINGTALK_OA_CORP_ID:}
+    issue-process-code: ${DINGTALK_OA_ISSUE_PROCESS_CODE:}
+    return-process-code: ${DINGTALK_OA_RETURN_PROCESS_CODE:}
+    it-approver-user-ids: ${DINGTALK_OA_IT_APPROVER_USER_IDS:}
+    agent-id: ${DINGTALK_OA_AGENT_ID:0}
+
+# SDK exceptions can include provider responses; expose only this application's sanitized connection logs.
+logging:
+  level:
+    com.dingtalk.open: "OFF"

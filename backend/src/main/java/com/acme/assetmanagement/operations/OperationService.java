@@ -97,6 +97,7 @@ public class OperationService {
     @Transactional
     public Detail action(Long id, OperationRequest.Action request) {
         var actor = access.current(); var t = visible(id, true);
+        if (t.oaState != null) throw fail(HttpStatus.CONFLICT, "此申请由钉钉 OA 审批，请进入钉钉审批办理，不能在本地重复审批");
         if (t.version != request.version()) throw fail(HttpStatus.CONFLICT, "工单已变化，请刷新后重试");
         if (Set.of("COMPLETED", "REJECTED", "CANCELLED").contains(t.state)) throw fail(HttpStatus.CONFLICT, "已关闭的工单不能再修改");
         String note = clean(request.note());
@@ -163,6 +164,30 @@ public class OperationService {
             case "REJECT" -> "驳回申请"; default -> "取消工单";
         };
         event(t, actor, actionLabel + (note.isEmpty() ? "" : "：" + note)); return save(t);
+    }
+    // Internal only: caller must have verified the official OA instance, employee attestation and IT approval.
+    void completeFromOa(OperationTask t, String approver) {
+        if (!Set.of("ISSUE", "RETURN").contains(t.kind) || !"AGREED".equals(t.oaState))
+            throw fail(HttpStatus.CONFLICT, "OA 办理条件不满足");
+        var a = lockedAsset(t.assetId); version(a, t.assetVersion);
+        var owner = enabled(t.ownerId);
+        if (!Objects.equals(t.oaIdentity, owner.getDingtalkIdentity())) throw fail(HttpStatus.CONFLICT, "员工钉钉绑定已改变，请核对身份后重新申请");
+        if ("ISSUE".equals(t.kind)) {
+            available(a); a.setAssignedUserId(owner.getId()); a.setAssignedTo(owner.getDisplayName());
+            a.setCheckedOut(true); a.setStatus(status("已经领出"));
+        } else {
+            ownership(t, a);
+            if (!a.isCheckedOut()) throw fail(HttpStatus.CONFLICT, "资产当前未领出，拒绝重复归还");
+            a.setAssignedUserId(null); a.setAssignedTo(null); a.setCheckedOut(false);
+            if (!a.isInMaintenanceOrScrapped()) a.setStatus(status("当前可用"));
+        }
+        assets.saveAndFlush(a); t.state = "COMPLETED"; t.oaState = "APPLIED"; t.reservedAssetId = null;
+        t.events.add(new OperationTask.Event("钉钉 OA", "审批通过并自动写入台账；实物审批人 userid：" + approver));
+        t.updatedAt = LocalDateTime.now();
+        audit.success(AuditAction.ASSET_UPDATE, "ASSET", a.getId(), a.getAssetTag(),
+                "钉钉 OA 审批通过并自动办理" + t.kind,
+                Map.of("工单ID", t.id, "审批实例", t.oaInstanceId, "实物审批人", approver));
+        save(t);
     }
     private void ownership(OperationTask t, Asset a) { if (!Objects.equals(t.ownerId, a.getAssignedUserId())) throw fail(HttpStatus.CONFLICT, "资产归属已改变，请取消后重新申请；不会覆盖现有领用人"); }
     private void available(Asset a) {

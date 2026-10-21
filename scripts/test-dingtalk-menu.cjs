@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx'].map(async file => {
+  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
       build: {
@@ -94,7 +94,7 @@ test('every visible DingTalk menu navigates to its own section', () => {
   assert.deepEqual(filters, ['all']);
 });
 
-function appMarkup(section, overrides = {}) {
+function appMarkup(section, overrides = {}, initialPage = { name: 'list' }) {
   const user = {
     id: 1, username: 'employee', displayName: '员工', role: 'USER',
     canManageUsers: false, dingtalkLogin: true, hasAvatar: false,
@@ -104,13 +104,13 @@ function appMarkup(section, overrides = {}) {
   const changes = [], componentProps = {};
   const react = { ...React, useState(initial) {
     const index = stateIndex++;
-    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : initial);
+    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : initial);
     return [value, next => changes.push({ index, value: typeof next === 'function' ? next(value) : next })];
   } };
   const icons = load('components/Icons.tsx');
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons });
   const rendered = [];
-  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage'];
+  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
   const mocks = { react, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
@@ -122,6 +122,52 @@ function appMarkup(section, overrides = {}) {
   const App = loaded.default || loaded;
   return { markup: renderToStaticMarkup(React.createElement(App)), rendered, componentProps, changes };
 }
+
+test('OA entry points share one page and retain the existing handover route', () => {
+  for (const [section, name] of [['handover', 'HandoverPage'], ['operations', 'OperationPage'], ['selfService', 'SelfServicePage']]) {
+    const result = appMarkup(section);
+    result.componentProps[name].onOpenOa();
+    assert.ok(result.changes.some(change => change.index === 5 && change.value === 'handover'));
+    assert.ok(result.changes.some(change => change.index === 6 && change.value.oa === true));
+  }
+  const result = appMarkup('handover', {}, { name: 'list', oa: true });
+  assert.deepEqual(result.rendered, ['DingTalkOaPage']);
+  result.componentProps.DingTalkOaPage.onBack();
+  assert.ok(result.changes.some(change => change.index === 6 && !change.value.oa));
+});
+
+function oaMarkup(settings, items = [], manager = false, creating = false) {
+  let index = 0;
+  const { DingTalkOaPage } = load('components/DingTalkOaPage.tsx', {
+    react: { ...React, useState(initial) {
+      const i = index++;
+      return React.useState(i === 0 ? settings : i === 1 ? { items, page: 0, totalElements: items.length, totalPages: 1, canManage: manager } : i === 5 ? false : i === 7 ? creating : initial);
+    } }, '../api': { api: {} }, './HandoverPage': { requestKey: () => 'test-key' },
+    './OperationPage': { canManageWorkflows: () => manager }, './ConfirmDialog': { ConfirmDialog: () => null }, './WorkflowPages.css': {},
+  });
+  return renderToStaticMarkup(React.createElement(DingTalkOaPage, { user: { id: 1 }, onBack() {}, onNotify() {}, onAssetsChanged() {} }));
+}
+
+test('OA disabled and incomplete identity are explicit and cannot submit', () => {
+  const disabled = oaMarkup({ enabled: false, identityReady: true, streamEnabled: false });
+  assert.match(disabled, /钉钉 OA 尚未启用/);
+  assert.match(disabled, /disabled="">发起实物交接审批/);
+  const missing = oaMarkup({ enabled: true, identityReady: false, streamEnabled: true });
+  assert.match(missing, /请先用钉钉重新登录或绑定账号/);
+  assert.match(missing, /disabled="">发起实物交接审批/);
+});
+
+test('OA form requires physical employee attestation and distinguishes failure from ledger completion', () => {
+  const markup = oaMarkup({ enabled: true, identityReady: true, streamEnabled: true }, [
+    { id: 1, ownerId: 1, kind: 'ISSUE', approvalState: 'LEDGER_FAILED', error: '资产已变化', instanceId: 'instance-1', assetTag: 'PC-1' },
+    { id: 2, ownerId: 1, kind: 'RETURN', approvalState: 'APPLIED', instanceId: 'instance-2', assetTag: 'PC-2' },
+  ], false, true);
+  assert.match(markup, /本人已核对设备编号、实物和配件/);
+  assert.match(markup, /未入账，请处理/);
+  assert.match(markup, /审批通过，已入账/);
+  assert.ok(!markup.includes('关闭异常（不改台账）'));
+  assert.ok(!markup.includes('核实发起结果'));
+});
 
 for (const section of ['users', 'logs', 'transfer', 'settings']) {
   test(`unauthorized ${section} shows an access notice without mounting its data component`, () => {

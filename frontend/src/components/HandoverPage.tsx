@@ -12,9 +12,9 @@ const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12
 const emptyPage: HandoverPageData = { items: [], page: 0, totalElements: 0, totalPages: 0, canManage: false }
 const safeMessage = (error: unknown) => error instanceof Error ? error.message : '交接操作失败'
 
-interface Props { currentUserId: number; assets: Asset[]; selfService?: boolean; initialId?: number; canUseKits?: boolean; onNotify: (text: string, kind?: 'ok' | 'error') => void }
+interface Props { currentUserId: number; assets: Asset[]; selfService?: boolean; initialId?: number; canUseKits?: boolean; onOpenOa?: () => void; onNotify: (text: string, kind?: 'ok' | 'error') => void }
 
-export function HandoverPage({ currentUserId, assets, selfService = false, initialId, canUseKits = false, onNotify }: Props) {
+export function HandoverPage({ currentUserId, assets, selfService = false, initialId, canUseKits = false, onOpenOa, onNotify }: Props) {
   const [data, setData] = useState(emptyPage)
   const [page, setPage] = useState(0)
   const [kind, setKind] = useState('')
@@ -90,6 +90,7 @@ export function HandoverPage({ currentUserId, assets, selfService = false, initi
   const active = selected && ['PENDING', 'IN_PROGRESS'].includes(selected.state)
 
   return <section className="handover-page">
+    {onOpenOa && <button className="button ghost" onClick={onOpenOa}>钉钉 OA 交接（自动领用／归还）</button>}
     <header className="handover-head"><div><h2>{selfService ? '我的交接' : '入离职交接'}</h2><p>{data.canManage ? '管理员验收与员工确认分开记录，旧资产台账保持不变。' : '只展示明确关联本账号的交接事项，不按同名匹配。'}</p></div><div className="handover-actions">
       <button className="button ghost" disabled={busy || opening || creating} onClick={refresh}><RefreshIcon />刷新</button>
       {!selected && !creating && data.canManage && <button className="button primary" onClick={() => setCreating(true)}><PlusIcon />新建交接单</button>}

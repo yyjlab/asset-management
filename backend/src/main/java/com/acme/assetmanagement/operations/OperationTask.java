@@ -9,7 +9,8 @@ import java.util.List;
 @Entity
 @Table(name = "asset_operation_tasks", indexes = {
     @Index(name = "idx_operation_owner", columnList = "ownerId,state"),
-    @Index(name = "idx_operation_target", columnList = "targetId,state")})
+    @Index(name = "idx_operation_target", columnList = "targetId,state"),
+    @Index(name = "idx_operation_oa_pending", columnList = "oaState,oaCheckedAt")})
 class OperationTask {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) Long id;
     @Version long version;
@@ -25,6 +26,17 @@ class OperationTask {
     @Column(unique = true) Long reservedAssetId;
     Long assetVersion;
     @Column(length = 80) String assetTag;
+    // Nullable fields leave all existing, manually processed workflows unchanged.
+    @Column(length = 24) String oaState;
+    @Column(unique = true, length = 160) String oaInstanceId;
+    @Column(length = 160) String oaProcessCode;
+    @Column(length = 160) String oaCorpId;
+    @Column(length = 160) String oaUserId;
+    @Column(length = 64) String oaIdentity;
+    @Lob String oaFormValue;
+    @Column(length = 300) String oaError;
+    LocalDateTime oaCheckedAt;
+    Boolean oaDirty;
     @Column(nullable = false, length = 160) String title;
     @Column(nullable = false, length = 2000) String description;
     @Column(length = 20) String outcome;

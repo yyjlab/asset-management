@@ -18,9 +18,10 @@ interface Props {
   onRefresh: () => void
   onSelect: (asset: Asset) => void
   onNotify: (text: string, kind?: 'ok' | 'error') => void
+  onOpenOa?: () => void
 }
 
-export function SelfServicePage({ user, assets, lookups, loading, error, onRefresh, onSelect, onNotify }: Props) {
+export function SelfServicePage({ user, assets, lookups, loading, error, onRefresh, onSelect, onNotify, onOpenOa }: Props) {
   const [tab, setTab] = useState<'assets' | 'handovers' | 'registrations' | 'review' | 'notifications' | 'operations' | 'repair' | 'inventory' | 'consumables'>('assets')
   const canView = user.permissions.includes('ASSET_VIEW')
   const canReview = user.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_CREATE', 'ASSET_CHECKOUT'].every(permission => user.permissions.includes(permission as 'ASSET_VIEW' | 'ASSET_CREATE' | 'ASSET_CHECKOUT'))
@@ -32,6 +33,7 @@ export function SelfServicePage({ user, assets, lookups, loading, error, onRefre
       {tab === 'assets' && canView && <button className="button ghost" disabled={loading} onClick={onRefresh}><RefreshIcon />刷新</button>}
     </header>
     <div className="self-service-tabs" role="group" aria-label="员工自助内容">
+      {onOpenOa && <button className="button ghost" onClick={onOpenOa}>钉钉 OA 交接</button>}
       <button className={`button ${tab === 'assets' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}><BoxesIcon />我的资产</button>
       <button className={`button ${tab === 'handovers' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'handovers'} onClick={() => setTab('handovers')}><ClipboardIcon />我的交接</button>
       <button className={`button ${tab === 'registrations' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'registrations'} onClick={() => setTab('registrations')}>设备登记</button>

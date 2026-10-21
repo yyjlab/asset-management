@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AssetRepository extends JpaRepository<Asset, Long> {
+    @Query("select a from Asset a where a.checkedOut=false and a.assignedUserId is null and (a.assignedTo is null or a.assignedTo='') and a.status.name in ('当前可用','可领用') order by a.assetTag asc")
+    List<Asset> oaAvailable(org.springframework.data.domain.Pageable page);
     List<Asset> findTop501ByOwnershipDepartmentOrderByAssetTagAsc(String department);
     List<Asset> findTop501ByOrderByAssetTagAsc();
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)

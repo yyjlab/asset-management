@@ -6,14 +6,14 @@ import { ConfirmDialog } from './ConfirmDialog'
 import './WorkflowPages.css'
 
 const kinds: Record<OperationKind, string> = { ISSUE: '领用申请', RETURN: '归还验收', TRANSFER: '转交他人', CORRECTION: '信息纠错', REPAIR: '故障报修' }
-const states = { PENDING: '待受理', WAITING_CONFIRM: '待员工确认', PROCESSING: '维修中', CONFIRMED: '待管理员完结', COMPLETED: '已完成', REJECTED: '已驳回', CANCELLED: '已取消' }
+const states = { PENDING: '待受理', WAITING_CONFIRM: '待员工确认', PROCESSING: '维修中', CONFIRMED: '待管理员完结', COMPLETED: '已完成', REJECTED: '已驳回', CANCELLED: '已取消', OA_PENDING: '钉钉审批中', OA_FAILED: '钉钉办理需处理' }
 const correctionFields = { cpu: 'CPU', memory: '内存', storage: '硬盘', ownershipDepartment: '归属部门' }
 const empty: OperationPageData = { items: [], page: 0, totalElements: 0, totalPages: 0, canManage: false }
 export const canManageWorkflows = (user: AuthUser) => user.dataScope === 'ALL' && (['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'] as Permission[]).every(value => user.permissions.includes(value))
 const message = (error: unknown) => error instanceof Error ? error.message : '工单操作失败'
-interface Props { user: AuthUser; assets: Asset[]; repair?: boolean; initialId?: number; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
+interface Props { user: AuthUser; assets: Asset[]; repair?: boolean; initialId?: number; onOpenOa?: () => void; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
 
-export function OperationPage({ user, assets, repair = false, initialId, onNotify, onAssetsChanged }: Props) {
+export function OperationPage({ user, assets, repair = false, initialId, onOpenOa, onNotify, onAssetsChanged }: Props) {
   const [data, setData] = useState(empty)
   const [page, setPage] = useState(0)
   const [kind, setKind] = useState(repair ? 'REPAIR' : '')
@@ -68,8 +68,11 @@ export function OperationPage({ user, assets, repair = false, initialId, onNotif
     finally { mutation.current = false; setBusy(false) }
   }
   const task = selected?.task
-  const activeTask = task && !['COMPLETED', 'REJECTED', 'CANCELLED'].includes(task.state)
+  const oaTask = task && ['OA_PENDING', 'OA_FAILED'].includes(task.state)
+  const activeTask = task && !oaTask && !['COMPLETED', 'REJECTED', 'CANCELLED'].includes(task.state)
   return <section className="workflow-page">
+    {!repair && onOpenOa && <button className="button ghost" onClick={onOpenOa}>钉钉 OA 交接（自动领用／归还）</button>}
+    {oaTask && <p className="workflow-notice">此工单由钉钉审批办理，请进入“钉钉 OA 交接”查看进度；本页面不能重复审批。</p>}
     <header className="workflow-head"><div><h2>{repair ? '报修维修' : '领用归还与纠错'}</h2><p>申请、受理、员工本人确认、管理员完结分开记录。</p></div><div className="workflow-actions"><button className="button ghost" disabled={busy || opening || creating} onClick={() => { setRevision(value => value + 1); if (selected) void open(selected.task.id); onAssetsChanged() }}>刷新</button>{!selected && !creating && <button className="button primary" disabled={loading || !!error} onClick={() => setCreating(true)}>新建申请</button>}</div></header>
     <p className="workflow-notice">提交、受理和确认只记录流程。仅管理员在员工确认后点击“完结并写入台账”，才更新指定资产；版本冲突时不会覆盖其他修改。</p>
     {error && <p role="alert" className="workflow-error">{error}，请刷新重试。</p>}

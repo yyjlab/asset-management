@@ -2,6 +2,7 @@ import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, A
 import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData } from './types'
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 import type { DingTalkQrAuthorization } from './types'
+import type { OaCandidate, OaCreate, OaItem, OaPage, OaStatus } from './types/dingtalkOa'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
@@ -80,6 +81,13 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  oaStatus: () => request<OaStatus>('/api/dingtalk-oa/status'),
+  oaCandidates: (kind: 'ISSUE' | 'RETURN') => request<OaCandidate[]>(`/api/dingtalk-oa/candidates?kind=${kind}`),
+  listOa: (page = 0, mine = true) => request<OaPage>(`/api/dingtalk-oa?page=${page}&mine=${mine}`),
+  createOa: (payload: OaCreate) => mutate<OaItem>('/api/dingtalk-oa', { method: 'POST', body: JSON.stringify(payload) }),
+  syncOa: (id: number) => mutate<OaItem>(`/api/dingtalk-oa/${id}/sync`, { method: 'POST' }),
+  attachOa: (id: number, instanceId: string) => mutate<OaItem>(`/api/dingtalk-oa/${id}/attach`, { method: 'POST', body: JSON.stringify({ instanceId }) }),
+  closeOaException: (id: number, version: number, note: string, confirmed: boolean) => mutate<OaItem>(`/api/dingtalk-oa/${id}/close-exception`, { method: 'POST', body: JSON.stringify({ version, note, confirmed }) }),
   workbench: () => request<Workbench>('/api/management/workbench'),
   assetHistory: (assetId: number) => request<AssetHistory>(`/api/management/history/${assetId}`),
   managementReports: () => request<ManagementReport>('/api/management/reports'),

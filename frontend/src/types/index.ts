@@ -207,7 +207,7 @@ export interface TaskNotificationStatus {
   recent: { id: number; category: string; title: string; state: string; attempts: number; lastError: string | null; createdAt: string; sentAt: string | null }[]
 }
 export type OperationKind = 'ISSUE' | 'RETURN' | 'TRANSFER' | 'CORRECTION' | 'REPAIR'
-export type OperationState = 'PENDING' | 'WAITING_CONFIRM' | 'PROCESSING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED'
+export type OperationState = 'PENDING' | 'WAITING_CONFIRM' | 'PROCESSING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'OA_PENDING' | 'OA_FAILED'
 export interface OperationSummary { id: number; version: number; kind: OperationKind; state: OperationState; ownerId: number; ownerName: string; targetId: number; targetName: string; assetId: number | null; assetTag: string | null; title: string; updatedAt: string }
 export interface WorkflowEvent { occurredAt: string; actor: string; description: string }
 export interface OperationDetail { task: OperationSummary; assetVersion: number | null; description: string; proposed: Record<string, string>; outcome: 'FIXED' | 'SCRAP' | null; repairCost: number | null; events: WorkflowEvent[] }

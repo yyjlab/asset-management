@@ -25,6 +25,10 @@ public class UserAccount {
     @Column(name = "dingtalk_identity", unique = true, length = 64)
     private String dingtalkIdentity;
 
+    // Server-only identity for OA; populated on a successful DingTalk login/binding.
+    @Column(length = 256)
+    private String dingtalkUnionId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role = UserRole.USER;
@@ -83,7 +87,10 @@ public class UserAccount {
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public String getDingtalkIdentity() { return dingtalkIdentity; }
-    public void setDingtalkIdentity(String identity) { this.dingtalkIdentity = identity; }
+    public void setDingtalkIdentity(String identity) { this.dingtalkIdentity = identity; if (identity == null) this.dingtalkUnionId = null; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getDingtalkUnionId() { return dingtalkUnionId; }
+    public void setDingtalkUnionId(String value) { this.dingtalkUnionId = value; }
     public UserRole getRole() { return role; }
     public void setRole(UserRole role) { this.role = role; }
     public Set<Permission> getPermissions() { return permissions; }
