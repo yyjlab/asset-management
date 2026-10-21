@@ -620,33 +620,41 @@ function treeElements(tree) {
   return result;
 }
 function loginHarness(api) {
-  const states = ['', '', true], refs = [], effects = [], assigned = []; let stateIndex = 0, refIndex = 0;
-  const react = { useState(initial) { const index = stateIndex++; if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial; return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }]; }, useRef(initial) { const index = refIndex++; return refs[index] ||= { current: initial }; }, useEffect: callback => effects.push(callback) };
-  const Qr = () => null;
-  const { LoginPage } = load('components/LoginPage.tsx', { react, '../api': { api }, './DingTalkQrLogin': { DingTalkQrLogin: Qr } }, false, { Error, window: { location: { assign: value => assigned.push(value) } } });
-  return { states, assigned, effects, Qr, render() { stateIndex = 0; refIndex = 0; return treeElements(LoginPage({ loading: false, error: '', onLogin: async () => { throw new Error('Unexpected password login'); } })); } };
+  const states = ['', '', true], effects = [], assigned = []; let stateIndex = 0;
+  const react = { useState(initial) { const index = stateIndex++; if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial; return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }]; }, useEffect: callback => effects.push(callback) };
+  const { LoginPage } = load('components/LoginPage.tsx', { react, '../api': { api } }, false, { window: { location: { assign: value => assigned.push(value) } } });
+  return { states, assigned, effects, render(props = {}) { stateIndex = 0; return treeElements(LoginPage({ loading: false, error: '', onLogin: async () => { throw new Error('Unexpected password login'); }, ...props })); } };
 }
 test('default DingTalk login preserves official desktop quick authorization without initializing a QR code', () => {
   let qrCalls = 0; const view = loginHarness({ beginDingtalkQr: async () => { qrCalls++; return qrFixture(); } });
   view.render().find(item => item.type === 'button' && item.props.children === '钉钉登录').props.onClick();
-  assert.deepEqual(view.assigned, ['/api/v1/auth/dingtalk/login']); assert.equal(qrCalls, 0); assert.equal(view.states[3], false);
+  assert.deepEqual(view.assigned, ['/api/v1/auth/dingtalk/login']); assert.equal(qrCalls, 0);
 });
-test('explicit QR fallback prevents double initialization and preserves password and quick authorization options', async () => {
-  let calls = 0; const authorization = qrFixture();
-  const view = loginHarness({ beginDingtalkQr: async () => { calls++; return authorization; } });
-  const button = view.render().find(item => item.type === 'button' && item.props.children === '改用扫码登录'); button.props.onClick(); button.props.onClick();
-  await new Promise(resolve => setImmediate(resolve)); assert.equal(calls, 1); assert.deepEqual(view.assigned, []);
-  const tree = view.render(), qr = tree.find(item => item.type === view.Qr); assert.equal(qr.props.authorization, authorization); assert.ok(!tree.some(item => item.type === 'form'));
-  tree.find(item => item.type === 'button' && item.props.children === '使用电脑钉钉快捷登录').props.onClick();
-  assert.deepEqual(view.assigned, ['/api/v1/auth/dingtalk/login']); assert.equal(calls, 1);
-  tree.find(item => item.type === 'button' && item.props.children === '返回账号密码登录').props.onClick();
-  assert.ok(view.render().some(item => item.type === 'form')); assert.equal(view.states[4], null);
+test('login page keeps password and official DingTalk login without duplicate QR controls or explanatory copy', () => {
+  const tree = loginHarness({}).render();
+  assert.equal(tree.filter(item => item.type === 'button').length, 2);
+  assert.equal(tree.filter(item => item.type === 'form').length, 1);
+  assert.ok(tree.some(item => item.type === 'h1' && item.props.children === 'Asset Management'));
+  assert.ok(!tree.some(item => ['small', 'iframe'].includes(item.type)));
+  assert.ok(!tree.some(item => item.props.children === '改用扫码登录'));
 });
-test('QR initialization errors expose retry rather than falling back to the unwanted account-selection page', async () => {
-  const view = loginHarness({ beginDingtalkQr: async () => { throw new Error('网络连接失败'); } });
-  view.render().find(item => item.type === 'button' && item.props.children === '改用扫码登录').props.onClick(); await new Promise(resolve => setImmediate(resolve));
-  const tree = view.render(); assert.ok(tree.some(item => item.props.role === 'alert' && item.props.children === '网络连接失败'));
-  assert.ok(tree.some(item => item.type === 'button' && item.props.children === '重试扫码登录')); assert.deepEqual(view.assigned, []);
+test('simplified login preserves password submission, error display and loading guards', () => {
+  const view = loginHarness({}), submitted = [];
+  const inputs = view.render().filter(item => item.type === 'input');
+  inputs[0].props.onChange({ target: { value: 'admin' } }); inputs[1].props.onChange({ target: { value: 'test-password' } });
+  let prevented = false;
+  view.render({ onLogin: async (username, password) => { submitted.push({ username, password }); } }).find(item => item.type === 'form').props.onSubmit({ preventDefault() { prevented = true; } });
+  assert.ok(prevented); assert.deepEqual(submitted, [{ username: 'admin', password: 'test-password' }]);
+  const busy = view.render({ loading: true, error: '登录失败' });
+  assert.ok(busy.some(item => item.props.role === 'alert' && item.props.children === '登录失败'));
+  assert.ok(busy.filter(item => item.type === 'button').every(item => item.props.disabled));
+  busy.find(item => item.type === 'button' && item.props.children === '钉钉登录').props.onClick(); assert.deepEqual(view.assigned, []);
+});
+test('disabled DingTalk login leaves the password form available', () => {
+  const view = loginHarness({}); view.states[2] = false;
+  const tree = view.render();
+  assert.ok(tree.some(item => item.type === 'form'));
+  assert.ok(!tree.some(item => item.type === 'button' && item.props.children === '钉钉登录'));
 });
 test('QR initialization is CSRF protected and never navigates to the generic authorization page', async () => {
   const calls = []; const { api } = load('api.ts', {}, false, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf' } : qrFixture() }; } });
