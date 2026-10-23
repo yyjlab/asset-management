@@ -37,7 +37,8 @@ public record AssetRequest(
         List<@Valid RelatedDeviceRequest> relatedDevices,
         List<@Valid AccessoryRequest> accessories,
         @Size(max = 5, message = "自定义参数最多5项") List<@Valid CustomParameterRequest> customParameters,
-        Long assignedUserId
+        Long assignedUserId,
+        DomainJoinStatus domainJoinStatus
 ) {
     public record RelatedDeviceRequest(
             @NotBlank(message = "随附配件名称不能为空") @Size(max = 120) String name,

@@ -1,5 +1,13 @@
 export type LookupType = 'COMPANY' | 'ASSET_NAME' | 'DEPARTMENT' | 'MODEL' | 'CPU' | 'GRAPHICS_CARD' | 'CATEGORY' | 'STATUS' | 'LOCATION'
 export type AssetProfile = 'COMPUTER' | 'DISPLAY' | 'GENERAL'
+export type DomainJoinStatus = 'JOINED' | 'NOT_JOINED' | 'UNKNOWN'
+export interface DomainStatusOption {
+  code: DomainJoinStatus
+  label: string
+  description: string
+  sortOrder: number
+  version: number | null
+}
 
 export interface LookupValue {
   id: number
@@ -21,6 +29,7 @@ export interface Asset {
   memory: string | null
   storage: string | null
   graphicsCard: string | null
+  domainJoinStatus?: DomainJoinStatus | null
   manufacturerSerialNumber: string | null
   screenSize: string | null
   displayResolution: string | null
@@ -57,6 +66,7 @@ export interface AssetPayload {
   memory: string
   storage: string
   graphicsCard: string
+  domainJoinStatus?: DomainJoinStatus | null
   manufacturerSerialNumber: string
   screenSize: string
   displayResolution: string

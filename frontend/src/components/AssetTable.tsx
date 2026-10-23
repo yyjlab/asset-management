@@ -3,6 +3,7 @@ import { BackToTop } from './BackToTop'
 import type { Asset, AssetProfile } from '../types'
 import { CloneIcon, EditIcon } from './Icons'
 import { AssetImageLightbox } from './AssetImageLightbox'
+import { DomainJoinBadge } from './DomainJoinBadge'
 
 interface Props {
   assets: Asset[]
@@ -39,12 +40,11 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const showPurchasePrice = assets.some((asset) => asset.purchasePrice != null)
-  const showCurrentValue = assets.some((asset) => asset.currentValue != null)
-  const valueColumnCount = Number(showPurchasePrice) + Number(showCurrentValue)
+  const valueColumnCount = Number(showPurchasePrice)
   const assetParameters = assets.map(firstThreeParameters)
   const visibleParameterIndexes = [0, 1, 2].filter((index) => assetParameters.some((parameters) => Boolean(parameters[index]?.value.trim())))
-  const columnCount = 9 + visibleParameterIndexes.length + valueColumnCount
-  const tableMinimumWidth = 974 + visibleParameterIndexes.length * 128 + valueColumnCount * 110
+  const columnCount = 10 + visibleParameterIndexes.length + valueColumnCount
+  const tableMinimumWidth = 1084 + visibleParameterIndexes.length * 128 + valueColumnCount * 110
 
   return (
     <><div className="table-wrap" ref={tableRef}>
@@ -57,15 +57,15 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
           {visibleParameterIndexes.map((index) => <col className={['asset-col-cpu', 'asset-col-memory', 'asset-col-storage'][index]} key={index} />)}
           <col className="asset-col-category" />
           <col className="asset-col-status" />
+          <col className="asset-col-domain" />
           <col className="asset-col-assignee" />
           <col className="asset-col-location" />
           {showPurchasePrice && <col className="asset-col-price" />}
-          {showCurrentValue && <col className="asset-col-value" />}
           <col className="asset-col-actions" />
         </colgroup>
         <thead><tr>
           <th>资产编号</th><th>资产名称</th><th>图片</th><th>设备型号</th>{visibleParameterIndexes.length > 0 && <th colSpan={visibleParameterIndexes.length} scope="colgroup">规格配置</th>}<th>分类</th><th>状态</th>
-          <th>领用人</th><th>位置</th>{showPurchasePrice && <th className="number">采购价格</th>}{showCurrentValue && <th className="number">当前价值</th>}<th className="sticky-action">操作</th>
+          <th scope="col" className="asset-domain-cell">入域状态</th><th>领用人</th><th>位置</th>{showPurchasePrice && <th className="number">采购价格</th>}<th className="sticky-action">操作</th>
         </tr></thead>
         <tbody>
           {loading ? <tr><td colSpan={columnCount}><div className="table-empty"><span className="spinner" />正在读取资产…</div></td></tr> :
@@ -89,10 +89,10 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
                })}
                <td><span className="compact-text" title={asset.category.name}>{asset.category.name}</span></td>
                <td><span className={`status-pill ${stateClass}`}>{state}</span></td>
+               <td className="asset-domain-cell"><DomainJoinBadge asset={asset} /></td>
                <td><span className="compact-text" title={asset.assignedTo || '暂未领用'}>{asset.assignedTo || '暂未领用'}</span></td>
                <td><span className="compact-text" title={asset.location.name}>{asset.location.name}</span></td>
                {showPurchasePrice && <td className="number value-cell">{money(asset.purchasePrice)}</td>}
-               {showCurrentValue && <td className="number value-cell">{money(asset.currentValue)}</td>}
                <td className="sticky-action"><div className="row-actions">
                  {canCreate && <button className="clone-action" title="克隆资产" onClick={(event) => { event.stopPropagation(); onClone(asset) }}><CloneIcon /></button>}
                  {canEdit && <button className="edit-action" title="编辑资产" onClick={(event) => { event.stopPropagation(); onEdit(asset) }}><EditIcon /></button>}

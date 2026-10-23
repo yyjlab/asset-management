@@ -46,6 +46,11 @@ public class Asset {
     @Column(length = 200)
     private String graphicsCard;
 
+    // Nullable for existing assets: no inferred or bulk-written domain membership.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private DomainJoinStatus domainJoinStatus;
+
     @Column(name = "manufacturer_serial_number", unique = true, length = 160)
     private String manufacturerSerialNumber;
 
@@ -171,6 +176,14 @@ public class Asset {
     public void setStorage(String storage) { this.storage = storage; }
     public String getGraphicsCard() { return graphicsCard; }
     public void setGraphicsCard(String graphicsCard) { this.graphicsCard = graphicsCard; }
+    public DomainJoinStatus getDomainJoinStatus() { return domainJoinStatus; }
+    public void setDomainJoinStatus(DomainJoinStatus value) { this.domainJoinStatus = value; }
+    public DomainJoinStatus effectiveDomainJoinStatus() {
+        var profile = category == null ? null : category.getAssetProfile() == null
+                ? com.acme.assetmanagement.lookup.AssetProfile.infer(category.getName()) : category.getAssetProfile();
+        return profile == com.acme.assetmanagement.lookup.AssetProfile.COMPUTER
+                ? domainJoinStatus == null ? DomainJoinStatus.UNKNOWN : domainJoinStatus : null;
+    }
     public String getManufacturerSerialNumber() { return manufacturerSerialNumber; }
     public void setManufacturerSerialNumber(String manufacturerSerialNumber) { this.manufacturerSerialNumber = manufacturerSerialNumber; }
     public String getScreenSize() { return screenSize; }

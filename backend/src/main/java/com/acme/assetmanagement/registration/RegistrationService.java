@@ -129,7 +129,7 @@ public class RegistrationService {
                 registration.storage, null, blankToNull(registration.serialNumber), null, null, null, null,
                 request.companyId(), null, registration.model, request.categoryId(), status.getId(), request.locationId(),
                 null, null, true, owner.getDisplayName(), null, photoData, registration.notes,
-                List.of(), null, List.of(), List.of(), List.of(), owner.getId());
+                List.of(), null, List.of(), List.of(), List.of(), owner.getId(), null);
         var asset = assetService.create(assetRequest);
         approve(registration, actor, asset.id(), asset.assetTag(), request.note(), "审核通过并新增资产；未覆盖任何旧资产");
         return detail(registration);

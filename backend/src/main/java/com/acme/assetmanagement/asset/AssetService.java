@@ -78,6 +78,10 @@ public class AssetService {
         validateUnique(request, null, assetTag);
         Asset asset = new Asset();
         apply(asset, request);
+        // A cloned record is a different device, not a verified copy of domain membership.
+        if (cloneSourceId != null && profileOf(asset.getCategory()) == AssetProfile.COMPUTER) {
+            asset.setDomainJoinStatus(DomainJoinStatus.UNKNOWN);
+        }
         rememberSuggestions(asset);
         asset.setAssetTag(assetTag);
         Asset saved = assetRepository.save(asset);
@@ -175,6 +179,7 @@ public class AssetService {
         values.put("内存", asset.getMemory());
         values.put("硬盘", asset.getStorage());
         values.put("显卡", asset.getGraphicsCard());
+        values.put("入域状态", asset.effectiveDomainJoinStatus() == null ? "—" : asset.effectiveDomainJoinStatus().label());
         values.put("厂家序列号", asset.getManufacturerSerialNumber());
         values.put("屏幕尺寸", asset.getScreenSize());
         values.put("分辨率", asset.getDisplayResolution());
@@ -263,6 +268,12 @@ public class AssetService {
         LookupValue category = findLookup(request.categoryId(), LookupType.CATEGORY);
         asset.setCategory(category);
         AssetProfile profile = profileOf(category);
+        if (profile != AssetProfile.COMPUTER && request.domainJoinStatus() != null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "只有电脑资产可以设置入域状态");
+        }
+        if (profile != AssetProfile.COMPUTER) asset.setDomainJoinStatus(null);
+        else if (request.domainJoinStatus() != null) asset.setDomainJoinStatus(request.domainJoinStatus());
+        // Omitted by an older client: preserve the stored value instead of clearing it.
         if (profile == AssetProfile.COMPUTER) {
             String cpu = clean(request.cpu());
             asset.setCpu(cpu);

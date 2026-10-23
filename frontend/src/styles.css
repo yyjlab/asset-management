@@ -1049,11 +1049,23 @@ body { font-size: 15px; }
 .invoice-asset-table col.asset-col-storage { width: 128px; }
 .invoice-asset-table col.asset-col-category { width: 82px; }
 .invoice-asset-table col.asset-col-status { width: 96px; }
+.invoice-asset-table col.asset-col-domain { width: 110px; }
 .invoice-asset-table col.asset-col-assignee { width: 108px; }
 .invoice-asset-table col.asset-col-location { width: 126px; }
-.invoice-asset-table col.asset-col-price,.invoice-asset-table col.asset-col-value { width: 110px; }
+.invoice-asset-table col.asset-col-price { width: 110px; }
 .invoice-asset-table col.asset-col-actions { width: 78px; }
 .invoice-asset-table th,.invoice-asset-table td { min-width: 0 !important; }
+.invoice-asset-table th,.invoice-asset-table td { vertical-align: middle; }
+.invoice-asset-table .asset-domain-cell { text-align: left; white-space: nowrap; }
+.domain-status-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 58px; padding: 5px 9px; border-radius: 7px; font-size: 11px; font-weight: 700; line-height: 16px; white-space: nowrap; vertical-align: middle; }
+.domain-status-badge.domain-joined { color: #137561; background: #e5f7f1; }
+.domain-status-badge.domain-not_joined { color: #965512; background: #fff3df; }
+.domain-status-badge.domain-unknown { color: #55667f; background: #eef2f7; }
+.domain-status-na { color: #97a4b7; }
+.domain-filter { flex-shrink: 0; width: 154px; }
+:root[data-theme="dark"] .domain-status-badge.domain-joined { color: #7ce2c5; background: #153c37; }
+:root[data-theme="dark"] .domain-status-badge.domain-not_joined { color: #f3c384; background: #44321e; }
+:root[data-theme="dark"] .domain-status-badge.domain-unknown { color: #adbbcf; background: #29374b; }
 .invoice-asset-table th:nth-child(3),.invoice-asset-table td:nth-child(3),.invoice-asset-table .sticky-action { text-align: center; }
 .invoice-asset-table td:nth-child(3) > .image-preview-trigger,.invoice-asset-table td:nth-child(3) > .no-image { margin-right: auto; margin-left: auto; }
 .invoice-list-card .row-actions { justify-content: center; }

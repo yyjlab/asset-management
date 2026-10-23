@@ -4,6 +4,9 @@ import { lookupLabels } from '../types'
 import { DragHandleIcon, PlusIcon, SaveIcon, TrashIcon, UploadIcon } from './Icons'
 import { EditableCombobox } from './EditableCombobox'
 import type { ComboboxOption } from './EditableCombobox'
+import { api } from '../api'
+import { domainStatusOf, domainStatusOptions } from '../domainJoin'
+import type { DomainJoinStatus } from '../types'
 
 interface Props {
   asset: Asset | null
@@ -25,6 +28,7 @@ const emptyPayload = (): AssetPayload => ({
   screenSize: '', displayResolution: '', displayInterface: '', orderNumber: '',
   companyId: null, modelId: null, modelName: '', categoryId: null, statusId: null, locationId: null,
   purchasePrice: null, currentValue: null, checkedOut: false, assignedTo: '', assignedUserId: null,
+  domainJoinStatus: 'UNKNOWN',
   imageUrl: '', imageUrls: [], notes: '', boundDisplayIds: [], boundComputerId: null, relatedDevices: [], accessories: [], customParameters: [],
 })
 
@@ -44,6 +48,7 @@ function fromAsset(asset: Asset | null, clone = false): AssetPayload {
     locationId: asset.location.id, purchasePrice: asset.purchasePrice, currentValue: asset.currentValue,
     checkedOut: clone ? false : asset.checkedOut || statusMeansCheckedOut, assignedTo: clone ? '' : asset.assignedTo || '',
     assignedUserId: clone ? null : asset.assignedUserId,
+    domainJoinStatus: domainStatusOf(asset) === null ? null : clone ? 'UNKNOWN' : domainStatusOf(asset),
     imageUrl: asset.imageUrls?.[0] || asset.imageUrl || '',
     imageUrls: asset.imageUrls?.length ? [...asset.imageUrls] : asset.imageUrl ? [asset.imageUrl] : [],
     notes: asset.notes || '',
@@ -157,6 +162,8 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
     })
   }
   const [processingImages, setProcessingImages] = useState(false)
+  const [domainOptions, setDomainOptions] = useState(domainStatusOptions)
+  const [domainOptionsError, setDomainOptionsError] = useState('')
   const imageProcessingRef = useRef(false)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -210,6 +217,14 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
   const updateCustomParameter = (index: number, change: Partial<CustomParameter>) => set('customParameters', form.customParameters.map((item, itemIndex) => itemIndex === index ? { ...item, ...change } : item))
   const selectedCategory = lookups.find((item) => item.type === 'CATEGORY' && item.id === form.categoryId)
   const profile = categoryProfile(selectedCategory)
+  useEffect(() => {
+    if (profile !== 'COMPUTER') return
+    let active = true
+    setDomainOptionsError('')
+    api.domainStatuses().then(options => { if (active) setDomainOptions(options) })
+      .catch(() => { if (active) setDomainOptionsError('入域选项说明读取失败，暂用系统固定选项；不影响已保存的入域状态。') })
+    return () => { active = false }
+  }, [profile])
   const availableDisplays = bindableAssets.filter((item) => categoryProfile(item.category) === 'DISPLAY' && item.id !== asset?.id
     && (!item.boundComputer || item.boundComputer.id === asset?.id))
   const availableComputers = bindableAssets.filter((item) => categoryProfile(item.category) === 'COMPUTER' && item.id !== asset?.id)
@@ -222,7 +237,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
   const modelField = (label: string) => <label><span>{label} *</span><EditableCombobox editable required value={form.modelName} selectedId={form.modelId} placeholder="输入或选择型号" options={lookups.filter((item) => item.type === 'MODEL').map((item) => ({ id: item.id, label: item.name }))} onChange={(value, id) => setForm((current) => ({ ...current, modelName: value, modelId: typeof id === 'number' ? id : null }))} onDelete={async (option: ComboboxOption) => onDeleteLookup(lookups.find((item) => item.id === option.id)!)} /></label>
 
   return <section className="invoice-form-page">
-    <div className="invoice-form-outer"><form className="invoice-form-card symmetric-asset-form" onSubmit={async (event) => { event.preventDefault(); if (!imageProcessingRef.current && !saving) await onSave(form) }}>
+    <div className="invoice-form-outer"><form className="invoice-form-card symmetric-asset-form" onSubmit={async (event) => { event.preventDefault(); if (!imageProcessingRef.current && !saving) await onSave({ ...form, domainJoinStatus: profile === 'COMPUTER' ? form.domainJoinStatus || 'UNKNOWN' : null }) }}>
       <div className="invoice-form-scroll-body">
       <div className="invoice-form-heading"><div><h2>{clone ? '克隆资产' : asset ? '编辑资产' : '新增资产'}</h2><p>资产编号：{form.assetTag || '保存后按日期与当日流水自动生成'} · {new Date().toLocaleDateString('zh-CN')}</p></div><span className="form-mode">{clone ? 'CLONE' : asset ? 'EDIT' : 'CREATE'}</span></div>
 
@@ -237,6 +252,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
             const category = lookups.find((item) => item.id === v)
             const nextProfile = categoryProfile(category)
             setForm((current) => ({ ...current, categoryId: v,
+              domainJoinStatus: nextProfile === 'COMPUTER' ? current.domainJoinStatus || 'UNKNOWN' : null,
               customParameters: !asset && current.categoryId !== v && nextProfile === 'GENERAL'
                 ? (category?.parameterTemplate || []).map((name) => ({ name, value: '' }))
                 : current.customParameters,
@@ -252,7 +268,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
       </section>
 
       <section className="form-section">
-        <div className="form-section-head"><div><h3>{profile === 'DISPLAY' ? '显示器参数' : profile === 'COMPUTER' ? '电脑配置' : '设备参数'}</h3><p>{profile === 'DISPLAY' ? '显示器型号、规格与采购识别信息' : profile === 'COMPUTER' ? '电脑型号与主要硬件参数' : '通用设备的型号、订单号与自定义参数'}</p></div>{profile === 'GENERAL' ? <button type="button" className="section-add-button" disabled={form.customParameters.length >= 5} title={form.customParameters.length >= 5 ? '一排最多显示5个自定义参数' : '添加自定义参数'} onClick={() => set('customParameters', [...form.customParameters, { name: '', value: '' }])}><PlusIcon />添加参数</button> : <span className={`profile-badge ${profile.toLowerCase()}`}>{profile === 'DISPLAY' ? '显示设备' : '电脑设备'}</span>}</div>
+        <div className="form-section-head"><div><h3>{profile === 'DISPLAY' ? '显示器参数' : profile === 'COMPUTER' ? '电脑配置' : '设备参数'}</h3><p>{profile === 'DISPLAY' ? '显示器型号、规格与采购识别信息' : profile === 'COMPUTER' ? '电脑型号与主要硬件参数 · 入域情况由运维核实' : '通用设备的型号、订单号与自定义参数'}</p>{profile === 'COMPUTER' && domainOptionsError && <p role="alert">{domainOptionsError}</p>}</div>{profile === 'GENERAL' ? <button type="button" className="section-add-button" disabled={form.customParameters.length >= 5} title={form.customParameters.length >= 5 ? '一排最多显示5个自定义参数' : '添加自定义参数'} onClick={() => set('customParameters', [...form.customParameters, { name: '', value: '' }])}><PlusIcon />添加参数</button> : <span className={`profile-badge ${profile.toLowerCase()}`}>{profile === 'DISPLAY' ? '显示设备' : '电脑设备'}</span>}</div>
         <div className={`form-row-grid device-config-grid profile-${profile.toLowerCase()}`}>
           {profile === 'COMPUTER' && <>
             {modelField('电脑型号')}
@@ -260,6 +276,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
             <label><span>内存</span><EditableCombobox editable value={form.memory} selectedId={form.memory} placeholder="可输入，或选择常用容量" options={['8G', '16G', '32G', '64G'].map((value) => ({ id: value, label: value }))} onChange={(value) => set('memory', value)} /></label>
             <label><span>硬盘</span><EditableCombobox editable value={form.storage} selectedId={form.storage} placeholder="可输入，或选择常用容量" options={['250G', '512G', '1T'].map((value) => ({ id: value, label: value }))} onChange={(value) => set('storage', value)} /></label>
             <label><span>显卡</span><EditableCombobox editable value={form.graphicsCard} selectedId={selectedSuggestionId('GRAPHICS_CARD', form.graphicsCard)} placeholder="输入或选择显卡" options={suggestionOptions('GRAPHICS_CARD')} onChange={(value) => set('graphicsCard', value.slice(0, 200))} onDelete={deleteSuggestion} /></label>
+            <label><span>入域状态</span><select aria-label="入域状态" value={form.domainJoinStatus || 'UNKNOWN'} disabled={clone} onChange={event => set('domainJoinStatus', event.target.value as DomainJoinStatus)} title={clone ? '克隆的新电脑从待确认开始，请建档后核实' : domainOptions.find(option => option.code === form.domainJoinStatus)?.description}>{domainOptions.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label>
           </>}
           {profile === 'DISPLAY' && <>
             {modelField('显示器型号')}

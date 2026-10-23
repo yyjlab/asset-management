@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx'].map(async file => {
+  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
       build: {
@@ -35,7 +35,12 @@ function load(file, mocks = {}, collapsed = false, globals = {}) {
   const browser = { location: { pathname: '/' }, history: { state: null, pushState() {}, replaceState() {} }, localStorage: { getItem: () => String(collapsed) } };
   vm.runInNewContext(compiled[file], {
     module, exports: module.exports, window: browser, URLSearchParams, FormData, Blob, File, crypto: require('node:crypto').webcrypto, ...globals,
-    require: id => Object.hasOwn(mocks, id) ? mocks[id] : frontendRequire(id),
+    require: id => {
+      if (Object.hasOwn(mocks, id)) return mocks[id];
+      const local = path.posix.normalize(path.posix.join(path.posix.dirname(file), id));
+      const target = id.startsWith('.') && [local, `${local}.ts`, `${local}.tsx`].find(candidate => Object.hasOwn(compiled, candidate));
+      return target ? load(target, {}, collapsed, globals) : frontendRequire(id);
+    },
   }, { filename: file });
   return module.exports;
 }
@@ -72,7 +77,7 @@ test('password login retains existing permission-based menus', () => {
 
 test('administrator keeps the settings menu with either login method', () => {
   for (const dingtalkLogin of [true, false]) {
-    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '岗位配发模板', '保修与供应商', '管理统计', '用户', '日志', '设置', '数据']);
+    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '岗位配发模板', '保修与供应商', '管理统计', '用户', '日志', '基础资料', '设置', '数据']);
   }
 });
 
@@ -104,13 +109,13 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, opti
   const changes = [], componentProps = {};
   const react = { ...React, useState(initial) {
     const index = stateIndex++;
-    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : index === 16 && options.search !== undefined ? options.search : index === 17 && options.loading !== undefined ? options.loading : initial);
+    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : index === 7 && options.assets ? options.assets : index === 16 && options.search !== undefined ? options.search : index === 17 && options.loading !== undefined ? options.loading : index === 33 && options.domainFilter !== undefined ? options.domainFilter : initial);
     return [value, next => changes.push({ index, value: typeof next === 'function' ? next(value) : next })];
   } };
   const icons = load('components/Icons.tsx');
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons });
   const rendered = [];
-  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
+  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
   const mocks = { react, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
@@ -850,4 +855,130 @@ test('procurement refresh also refreshes the asset choices after another person 
   assert.equal(orderRefreshes, 1);
   assert.equal(assetRefreshes, 1);
   assert.equal(typeof appMarkup('procurement').componentProps.ProcurementPage.onAssetsChanged, 'function');
+});
+
+const domainAsset = overrides => selfAsset({ category: { id: 1, name: '笔记本电脑', assetProfile: 'COMPUTER' },
+  company: { id: 2, name: '公司' }, model: { id: 3, name: 'ThinkPad' }, location: { id: 4, name: '仓库' },
+  status: { id: 5, name: '当前可用' }, checkedOut: false, purchasePrice: 3000, currentValue: 2000,
+  boundDisplays: [], customParameters: [], relatedDevices: [], accessories: [], imageUrls: [],
+  createdAt: '2026-10-23T10:00:00', updatedAt: '2026-10-23T10:00:00', ...overrides });
+
+function assetTableMarkup(assets, loading = false) {
+  const { AssetTable } = load('components/AssetTable.tsx', {
+    './Icons': load('components/Icons.tsx'), './AssetImageLightbox': { AssetImageLightbox: () => null }, './BackToTop': { BackToTop: () => null },
+  });
+  return renderToStaticMarkup(React.createElement(AssetTable, { assets, loading, canEdit: true, canCreate: true, onSelect() {}, onEdit() {}, onClone() {} }));
+}
+
+test('domain status has its own aligned column between custody status and assignee; current value data is not rendered', () => {
+  const assets = [domainAsset({ domainJoinStatus: 'JOINED', cpu: 'i7' }), domainAsset({ id: 2, domainJoinStatus: 'NOT_JOINED' })];
+  const before = JSON.stringify(assets);
+  const markup = assetTableMarkup(assets);
+  assert.match(markup, /<th>状态<\/th><th scope="col" class="asset-domain-cell">入域状态<\/th><th>领用人<\/th>/);
+  assert.ok(!markup.includes('当前价值')); assert.ok(!markup.includes('2,000.00'));
+  assert.match(markup, /采购价格/); assert.match(markup, /3,000.00/);
+  assert.match(markup, /domain-joined/); assert.match(markup, /domain-not_joined/);
+  const cols = [...markup.matchAll(/<col class=/g)].length;
+  for (const row of markup.split('<tbody>')[1].split('</tbody>')[0].matchAll(/<tr[^>]*>(.*?)<\/tr>/g)) assert.equal([...row[1].matchAll(/<td[ >]/g)].length, cols);
+  assert.equal(JSON.stringify(assets), before);
+});
+
+test('legacy computers remain unknown, other equipment is not mislabeled as unjoined, and empty row colspan matches', () => {
+  const markup = assetTableMarkup([domainAsset(), domainAsset({ id: 2, category: { name: '显示器', assetProfile: 'DISPLAY' } })]);
+  assert.match(markup, /domain-unknown[^>]*>待确认/);
+  assert.match(markup, /aria-label="入域状态不适用">—/);
+  for (const assets of [[], [domainAsset({ purchasePrice: null })], [domainAsset({ cpu: 'i7', memory: '16G', storage: '512G' })]]) {
+    const loading = assetTableMarkup(assets, true);
+    const cols = [...loading.matchAll(/<col class=/g)].length;
+    assert.match(loading, new RegExp(`<td colSpan="${cols}">`));
+  }
+});
+
+test('domain filter works locally on computer records without changing the collection', () => {
+  const assets = [domainAsset({ id: 1, domainJoinStatus: 'JOINED' }), domainAsset({ id: 2 }), domainAsset({ id: 3, category: { name: '显示器', assetProfile: 'DISPLAY' } })];
+  const { matchesDomainStatus } = load('domainJoin.ts');
+  assert.deepEqual(assets.filter(asset => matchesDomainStatus(asset, 'UNKNOWN')).map(asset => asset.id), [2]);
+  assert.equal(assets.filter(asset => matchesDomainStatus(asset, '')).length, 3);
+  const result = appMarkup('assets', {}, { name: 'list' }, { assets, domainFilter: 'JOINED' });
+  assert.deepEqual(result.componentProps.AssetTable.assets.map(asset => asset.id), [1]);
+  const filter = findNativeElement(result.tree, child => child.type === 'select' && child.props['aria-label'] === '筛选入域状态');
+  assert.ok(filter); filter.props.onChange({ target: { value: 'NOT_JOINED' } });
+  assert.ok(result.changes.some(change => change.index === 33 && change.value === 'NOT_JOINED'));
+  assert.equal(assets.length, 3);
+});
+
+function assetFormHarness(asset, clone = false) {
+  const states = [], effects = [], submissions = []; let index = 0;
+  const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; }, useRef: value => ({ current: value }), useEffect: effect => effects.push(effect) };
+  const { AssetForm } = load('components/AssetForm.tsx', { react, '../api': { api: { domainStatuses: async () => load('domainJoin.ts').domainStatusOptions } }, './Icons': load('components/Icons.tsx'), './EditableCombobox': { EditableCombobox: () => null }, '../types': { lookupLabels: {} } });
+  const lookups = [domainAsset().category, { id: 9, name: '显示器', assetProfile: 'DISPLAY' }].map(value => ({ ...value, type: 'CATEGORY' }));
+  return { states, submissions, render() { index = 0; return AssetForm({ asset, clone, lookups, bindableAssets: [], assignees: [], canAssign: true, saving: false, createdLookup: null, onSave: async payload => submissions.push(payload) }); } };
+}
+
+test('computer edit selector preserves status, clones reset verification, and non-computer submissions clear only domain status', async () => {
+  for (const [asset, clone, expected] of [[domainAsset({ domainJoinStatus: 'JOINED' }), false, 'JOINED'], [domainAsset({ domainJoinStatus: 'JOINED' }), true, 'UNKNOWN'], [domainAsset(), false, 'UNKNOWN']]) {
+    const view = assetFormHarness(asset, clone);
+    const tree = view.render();
+    const select = findNativeElement(tree, child => child.type === 'select' && child.props['aria-label'] === '入域状态');
+    assert.equal(select.props.value, expected);
+    assert.equal(select.props.children.length, 3);
+    assert.equal(select.props.disabled, clone);
+    assert.equal(view.states[0].currentValue, 2000);
+    if (!clone) select.props.onChange({ target: { value: 'NOT_JOINED' } });
+    const form = findNativeElement(view.render(), child => child.type === 'form');
+    await form.props.onSubmit({ preventDefault() {} });
+    assert.equal(view.submissions[0].domainJoinStatus, clone ? 'UNKNOWN' : 'NOT_JOINED');
+  }
+  const display = assetFormHarness(domainAsset({ category: { id: 9, name: '显示器', assetProfile: 'DISPLAY' } }));
+  const tree = display.render();
+  assert.equal(findNativeElement(tree, child => child.type === 'select' && child.props['aria-label'] === '入域状态'), undefined);
+  await findNativeElement(tree, child => child.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(display.submissions[0].domainJoinStatus, null);
+});
+
+test('domain detail remains separate from custody and retains current valuation', () => {
+  const markup = assetDetailMarkup({ category: { name: '笔记本', assetProfile: 'COMPUTER' }, boundDisplays: [], domainJoinStatus: 'JOINED', currentValue: 2000 });
+  assert.match(markup, /入域状态/); assert.match(markup, /domain-joined/);
+  assert.match(markup, /领用人：袁玉杰/); assert.match(markup, /当前价值/); assert.match(markup, /2,000.00/);
+});
+
+test('foundation is an administrator-only page and never mounts its editor for employees', () => {
+  assert.ok(menuLabels(sidebarMarkup({ canManageUsers: true })).includes('基础资料'));
+  assert.ok(!menuLabels(sidebarMarkup()).includes('基础资料'));
+  assert.ok(!appMarkup('foundation').rendered.includes('FoundationData'));
+  assert.match(appMarkup('foundation').markup, /当前账号尚未获得此功能的访问权限/);
+  assert.ok(appMarkup('foundation', { canManageUsers: true }).rendered.includes('FoundationData'));
+});
+
+test('foundation updates use CSRF and the version the administrator reviewed', async () => {
+  const calls = [];
+  const { api } = load('api.ts', {}, false, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf' } : {} }; } });
+  await api.updateDomainStatus('JOINED', { description: '核实后使用', sortOrder: 10, version: 4 });
+  assert.equal(calls[1].url, '/api/foundation/domain-statuses/JOINED');
+  assert.equal(calls[1].options.method, 'PUT'); assert.equal(calls[1].options.headers['X-CSRF-TOKEN'], 'csrf');
+  assert.equal(JSON.parse(calls[1].options.body).version, 4);
+});
+
+test('foundation editor saves only option metadata, blocks duplicate submits and refreshes versions after save', async () => {
+  const states = [], refs = [], effects = [], writes = [], notifications = []; let stateIndex = 0, refIndex = 0, resolveSave;
+  const react = { useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; }, useRef(initial) { const i = refIndex++; return refs[i] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
+  const { FoundationData } = load('components/FoundationData.tsx', { react, './FoundationData.css': {}, './Icons': load('components/Icons.tsx'), '../api': { api: {
+    domainStatuses: async () => load('domainJoin.ts').domainStatusOptions,
+    updateDomainStatus: (code, payload) => { writes.push({ code, payload }); return new Promise(resolve => { resolveSave = () => resolve({ code, label: '已入域', ...payload, version: 1 }); }); },
+  } } });
+  const render = () => { stateIndex = 0; refIndex = 0; return FoundationData({ onNotify: message => notifications.push(message) }); };
+  render(); effects[0](); await new Promise(resolve => setImmediate(resolve));
+  const tree = render();
+  assert.equal(treeElements(tree).filter(child => child.type === 'form').length, 3);
+  const input = findNativeElement(tree, child => child.props['aria-label'] === '已入域的说明');
+  input.props.onChange({ target: { value: '核验后才选择' } });
+  const form = findNativeElement(render(), child => child.type === 'form');
+  form.props.onSubmit({ preventDefault() {} }); form.props.onSubmit({ preventDefault() {} });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].code, 'JOINED'); assert.equal(writes[0].payload.description, '核验后才选择');
+  assert.deepEqual(Object.keys(writes[0].payload).sort(), ['description', 'sortOrder', 'version']);
+  assert.ok(treeElements(render()).filter(child => child.type === 'input').every(child => child.props.disabled));
+  resolveSave(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(states[0].find(option => option.code === 'JOINED').version, 1);
+  assert.equal(notifications.length, 1);
 });

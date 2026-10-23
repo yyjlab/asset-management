@@ -129,6 +129,13 @@ public class AssetCsvImportService {
             validateBindingTags(row, fileTags, errors, invalidRows);
             try {
                 AssetRequest request = requestFor(row, 1L, 1L, 1L, 1L, 1L);
+                var category = lookupRepository.findByTypeAndNameIgnoreCase(LookupType.CATEGORY, row.value("资产分类*"));
+                var profile = category.map(value -> value.getAssetProfile() == null
+                        ? AssetProfile.infer(value.getName()) : value.getAssetProfile())
+                        .orElseGet(() -> AssetProfile.infer(row.value("资产分类*")));
+                if (profile != AssetProfile.COMPUTER && request.domainJoinStatus() != null) {
+                    add(errors, invalidRows, row, "入域状态", "只有电脑资产可以设置入域状态");
+                }
                 validator.validate(request).forEach(violation ->
                         add(errors, invalidRows, row, violation.getPropertyPath().toString(), violation.getMessage()));
                 for (String field : List.of("所属公司*", "资产分类*", "存放位置*")) {
@@ -170,7 +177,15 @@ public class AssetCsvImportService {
                 isCheckedOutStatus(row.value("资产状态*")), clean(row.value("领用人")), clean(row.value("图片地址")),
                 imageUrls(row.value("图片地址(JSON)"), row.rowNumber()), clean(row.value("备注")), List.of(), null,
                 relatedDevices(relatedDevicesValue(row), row.rowNumber()), List.of(),
-                customParameters(row.value("自定义参数(JSON)"), row.rowNumber()), null);
+                customParameters(row.value("自定义参数(JSON)"), row.rowNumber()), null, domainJoinStatus(row.value("入域状态")));
+    }
+
+    private DomainJoinStatus domainJoinStatus(String value) {
+        if (value.isBlank()) return null;
+        for (var status : DomainJoinStatus.values()) {
+            if (status.label().equals(value) || status.name().equals(value)) return status;
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "入域状态只能填写已入域、未入域或待确认");
     }
 
     private void validateBindingGraph(List<ImportRow> rows, List<RowMessage> errors, Set<Integer> invalidRows) {

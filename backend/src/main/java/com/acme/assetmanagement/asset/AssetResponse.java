@@ -41,7 +41,8 @@ public record AssetResponse(
         List<CustomParameterResponse> customParameters,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        Long assignedUserId
+        Long assignedUserId,
+        DomainJoinStatus domainJoinStatus
 ) {
     public static AssetResponse from(Asset asset) {
         return from(asset, ignored -> true);
@@ -65,7 +66,7 @@ public record AssetResponse(
                 asset.getRelatedDevices().stream().map(RelatedDeviceResponse::from).toList(),
                 asset.getAccessories().stream().map(AccessoryResponse::from).toList(),
                 asset.getCustomParameters().stream().map(CustomParameterResponse::from).toList(),
-                asset.getCreatedAt(), asset.getUpdatedAt(), asset.getAssignedUserId()
+                asset.getCreatedAt(), asset.getUpdatedAt(), asset.getAssignedUserId(), asset.effectiveDomainJoinStatus()
         );
     }
 

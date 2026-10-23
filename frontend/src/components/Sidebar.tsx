@@ -3,7 +3,7 @@ import type { AssetFilter, Permission } from '../types'
 const version = 'v26.915.1651'
 import { BoxesIcon, ClipboardIcon, DashboardIcon, SettingsIcon, SidebarPanelIcon, UploadIcon, UserIcon, UsersIcon } from './Icons'
 
-export type AppSection = 'dashboard' | 'workbench' | 'selfService' | 'assets' | 'handover' | 'operations' | 'inventory' | 'repair' | 'consumables' | 'procurement' | 'kits' | 'support' | 'reports' | 'registrations' | 'transfer' | 'users' | 'logs' | 'settings'
+export type AppSection = 'dashboard' | 'workbench' | 'selfService' | 'assets' | 'handover' | 'operations' | 'inventory' | 'repair' | 'consumables' | 'procurement' | 'kits' | 'support' | 'reports' | 'registrations' | 'transfer' | 'users' | 'logs' | 'foundation' | 'settings'
 
 interface Props {
   section: AppSection
@@ -66,6 +66,7 @@ export function Sidebar({ section, canManageUsers, dingtalkLogin, permissions, o
         {(dingtalkLogin || canManageUsers) && <button aria-label="日志" title={collapsed ? '日志' : undefined} className={`nav-item ${section === 'logs' ? 'active' : ''}`} onClick={() => onSection('logs')}>
           <ClipboardIcon /><span>日志</span>
         </button>}
+        {canManageUsers && <button aria-label="基础资料" title={collapsed ? '基础资料' : undefined} className={`nav-item ${section === 'foundation' ? 'active' : ''}`} onClick={() => onSection('foundation')}><ClipboardIcon /><span>基础资料</span></button>}
         {canManageUsers && <button aria-label="设置" title={collapsed ? '设置' : undefined} className={`nav-item ${section === 'settings' ? 'active' : ''}`} onClick={() => onSection('settings')}>
           <SettingsIcon /><span>设置</span>
         </button>}

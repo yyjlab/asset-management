@@ -30,6 +30,9 @@ import { ManagementReportPage } from './components/ManagementReportPage'
 import { ProcurementPage } from './components/ProcurementPage'
 import { RegistrationPage } from './components/RegistrationPage'
 import { DingTalkOaPage } from './components/DingTalkOaPage'
+import { FoundationData } from './components/FoundationData'
+import { domainStatusOptions, matchesDomainStatus } from './domainJoin'
+import type { DomainJoinStatus } from './types'
 
 type Page = { name: 'list'; taskId?: number; review?: boolean; oa?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean } | { name: 'detail'; asset: Asset }
 type AppHistoryState = { assetManagement: true; section: AppSection; page: Page; depth: number }
@@ -81,12 +84,13 @@ export default function App() {
   const [avatarSaving, setAvatarSaving] = useState(false)
   const [avatarRevision, setAvatarRevision] = useState(() => Date.now())
   const [assetLoadError, setAssetLoadError] = useState('')
+  const [domainFilter, setDomainFilter] = useState<DomainJoinStatus | ''>('')
   const navigationRevision = useRef(0)
   const dataRevision = useRef(0)
   const accessKey = authUser ? `${authUser.id}:${authUser.dataScope}:${[...authUser.permissions].sort().join(',')}:${[...authUser.departments].sort().join(',')}` : ''
 
   useEffect(() => {
-    setAssets([]); setSuggestionAssets([]); setPage({ name: 'list' })
+    setAssets([]); setSuggestionAssets([]); setPage({ name: 'list' }); setDomainFilter('')
   }, [accessKey])
 
   const showView = (nextSection: AppSection, nextPage: Page, mode: 'push' | 'replace' = 'push') => {
@@ -285,12 +289,13 @@ export default function App() {
   const visibleAssets = useMemo(() => assets.filter((asset) => {
     if (computerOnly && asset.category.assetProfile !== 'COMPUTER') return false
     if (categoryFilter && String(asset.category.id) !== categoryFilter) return false
+    if (!matchesDomainStatus(asset, domainFilter)) return false
     if (filter === 'available') return !asset.checkedOut && !isMaintenance(asset) && !isScrapped(asset)
     if (filter === 'checkedOut') return asset.checkedOut && !isScrapped(asset)
     if (filter === 'maintenance') return isMaintenance(asset)
     if (filter === 'scrapped') return isScrapped(asset)
     return true
-  }), [assets, categoryFilter, filter, computerOnly])
+  }), [assets, categoryFilter, filter, computerOnly, domainFilter])
   const saveAsset = async (payload: AssetPayload) => {
     setSaving(true)
     try {
@@ -383,8 +388,8 @@ export default function App() {
     {avatarEditorOpen && <AvatarEditor user={authUser} revision={avatarRevision} busy={avatarSaving} onClose={() => !avatarSaving && setAvatarEditorOpen(false)} onUpload={uploadAvatar} onDelete={deleteMyAvatar} onError={(message) => notify(message, 'error')} />}
   </>
 
-  const restrictedSection = (section === 'users' || section === 'logs' || section === 'settings') && !authUser.canManageUsers
-    ? { users: '用户', logs: '日志', settings: '设置' }[section]
+  const restrictedSection = (section === 'users' || section === 'logs' || section === 'settings' || section === 'foundation') && !authUser.canManageUsers
+    ? { users: '用户', logs: '日志', settings: '设置', foundation: '基础资料' }[section]
     : section === 'transfer' && !(hasPermission('ASSET_EXPORT') || (hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'))
       ? '数据'
       : section === 'assets' && !hasPermission('ASSET_VIEW') ? '资产' : null
@@ -440,9 +445,9 @@ export default function App() {
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
-  if (section === 'settings' && authUser.canManageUsers) return <div className="app-shell">
+  if ((section === 'settings' || section === 'foundation') && authUser.canManageUsers) return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><SystemSettings onNotify={notify} /></div></main>
+    <main className="main-content">{topbar}<div className="content">{section === 'foundation' ? <FoundationData key={accessKey} onNotify={notify} /> : <SystemSettings onNotify={notify} />}</div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
@@ -468,7 +473,7 @@ export default function App() {
       canCreate={hasPermission('ASSET_CREATE')}
       onRefresh={() => void load('')}
       onCreate={() => showView('assets', { name: 'form', asset: null })}
-      onViewAssets={(nextFilter) => { setAssets(suggestionAssets); setFilter(nextFilter); setCategoryFilter(''); setComputerOnly(true); setSearch(''); showView('assets', { name: 'list' }) }}
+      onViewAssets={(nextFilter) => { setAssets(suggestionAssets); setFilter(nextFilter); setCategoryFilter(''); setDomainFilter(''); setComputerOnly(true); setSearch(''); showView('assets', { name: 'list' }) }}
       onSelect={(asset) => showView('assets', { name: 'detail', asset })}
     /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
@@ -489,6 +494,12 @@ export default function App() {
               {categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
             </select>
             <span className="category-filter-chevron"><ChevronIcon /></span>
+          </label>
+          <label className="category-filter domain-filter" title="按电脑入域状态筛选，非电脑不适用">
+            <select aria-label="筛选入域状态" value={domainFilter} onChange={event => setDomainFilter(event.target.value as DomainJoinStatus | '')}>
+              <option value="">全部入域状态</option>
+              {domainStatusOptions.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
+            </select><span className="category-filter-chevron"><ChevronIcon /></span>
           </label>
           <form className="asset-search" role="search" aria-label="搜索资产" onSubmit={(event) => { event.preventDefault(); if (!loading) void load(search) }}>
             <div className="search-box">

@@ -3,6 +3,8 @@ import type { Asset } from '../types'
 import { CloneIcon, EditIcon, EyeIcon, ReturnIcon, TrashIcon, UserIcon } from './Icons'
 import { AssetImageLightbox } from './AssetImageLightbox'
 import { AssetHistoryPanel } from './AssetHistoryPanel'
+import { DomainJoinBadge } from './DomainJoinBadge'
+import { domainStatusOf } from '../domainJoin'
 
 interface Props {
   asset: Asset | null
@@ -67,6 +69,7 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
     ...customParameterRows,
     ['所属公司', asset.company.name, '归属部门', asset.ownershipDepartment || '未设置'],
     ['存放位置', asset.location.name, '领用情况', custody],
+    ...(domainStatusOf(asset) !== null ? [['入域状态', <DomainJoinBadge asset={asset} />, '厂家序列号', asset.manufacturerSerialNumber || '—']] : []),
     ['创建时间', time(asset.createdAt), '更新时间', time(asset.updatedAt)],
     ['采购价格', money(asset.purchasePrice), '当前价值', money(asset.currentValue)],
   ]
