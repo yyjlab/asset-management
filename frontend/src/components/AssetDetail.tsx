@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Asset } from '../types'
-import { CloneIcon, EditIcon, EyeIcon, ReturnIcon, TrashIcon } from './Icons'
+import { CloneIcon, EditIcon, EyeIcon, ReturnIcon, TrashIcon, UserIcon } from './Icons'
 import { AssetImageLightbox } from './AssetImageLightbox'
 import { AssetHistoryPanel } from './AssetHistoryPanel'
 
@@ -30,6 +30,8 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
   const scrapped = asset.status.name.includes('报废')
   const state = scrapped ? '已报废' : maintenance ? '维护中' : asset.checkedOut ? '已经领出' : '当前可用'
   const stateClass = scrapped ? 'scrapped' : maintenance ? 'maintenance' : asset.checkedOut ? 'checked-out' : 'available'
+  const assignee = asset.assignedTo?.trim() || ''
+  const custody = <span className="record-custody"><span className="record-custody-state">{state}</span>{asset.checkedOut && <span className={`record-assignee-chip${assignee ? '' : ' missing'}`} aria-label={assignee ? `领用人：${assignee}` : '领用人未填写'}><UserIcon /><span className="record-assignee-name">{assignee || '未填写领用人'}</span></span>}</span>
   const profile = asset.category.assetProfile || 'GENERAL'
   const relatedItems = [
     ...(asset.relatedDevices || []),
@@ -64,7 +66,7 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
     ...deviceRows,
     ...customParameterRows,
     ['所属公司', asset.company.name, '归属部门', asset.ownershipDepartment || '未设置'],
-    ['存放位置', asset.location.name, '领用情况', asset.checkedOut ? `${state} · ${asset.assignedTo || '未填写领用人'}` : state],
+    ['存放位置', asset.location.name, '领用情况', custody],
     ['创建时间', time(asset.createdAt), '更新时间', time(asset.updatedAt)],
     ['采购价格', money(asset.purchasePrice), '当前价值', money(asset.currentValue)],
   ]
@@ -100,7 +102,7 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
 
           <div className="record-table">
             <div className="record-table-head"><span>参数名称</span><strong>参数内容</strong><span>参数名称</span><strong>参数内容</strong></div>
-            {parameterRows.map(([labelA, valueA, labelB, valueB], index) => <div className="record-table-row" key={`${labelA}-${index}`}>
+            {parameterRows.map(([labelA, valueA, labelB, valueB], index) => <div className={`record-table-row${labelB === '领用情况' ? ' record-custody-row' : ''}`} key={`${labelA}-${index}`}>
               <span>{labelA}</span><strong>{valueA}</strong><span>{labelB}</span><strong>{valueB}</strong>
             </div>)}
           </div>

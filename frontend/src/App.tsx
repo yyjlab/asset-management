@@ -492,10 +492,12 @@ export default function App() {
           </label>
           <form className="asset-search" role="search" aria-label="搜索资产" onSubmit={(event) => { event.preventDefault(); if (!loading) void load(search) }}>
             <div className="search-box">
-              <SearchIcon />
               <input aria-label="搜索资产" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产" />
             </div>
-            <button className="button primary" type="submit" disabled={loading}>{loading ? '搜索中…' : '搜索'}</button>
+            <button className="button primary asset-search-submit" type="submit" disabled={loading} aria-busy={loading}>
+              <span className="asset-search-submit-icon" aria-hidden="true">{loading ? <span className="asset-search-loading-dot" /> : <SearchIcon />}</span>
+              <span className="asset-search-submit-label">{loading ? '搜索中…' : '搜索'}</span>
+            </button>
           </form>
         </div>
         {hasPermission('ASSET_CREATE') && <button className="button primary" onClick={() => showView('assets', { name: 'form', asset: null })}><PlusIcon />新增资产</button>}

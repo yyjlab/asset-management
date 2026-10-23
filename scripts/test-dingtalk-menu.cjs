@@ -146,7 +146,9 @@ test('asset search exposes a clickable submit button and shares its handler with
   assert.ok(form);
   const button = findNativeElement(form, child => child.type === 'button');
   assert.equal(button.props.type, 'submit');
-  assert.equal(button.props.children, '搜索');
+  assert.equal(findNativeElement(button, child => child.props.className === 'asset-search-submit-label').props.children, '搜索');
+  assert.ok(button.props.className.includes('asset-search-submit'));
+  assert.equal(findNativeElement(button, child => child.props.className === 'asset-search-submit-icon').props['aria-hidden'], 'true');
   assert.equal(button.props.disabled, false);
   assert.equal(button.props.onClick, undefined, 'native form submission must not issue a second click request');
   let prevented = 0;
@@ -161,7 +163,8 @@ test('asset search cannot submit again while its data is loading', () => {
   const form = findNativeElement(result.tree, child => child.type === 'form' && child.props.role === 'search');
   const button = findNativeElement(form, child => child.type === 'button');
   assert.equal(button.props.disabled, true);
-  assert.equal(button.props.children, '搜索中…');
+  assert.equal(findNativeElement(button, child => child.props.className === 'asset-search-submit-label').props.children, '搜索中…');
+  assert.equal(button.props['aria-busy'], true);
   const previous = result.changes.length;
   form.props.onSubmit({ preventDefault() {} });
   assert.equal(result.changes.length, previous);
@@ -637,6 +640,47 @@ test('asset history is loaded only after the detail history section is opened', 
     renderToStaticMarkup(React.createElement(AssetDetail, { asset: selfAsset({ company: { name: '公司' }, createdAt: '2026-10-18T10:00:00', updatedAt: '2026-10-18T10:00:00' }), onClose() {} }));
     assert.equal(historyMounts, opened ? 1 : 0);
   }
+});
+
+function assetDetailMarkup(overrides = {}) {
+  const { AssetDetail } = load('components/AssetDetail.tsx', {
+    './Icons': load('components/Icons.tsx'), './AssetImageLightbox': { AssetImageLightbox: () => null },
+    './AssetHistoryPanel': { AssetHistoryPanel: () => null },
+  });
+  return renderToStaticMarkup(React.createElement(AssetDetail, { asset: selfAsset({
+    company: { name: '公司' }, checkedOut: true, assignedTo: '袁玉杰',
+    createdAt: '2026-10-23T10:00:00', updatedAt: '2026-10-23T10:00:00', ...overrides,
+  }), onClose() {} }));
+}
+
+test('asset detail highlights the actual assignee separately from custody and lifecycle status', () => {
+  const markup = assetDetailMarkup();
+  assert.match(markup, /record-custody-row/);
+  assert.match(markup, /class="record-assignee-chip" aria-label="领用人：袁玉杰"/);
+  assert.match(markup, /class="record-assignee-name">袁玉杰<\/span>/);
+  assert.match(markup, /class="record-custody-state">已经领出<\/span>/);
+  for (const name of ['维护中', '已报废']) {
+    const lifecycle = assetDetailMarkup({ status: { name } });
+    assert.match(lifecycle, new RegExp(`class="record-custody-state">${name}<`));
+    assert.match(lifecycle, /领用人：袁玉杰/);
+  }
+});
+
+test('missing assignee is a warning rather than a fabricated employee and idle assets have no assignee badge', () => {
+  for (const assignedTo of [null, '', '   ']) {
+    const markup = assetDetailMarkup({ assignedTo });
+    assert.match(markup, /class="record-assignee-chip missing" aria-label="领用人未填写"/);
+    assert.match(markup, /未填写领用人/);
+  }
+  const available = assetDetailMarkup({ checkedOut: false, assignedTo: '历史文字', status: { name: '当前可用' } });
+  assert.ok(!available.includes('record-assignee-chip'));
+  assert.ok(!available.includes('历史文字'));
+});
+
+test('assignee highlighting never interprets a stored name as HTML', () => {
+  const markup = assetDetailMarkup({ assignedTo: '<script>alert(1)</script>' });
+  assert.ok(!markup.includes('<script>'));
+  assert.ok(markup.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
 });
 
 test('management and procurement APIs retain CSRF, versions and independent endpoints', async () => {
