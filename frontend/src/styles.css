@@ -528,6 +528,9 @@ input, select, textarea { font-size: 14px; }
 .invoice-metric.slate { color: #667085; background: #f0f2f6; }.invoice-metric.slate > span { background: #7b8494; }
 .invoice-toolbar { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .invoice-toolbar-filters { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.invoice-toolbar .asset-search { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.invoice-toolbar .asset-search .search-box { min-width: 0; flex: 1; }
+.invoice-toolbar .asset-search > .button { width: auto; flex: 0 0 auto; }
 .invoice-toolbar .search-box { width: 260px; height: 38px; border-radius: 9px; }
 .invoice-toolbar .search-box input { font-size: 12px; }
 .category-filter { width: 190px; height: 38px; padding: 4px 8px 4px 5px; position: relative; display: flex; align-items: center; gap: 5px; color: #718198; background: #fff; border-radius: 9px; box-shadow: inset 0 0 0 1px rgba(72,98,134,.13); transition: box-shadow .3s var(--curve); }

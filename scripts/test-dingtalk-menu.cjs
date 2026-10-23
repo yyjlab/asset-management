@@ -94,7 +94,7 @@ test('every visible DingTalk menu navigates to its own section', () => {
   assert.deepEqual(filters, ['all']);
 });
 
-function appMarkup(section, overrides = {}, initialPage = { name: 'list' }) {
+function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, options = {}) {
   const user = {
     id: 1, username: 'employee', displayName: '员工', role: 'USER',
     canManageUsers: false, dingtalkLogin: true, hasAvatar: false,
@@ -104,14 +104,14 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }) {
   const changes = [], componentProps = {};
   const react = { ...React, useState(initial) {
     const index = stateIndex++;
-    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : initial);
+    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : index === 16 && options.search !== undefined ? options.search : index === 17 && options.loading !== undefined ? options.loading : initial);
     return [value, next => changes.push({ index, value: typeof next === 'function' ? next(value) : next })];
   } };
   const icons = load('components/Icons.tsx');
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons });
   const rendered = [];
   const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
-  const mocks = { react, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: {}, ApiError: class extends Error {} } };
+  const mocks = { react, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
     componentProps[name] = props;
@@ -120,8 +120,52 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }) {
   mocks['./components/OperationPage'].canManageWorkflows = user => user.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'].every(permission => user.permissions.includes(permission));
   const loaded = load('App.tsx', mocks);
   const App = loaded.default || loaded;
-  return { markup: renderToStaticMarkup(React.createElement(App)), rendered, componentProps, changes };
+  let tree;
+  const Capture = () => { tree = App(); return tree; };
+  return { markup: renderToStaticMarkup(React.createElement(Capture)), rendered, componentProps, changes, tree };
 }
+
+function findNativeElement(tree, predicate) {
+  let found;
+  const visit = value => React.Children.forEach(value, child => {
+    if (found || !React.isValidElement(child)) return;
+    if (predicate(child)) found = child;
+    else visit(child.props.children);
+  });
+  visit(tree);
+  return found;
+}
+
+test('asset search exposes a clickable submit button and shares its handler with Enter', async () => {
+  const terms = [];
+  const result = appMarkup('assets', {}, { name: 'list' }, { search: 'HUAWEI', loading: false, api: {
+    listAssets: async term => { terms.push(term); return []; }, listLookups: async () => [],
+    summary: async () => ({ total: 0, available: 0, checkedOut: 0, maintenance: 0, scrapped: 0 }), dashboard: async () => null,
+  } });
+  const form = findNativeElement(result.tree, child => child.type === 'form' && child.props.role === 'search');
+  assert.ok(form);
+  const button = findNativeElement(form, child => child.type === 'button');
+  assert.equal(button.props.type, 'submit');
+  assert.equal(button.props.children, '搜索');
+  assert.equal(button.props.disabled, false);
+  assert.equal(button.props.onClick, undefined, 'native form submission must not issue a second click request');
+  let prevented = 0;
+  form.props.onSubmit({ preventDefault() { prevented++; } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(prevented, 1);
+  assert.deepEqual(terms, ['HUAWEI', '']); // Existing catalogue refresh is preserved.
+});
+
+test('asset search cannot submit again while its data is loading', () => {
+  const result = appMarkup('assets', {}, { name: 'list' }, { loading: true });
+  const form = findNativeElement(result.tree, child => child.type === 'form' && child.props.role === 'search');
+  const button = findNativeElement(form, child => child.type === 'button');
+  assert.equal(button.props.disabled, true);
+  assert.equal(button.props.children, '搜索中…');
+  const previous = result.changes.length;
+  form.props.onSubmit({ preventDefault() {} });
+  assert.equal(result.changes.length, previous);
+});
 
 test('OA entry points share one page and retain the existing handover route', () => {
   for (const [section, name] of [['handover', 'HandoverPage'], ['operations', 'OperationPage'], ['selfService', 'SelfServicePage']]) {

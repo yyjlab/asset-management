@@ -490,9 +490,12 @@ export default function App() {
             </select>
             <span className="category-filter-chevron"><ChevronIcon /></span>
           </label>
-          <form className="search-box" onSubmit={(event) => { event.preventDefault(); void load(search) }}>
-            <SearchIcon />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产" />
+          <form className="asset-search" role="search" aria-label="搜索资产" onSubmit={(event) => { event.preventDefault(); if (!loading) void load(search) }}>
+            <div className="search-box">
+              <SearchIcon />
+              <input aria-label="搜索资产" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产" />
+            </div>
+            <button className="button primary" type="submit" disabled={loading}>{loading ? '搜索中…' : '搜索'}</button>
           </form>
         </div>
         {hasPermission('ASSET_CREATE') && <button className="button primary" onClick={() => showView('assets', { name: 'form', asset: null })}><PlusIcon />新增资产</button>}
