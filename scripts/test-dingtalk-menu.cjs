@@ -259,7 +259,7 @@ test('self-service page is available without granting additional asset permissio
   assert.deepEqual(appMarkup('selfService', { permissions: [] }).rendered, ['SelfServicePage']);
 });
 
-function handoverMarkup({ manager = false, selected = null, creating = false, currentUserId = 1 } = {}) {
+function handoverMarkup({ manager = false, selected = null, creating = false, currentUserId = 1, ...props } = {}) {
   let index = 0;
   const react = { ...React, useState(initial) {
     const position = index++;
@@ -270,7 +270,7 @@ function handoverMarkup({ manager = false, selected = null, creating = false, cu
     react, './Icons': load('components/Icons.tsx'), '../api': { api: {}, ApiError: class extends Error {} },
     './ConfirmDialog': { ConfirmDialog: () => null }, './HandoverPage.css': {}, './EquipmentKitPage': { HandoverKitPicker: () => null },
   });
-  return renderToStaticMarkup(React.createElement(HandoverPage, { currentUserId, assets: [], onNotify() {} }));
+  return renderToStaticMarkup(React.createElement(HandoverPage, { currentUserId, assets: [], onNotify() {}, ...props }));
 }
 const taskFixture = () => ({
   id: 1, version: 1, kind: 'ONBOARDING', state: 'IN_PROGRESS', employeeUserId: 1, employeeName: '张三',
@@ -278,11 +278,11 @@ const taskFixture = () => ({
   items: [{ index: 0, assetId: 1, assetTag: 'TEST-001', name: '电脑', checked: true, checkedBy: '管理员', confirmedAt: null }],
 });
 
-test('ordinary employee sees self-service guidance without management buttons', () => {
+test('ordinary employee sees handover results without management buttons or permanent explanatory banners', () => {
   const markup = handoverMarkup();
-  assert.match(markup, /只展示明确关联本账号/);
+  assert.match(markup, /入离职交接/);
   assert.ok(!markup.includes('新建交接单'));
-  assert.match(markup, /钉钉审批自动同步尚未启用/);
+  assert.ok(!markup.includes('handover-notice'));
 });
 
 test('employee can acknowledge own checked item without manager controls', () => {
@@ -296,14 +296,15 @@ test('employee can acknowledge own checked item without manager controls', () =>
 test('manager sees explicit non-mutating workflow and offline evidence controls', () => {
   const markup = handoverMarkup({ selected: taskFixture(), manager: true });
   assert.match(markup, /登记线下确认/);
-  assert.match(markup, /资产台账请在原资产页面核对处理/);
+  assert.match(markup, /旧版记录 · 不自动更新台账/);
   assert.match(markup, /disabled="">完结交接单/);
 });
 
 test('new employee editor works with intranet-compatible UUID generation', () => {
   const markup = handoverMarkup({ manager: true, creating: true });
   assert.match(markup, /暂无账号／先手工登记/);
-  assert.match(markup, /创建交接单（不修改台账）/);
+  assert.match(markup, /创建交接单/);
+  assert.match(markup, /建单后预留/);
   assert.match(markup, /手工交接项/);
 });
 
@@ -320,6 +321,79 @@ test('handover API only writes dedicated endpoints with CSRF and expected versio
   assert.equal(JSON.parse(calls[1].options.body).version, 7);
   assert.equal(calls[1].options.headers['X-CSRF-TOKEN'], 'test-csrf');
   assert.equal(JSON.parse(calls[2].options.body).offline, true);
+  assert.equal(JSON.parse(calls[3].options.body).confirmed, false);
+  await api.completeHandover(12, 10, true);
+  await api.bindHandoverAsset(12, 2, 11, 42, 6);
+  assert.equal(JSON.parse(calls[4].options.body).confirmed, true);
+  assert.equal(calls[5].url, '/api/handovers/12/items/2/asset');
+  assert.deepEqual(JSON.parse(calls[5].options.body), { version: 11, assetId: 42, assetVersion: 6 });
+  assert.equal(calls[5].options.headers['X-CSRF-TOKEN'], 'test-csrf');
+});
+
+test('integrated handover exposes a single final ledger action and linked operation without self-verification', () => {
+  const selected = { ...taskFixture(), ledgerEnabled: true };
+  selected.items[0].operationId = 27;
+  const markup = handoverMarkup({ manager: true, selected, currentUserId: 2, onOpenOperation() {} });
+  assert.match(markup, /disabled="">完结并更新台账/);
+  assert.match(markup, /查看领用工单 #27/);
+  assert.ok(!markup.includes('旧版记录'));
+  const self = handoverMarkup({ manager: true, selected });
+  assert.match(self, /我已收到/);
+  assert.ok(!self.includes('撤销验收'));
+  assert.ok(!self.includes('登记线下确认'));
+});
+
+test('unbound integrated preparation requires account linking and offers real-device association', () => {
+  const selected = { ...taskFixture(), ledgerEnabled: true, employeeUserId: null };
+  selected.items[0] = { ...selected.items[0], assetId: null, assetTag: null, checked: false };
+  const markup = handoverMarkup({ manager: true, selected });
+  assert.match(markup, /请先关联员工账号/);
+  assert.match(markup, /关联实际设备/);
+  assert.ok(!markup.includes('确认已配发'));
+});
+
+function handoverHarness(api, selected = null, overrides = {}) {
+  const states = { 0: { items: [], canManage: true, page: 0, totalElements: 0, totalPages: 0 }, 5: false, 8: selected };
+  const refs = [], notices = []; let index = 0, refIndex = 0, refreshed = 0;
+  const react = { useState(initial) { const key = index++; if (!(key in states)) states[key] = typeof initial === 'function' ? initial() : initial; return [states[key], value => { states[key] = typeof value === 'function' ? value(states[key]) : value; }]; }, useRef(initial) { const key = refIndex++; return refs[key] ??= { current: initial }; }, useEffect() {} };
+  const { HandoverPage } = load('components/HandoverPage.tsx', { react, '../api': { api, ApiError: class extends Error {} }, './HandoverPage.css': {}, './ConfirmDialog': { ConfirmDialog: () => null }, './EquipmentKitPage': { HandoverKitPicker: () => null } });
+  return { states, notices, get refreshed() { return refreshed; }, render() { index = 0; refIndex = 0; return treeElements(HandoverPage({ currentUserId: 2, assets: [], onAssetsChanged() { refreshed++; }, onNotify: text => notices.push(text), ...overrides })); }, editor(element) { index = 100; refIndex = 100; return treeElements(element.type(element.props)); } };
+}
+
+test('final integrated confirmation sends reviewed version and refreshes assets only on successful ledger commit', async () => {
+  const selected = { ...taskFixture(), ledgerEnabled: true };
+  selected.items[0].confirmedAt = '2026-11-01T12:00:00';
+  const calls = []; let release;
+  const view = handoverHarness({ completeHandover: (...args) => { calls.push(args); return new Promise(resolve => { release = resolve; }); } }, selected);
+  view.render().find(item => item.type === 'button' && item.props.children === '完结并更新台账').props.onClick();
+  const dialog = view.render().find(item => item.props.title === '完结并更新台账');
+  const first = dialog.props.onConfirm(); dialog.props.onConfirm();
+  assert.deepEqual(calls, [[1, 1, true]]); assert.equal(view.refreshed, 0);
+  release({ ...selected, state: 'COMPLETED', ledgerAppliedAt: '2026-11-01T12:01:00' }); await first; await new Promise(setImmediate);
+  assert.equal(view.refreshed, 1); assert.match(view.notices[0], /台账和领用归还记录已更新/);
+});
+
+test('legacy completion never opts into ledger writes or refreshes assets', async () => {
+  const selected = taskFixture(); selected.items[0].confirmedAt = '2026-11-01T12:00:00';
+  const calls = [], view = handoverHarness({ completeHandover: async (...args) => { calls.push(args); return { ...selected, state: 'COMPLETED' }; } }, selected);
+  view.render().find(item => item.type === 'button' && item.props.children === '完结交接单').props.onClick();
+  await view.render().find(item => item.props.title === '完结交接单').props.onConfirm();
+  assert.deepEqual(calls, [[1, 1, false]]); assert.equal(view.refreshed, 0);
+});
+
+test('new handover sends exact versions for selected and auto-listed devices without direct asset writes', async () => {
+  let payload;
+  const devices = [{ ...selfAsset(), id: 1, version: 4 }, { ...selfAsset(), id: 2, version: 7 }];
+  const view = handoverHarness({ createHandover: async value => { payload = value; return taskFixture(); } }, null, { assets: devices });
+  view.states[10] = true;
+  const editor = view.render().find(item => typeof item.type === 'function' && item.props.onCreated);
+  view.editor(editor);
+  view.states[100] = { requestKey: 'test-key', kind: 'OFFBOARDING', employeeUserId: 1, employeeName: '张三', department: '', plannedDate: null, approvalReference: '', notes: '', assetIds: [1], includeAssignedAssets: true, allowLegacyAssets: false, manualItems: [] };
+  view.states[101] = '核对适配器';
+  await view.editor(editor).find(item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(payload.ledgerEnabled, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload.assetVersions)), { 1: 4, 2: 7 });
+  assert.deepEqual(Array.from(payload.manualItems), ['核对适配器']);
 });
 
 function selfServiceMarkup({ user = {}, assets = [], loading = false, error = '', tab = 'assets' } = {}) {
@@ -456,6 +530,24 @@ test('operation completion requires both explicit confirmation and note', () => 
   const ready = workflowMarkup('OperationPage', 'OperationPage', { 0: data, 7: detail, 11: '实物验收完成', 13: true }, { user: workflowUser(true) });
   assert.match(ready, /class="button primary">完结并写入台账/);
   assert.match(ready, /版本冲突时不会覆盖其他修改/);
+});
+test('handover-linked operations link back to their parent and never expose a second approval path', () => {
+  for (const state of ['HANDOVER_PENDING', 'WAITING_CONFIRM', 'CONFIRMED', 'COMPLETED']) {
+    const detail = operationFixture({ state, handoverId: 18 });
+    const markup = workflowMarkup('OperationPage', 'OperationPage', { 0: { items: [], canManage: true }, 7: detail, 11: '验收完成', 13: true }, { user: workflowUser(true), onOpenHandover() {} });
+    assert.match(markup, /查看交接单 #18/);
+    for (const label of ['受理并交员工确认', '>本人确认</button>', '>完结并写入台账</button>', '>取消并保留记录</button>']) assert.ok(!markup.includes(label));
+  }
+});
+test('handover and operation navigation preserve record IDs in both directions including self-service', () => {
+  const handover = appMarkup('handover'); handover.componentProps.HandoverPage.onOpenOperation(29);
+  assert.ok(handover.changes.some(change => change.index === 5 && change.value === 'operations'));
+  assert.ok(handover.changes.some(change => change.index === 6 && change.value.taskId === 29));
+  const operation = appMarkup('operations'); operation.componentProps.OperationPage.onOpenHandover(18);
+  assert.ok(operation.changes.some(change => change.index === 5 && change.value === 'handover'));
+  assert.ok(operation.changes.some(change => change.index === 6 && change.value.taskId === 18));
+  const personal = appMarkup('selfService'); personal.componentProps.SelfServicePage.onOpenHandover(18);
+  assert.ok(personal.changes.some(change => change.index === 6 && change.value.taskId === 18));
 });
 test('issue editor does not select existing asset and repair picker contains only current account assets', () => {
   const issue = workflowMarkup('OperationPage', 'OperationPage', { 8: true });

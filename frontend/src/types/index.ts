@@ -184,12 +184,14 @@ export interface HandoverSummary {
   id: number; version: number; kind: HandoverKind; state: HandoverState
   employeeUserId: number | null; employeeName: string; department: string; plannedDate: string | null
   totalItems: number; checkedItems: number; confirmedItems: number; createdAt: string
+  ledgerEnabled?: boolean; ledgerAppliedAt?: string | null
 }
 export interface HandoverItem {
   index: number; assetId: number | null; assetTag: string | null; name: string; model: string | null
   serialNumber: string | null; accessories: string | null; checked: boolean; checkedBy: string | null
   checkedAt: string | null; confirmationMethod: 'ONLINE' | 'OFFLINE' | null; confirmedBy: string | null
   confirmedAt: string | null; confirmationNote: string | null
+  assetVersion?: number | null; operationId?: number | null
 }
 export interface HandoverDetail extends Omit<HandoverSummary, 'totalItems' | 'checkedItems' | 'confirmedItems'> {
   approvalReference: string; notes: string; createdByName: string; items: HandoverItem[]
@@ -217,8 +219,8 @@ export interface TaskNotificationStatus {
   recent: { id: number; category: string; title: string; state: string; attempts: number; lastError: string | null; createdAt: string; sentAt: string | null }[]
 }
 export type OperationKind = 'ISSUE' | 'RETURN' | 'TRANSFER' | 'CORRECTION' | 'REPAIR'
-export type OperationState = 'PENDING' | 'WAITING_CONFIRM' | 'PROCESSING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'OA_PENDING' | 'OA_FAILED'
-export interface OperationSummary { id: number; version: number; kind: OperationKind; state: OperationState; ownerId: number; ownerName: string; targetId: number; targetName: string; assetId: number | null; assetTag: string | null; title: string; updatedAt: string }
+export type OperationState = 'PENDING' | 'WAITING_CONFIRM' | 'PROCESSING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'OA_PENDING' | 'OA_FAILED' | 'HANDOVER_PENDING'
+export interface OperationSummary { id: number; version: number; kind: OperationKind; state: OperationState; ownerId: number; ownerName: string; targetId: number | null; targetName: string; assetId: number | null; assetTag: string | null; title: string; updatedAt: string; handoverId?: number | null }
 export interface WorkflowEvent { occurredAt: string; actor: string; description: string }
 export interface OperationDetail { task: OperationSummary; assetVersion: number | null; description: string; proposed: Record<string, string>; outcome: 'FIXED' | 'SCRAP' | null; repairCost: number | null; events: WorkflowEvent[] }
 export interface OperationPageData { items: OperationSummary[]; page: number; totalElements: number; totalPages: number; canManage: boolean }
@@ -237,6 +239,7 @@ export interface HandoverCreate {
   requestKey: string; kind: HandoverKind; employeeUserId: number | null; employeeName: string; department: string
   plannedDate: string | null; approvalReference: string; notes: string; assetIds: number[]
   includeAssignedAssets: boolean; allowLegacyAssets: boolean; manualItems: string[]
+  ledgerEnabled?: boolean; assetVersions?: Record<string, number>
 }
 export interface AccessPayload { role?: UserRole; permissions: Permission[]; dataScope: DataScope; departments: string[]; enabled: boolean }
 export interface Assignee { id: number; username: string; displayName: string }

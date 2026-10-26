@@ -81,6 +81,182 @@ class HandoverApiTest {
         return mvc.perform(get("/api/assets").with(user(AccountPrincipal.from(admin()))))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
     }
+    private Asset availableAsset(String tag) {
+        var device = asset(tag, null);
+        device.setStatus(lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "当前可用")
+                .or(() -> lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "可领用")).orElseThrow());
+        return assets.saveAndFlush(device);
+    }
+    private Map<String, Object> integrated(String kind, UserAccount employee, Asset... devices) {
+        var body = request(kind, employee); body.put("ledgerEnabled", true); body.put("manualItems", List.of());
+        body.put("assetIds", Arrays.stream(devices).map(Asset::getId).toList());
+        var versions = new LinkedHashMap<Long, Long>();
+        for (var device : devices) versions.put(device.getId(), device.getVersion());
+        body.put("assetVersions", versions); return body;
+    }
+    private JsonNode signed(JsonNode task, UserAccount employee) throws Exception {
+        for (int index = 0; index < task.get("items").size(); index++) {
+            task = action(task, "/items/" + index + "/check", admin(), Map.of("checked", true));
+            task = action(task, "/items/" + index + "/confirm", employee, Map.of("offline", false));
+        }
+        return task;
+    }
+
+    @Test void integratedOnboardingWritesCustodyOnlyAfterFinalConfirmationAndLinksOperations() throws Exception {
+        var owner = employee("integrated-onboard"); var first = availableAsset("HI-001"); var second = availableAsset("HI-002");
+        var task = create(integrated("ONBOARDING", owner, first, second));
+        assertTrue(task.get("ledgerEnabled").asBoolean()); assertTrue(task.get("ledgerAppliedAt").isNull());
+        assertNull(assets.findById(first.getId()).orElseThrow().getAssignedUserId());
+        long operation = task.get("items").get(0).get("operationId").asLong();
+        mvc.perform(get("/api/operations/{id}", operation).with(user(AccountPrincipal.from(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.task.state").value("HANDOVER_PENDING"))
+                .andExpect(jsonPath("$.task.handoverId").value(task.get("id").asLong()));
+        task = signed(task, owner);
+        assertFalse(assets.findById(first.getId()).orElseThrow().isCheckedOut());
+        task = action(task, "/complete", admin(), Map.of("confirmed", true));
+        assertEquals("COMPLETED", task.get("state").asString()); assertFalse(task.get("ledgerAppliedAt").isNull());
+        for (var device : List.of(first, second)) {
+            var actual = assets.findById(device.getId()).orElseThrow();
+            assertEquals(owner.getId(), actual.getAssignedUserId()); assertTrue(actual.isCheckedOut());
+            assertTrue(Set.of("已经领出", "在用").contains(actual.getStatus().getName()));
+            assertEquals("历史CPU不可改", actual.getCpu()); assertEquals("32GB", actual.getMemory());
+            assertEquals("历史备注不可改", actual.getNotes()); assertEquals("研发部", actual.getOwnershipDepartment());
+            assertEquals(new java.math.BigDecimal("6234.56"), actual.getPurchasePrice());
+            assertEquals(new java.math.BigDecimal("4321.00"), actual.getCurrentValue());
+            assertEquals("/api/public/asset-images/historical-handover-test.png", actual.getImageUrl());
+            assertEquals(1, actual.getAccessories().size());
+        }
+        mvc.perform(get("/api/operations/{id}", operation).with(user(AccountPrincipal.from(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.task.state").value("COMPLETED"));
+    }
+
+    @Test void integratedReturnSupportsDisabledEmployeeOfflineProofAndPreservesMaintenance() throws Exception {
+        var owner = employee("integrated-offboard"); var other = employee("integrated-other");
+        var device = asset("HI-003", owner); var untouched = asset("HI-004", other);
+        device.setStatus(lookups.findByTypeOrderByNameAsc(LookupType.STATUS).stream()
+                .filter(value -> value.getName().contains("维修") || value.getName().contains("维护")).findFirst().orElseThrow());
+        assets.saveAndFlush(device); var statusId = device.getStatus().getId();
+        owner.setEnabled(false); users.saveAndFlush(owner);
+        var task = create(integrated("OFFBOARDING", owner, device));
+        task = action(task, "/items/0/check", admin(), Map.of("checked", true));
+        task = action(task, "/items/0/confirm", admin(), Map.of("offline", true, "note", "纸质归还签收单 HI-003"));
+        action(task, "/complete", admin(), Map.of("confirmed", true));
+        assertNull(device.getAssignedUserId()); assertNull(device.getAssignedTo()); assertFalse(device.isCheckedOut());
+        assertEquals(statusId, device.getStatus().getId()); assertEquals(other.getId(), untouched.getAssignedUserId());
+        assertFalse(users.findById(owner.getId()).orElseThrow().isEnabled());
+    }
+
+    @Test void integratedFinalWriteRequiresExplicitConsentAndCannotBeDuplicated() throws Exception {
+        var owner = employee("integrated-consent"); var device = availableAsset("HI-005");
+        var task = signed(create(integrated("ONBOARDING", owner, device)), owner);
+        mvc.perform(post("/api/handovers/{id}/complete", task.get("id").asLong()).with(user(AccountPrincipal.from(admin())))
+                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + task.get("version").asLong() + "}"))
+                .andExpect(status().isBadRequest());
+        assertFalse(device.isCheckedOut());
+        var done = action(task, "/complete", admin(), Map.of("confirmed", true));
+        mvc.perform(post("/api/handovers/{id}/complete", done.get("id").asLong()).with(user(AccountPrincipal.from(admin())))
+                .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + done.get("version").asLong() + ",\"confirmed\":true}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test void integratedReservationsRejectDuplicateAndOperationActionsThenCancelReleases() throws Exception {
+        var owner = employee("integrated-reservation"); var device = availableAsset("HI-006");
+        var task = create(integrated("ONBOARDING", owner, device));
+        long operation = task.get("items").get(0).get("operationId").asLong();
+        mvc.perform(post("/api/handovers").with(user(AccountPrincipal.from(admin()))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(integrated("ONBOARDING", owner, device))))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/operations/{id}/actions", operation).with(user(AccountPrincipal.from(admin()))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"version\":0,\"action\":\"CANCEL\",\"note\":\"不能绕开交接\"}"))
+                .andExpect(status().isConflict());
+        action(task, "/cancel", admin(), Map.of("note", "设备计划调整"));
+        assertFalse(device.isCheckedOut());
+        mvc.perform(get("/api/operations/{id}", operation).with(user(AccountPrincipal.from(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.task.state").value("CANCELLED"));
+        create(integrated("ONBOARDING", owner, device));
+    }
+
+    @Test void integratedPreparationCanBindDeviceAndAccountWithoutMatchingEmployeeName() throws Exception {
+        var owner = employee("integrated-later"); var other = employee("integrated-same-name"); var device = availableAsset("HI-007");
+        var body = integrated("ONBOARDING", null); body.put("manualItems", List.of("准备办公电脑"));
+        var task = create(body);
+        mvc.perform(post("/api/handovers/{id}/items/0/check", task.get("id").asLong()).with(user(AccountPrincipal.from(admin())))
+                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + task.get("version").asLong() + ",\"checked\":true}"))
+                .andExpect(status().isConflict());
+        task = action(task, "/items/0/asset", admin(), Map.of("assetId", device.getId(), "assetVersion", device.getVersion()));
+        task = action(task, "/employee", admin(), Map.of("employeeUserId", owner.getId()));
+        mvc.perform(get("/api/handovers/{id}", task.get("id").asLong()).with(user(AccountPrincipal.from(other))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/operations/{id}", task.get("items").get(0).get("operationId").asLong()).with(user(AccountPrincipal.from(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.task.targetId").value(owner.getId()));
+        action(signed(task, owner), "/complete", admin(), Map.of("confirmed", true));
+        assertEquals(owner.getId(), device.getAssignedUserId());
+    }
+
+    @Test void integratedSelfRecipientCannotPerformPhysicalCheckOrForgeOfflineProof() throws Exception {
+        var device = availableAsset("HI-008"); var task = create(integrated("ONBOARDING", admin(), device));
+        mvc.perform(post("/api/handovers/{id}/items/0/check", task.get("id").asLong()).with(user(AccountPrincipal.from(admin())))
+                .with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{\"version\":" + task.get("version").asLong() + ",\"checked\":true}"))
+                .andExpect(status().isForbidden());
+        var manager = employee("integrated-second-manager"); manager.setDataScope(DataScope.ALL);
+        manager.setPermissions(Set.of(Permission.ASSET_VIEW, Permission.ASSET_CHECKOUT, Permission.ASSET_RETURN)); users.saveAndFlush(manager);
+        task = action(task, "/items/0/check", manager, Map.of("checked", true));
+        mvc.perform(post("/api/handovers/{id}/items/0/confirm", task.get("id").asLong()).with(user(AccountPrincipal.from(admin())))
+                .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + task.get("version").asLong() + ",\"offline\":true,\"note\":\"不能为自己代填\"}"))
+                .andExpect(status().isForbidden());
+        task = action(task, "/items/0/confirm", admin(), Map.of("offline", false));
+        action(task, "/complete", manager, Map.of("confirmed", true));
+        assertEquals(admin().getId(), device.getAssignedUserId());
+    }
+
+    @Test void integratedCreateRequiresReviewedDeviceVersionAndManualOnlyCompletionHasNoLedgerClaim() throws Exception {
+        var owner = employee("integrated-versions"); var device = availableAsset("HI-009");
+        var body = integrated("ONBOARDING", owner, device); body.remove("assetVersions");
+        mvc.perform(post("/api/handovers").with(user(AccountPrincipal.from(admin()))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isConflict());
+        body = integrated("ONBOARDING", owner); body.put("manualItems", List.of("核对电源适配器"));
+        var task = signed(create(body), owner);
+        task = action(task, "/complete", admin(), Map.of("confirmed", true));
+        assertTrue(task.get("ledgerAppliedAt").isNull()); assertFalse(device.isCheckedOut());
+    }
+
+    @Test void handoverAndRegularWorkflowShareTheSameExclusiveDeviceReservation() throws Exception {
+        var owner = employee("integrated-regular"); var device = availableAsset("HI-010");
+        var task = create(integrated("ONBOARDING", owner, device));
+        var operation = json.readTree(mvc.perform(post("/api/operations").with(user(AccountPrincipal.from(owner))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("requestKey", UUID.randomUUID().toString(),
+                        "kind", "ISSUE", "title", "申请电脑", "description", "正常领用申请"))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        var approve = Map.of("version", operation.get("task").get("version").asLong(), "action", "APPROVE",
+                "assetId", device.getId(), "assetVersion", device.getVersion());
+        mvc.perform(post("/api/operations/{id}/actions", operation.get("task").get("id").asLong())
+                .with(user(AccountPrincipal.from(admin()))).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(approve))).andExpect(status().isConflict());
+        action(task, "/cancel", admin(), Map.of("note", "改用正常领用申请"));
+        mvc.perform(post("/api/operations/{id}/actions", operation.get("task").get("id").asLong())
+                .with(user(AccountPrincipal.from(admin()))).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(approve))).andExpect(status().isOk());
+        mvc.perform(post("/api/handovers").with(user(AccountPrincipal.from(admin()))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(integrated("ONBOARDING", owner, device))))
+                .andExpect(status().isConflict());
+        assertFalse(device.isCheckedOut());
+    }
+
+    @Test void integratedLegacyReturnRequiresExplicitAcknowledgementAndDoesNotInferAnotherSameNameAccount() throws Exception {
+        var owner = employee("integrated-legacy"); var other = employee("integrated-legacy-other");
+        var legacy = asset("HI-011", null); legacy.setAssignedTo(owner.getDisplayName()); legacy.setCheckedOut(true); assets.saveAndFlush(legacy);
+        var otherDevice = asset("HI-012", other);
+        var body = integrated("OFFBOARDING", owner, legacy);
+        mvc.perform(post("/api/handovers").with(user(AccountPrincipal.from(admin()))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body))).andExpect(status().isBadRequest());
+        body.put("allowLegacyAssets", true);
+        var task = signed(create(body), owner);
+        action(task, "/complete", admin(), Map.of("confirmed", true));
+        assertFalse(legacy.isCheckedOut()); assertNull(legacy.getAssignedTo());
+        assertEquals(other.getId(), otherDevice.getAssignedUserId()); assertTrue(otherDevice.isCheckedOut());
+    }
 
     @Test void anonymousCannotReadOrCreateHandovers() throws Exception {
         mvc.perform(get("/api/handovers")).andExpect(status().isUnauthorized());

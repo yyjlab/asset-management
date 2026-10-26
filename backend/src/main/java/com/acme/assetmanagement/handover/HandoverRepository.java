@@ -9,4 +9,7 @@ public interface HandoverRepository extends JpaRepository<HandoverTask, Long>, J
     long countByStateInAndPlannedDateBefore(java.util.Collection<String> states, java.time.LocalDate date);
     java.util.List<HandoverTask> findTop10ByStateInOrderByPlannedDateAscIdAsc(java.util.Collection<String> states);
     Optional<HandoverTask> findByRequestKey(String requestKey);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select t from HandoverTask t where t.id = :id")
+    Optional<HandoverTask> locked(@org.springframework.data.repository.query.Param("id") Long id);
 }

@@ -22,11 +22,14 @@ public class HandoverService {
     private final UserRepository users;
     private final AssetRepository assets;
     private final com.acme.assetmanagement.workflow.TaskNotifications notifications;
+    private final com.acme.assetmanagement.operations.HandoverLedger ledger;
 
     public HandoverService(HandoverRepository tasks, UserRepository users, AssetRepository assets,
-            com.acme.assetmanagement.workflow.TaskNotifications notifications) {
+            com.acme.assetmanagement.workflow.TaskNotifications notifications,
+            com.acme.assetmanagement.operations.HandoverLedger ledger) {
         this.tasks = tasks; this.users = users; this.assets = assets;
         this.notifications = notifications;
+        this.ledger = ledger;
     }
 
     private record Actor(Long id, String name, boolean manager) {}
@@ -49,16 +52,18 @@ public class HandoverService {
 
     public record Summary(Long id, long version, String kind, String state, Long employeeUserId, String employeeName,
                           String department, java.time.LocalDate plannedDate, int totalItems, long checkedItems,
-                          long confirmedItems, LocalDateTime createdAt) {}
+                          long confirmedItems, LocalDateTime createdAt, boolean ledgerEnabled, LocalDateTime ledgerAppliedAt) {}
     public record Page(List<Summary> items, int page, long totalElements, int totalPages, boolean canManage) {}
     public record Employee(Long id, String username, String displayName, boolean enabled) {}
     public record Item(int index, Long assetId, String assetTag, String name, String model, String serialNumber,
                        String accessories, boolean checked, String checkedBy, LocalDateTime checkedAt,
-                       String confirmationMethod, String confirmedBy, LocalDateTime confirmedAt, String confirmationNote) {}
+                       String confirmationMethod, String confirmedBy, LocalDateTime confirmedAt, String confirmationNote,
+                       Long assetVersion, Long operationId) {}
     public record Event(LocalDateTime occurredAt, String actorName, String description) {}
     public record Detail(Long id, long version, String kind, String state, Long employeeUserId, String employeeName,
                          String department, java.time.LocalDate plannedDate, String approvalReference, String notes,
-                         String createdByName, LocalDateTime createdAt, List<Item> items, List<Event> events) {}
+                         String createdByName, LocalDateTime createdAt, List<Item> items, List<Event> events,
+                         boolean ledgerEnabled, LocalDateTime ledgerAppliedAt) {}
 
     public Page list(int page, String kind, String state, boolean mine) {
         var actor = actor();
@@ -71,7 +76,7 @@ public class HandoverService {
         return new Page(result.map(task -> new Summary(task.id, task.version, task.kind, task.state, task.employeeUserId,
                 task.employeeName, task.department, task.plannedDate, task.items.size(),
                 task.items.stream().filter(i -> i.checked).count(), task.items.stream().filter(i -> i.confirmedAt != null).count(),
-                task.createdAt)).getContent(), result.getNumber(), result.getTotalElements(), result.getTotalPages(), actor.manager() && !mine);
+                task.createdAt, Boolean.TRUE.equals(task.ledgerEnabled), task.ledgerAppliedAt)).getContent(), result.getNumber(), result.getTotalElements(), result.getTotalPages(), actor.manager() && !mine);
     }
 
     public List<Employee> employees() {
@@ -91,6 +96,7 @@ public class HandoverService {
         if (existing.isPresent()) return detail(existing.get());
         var task = new HandoverTask();
         task.requestKey = request.requestKey(); task.kind = request.kind();
+        task.ledgerEnabled = Boolean.TRUE.equals(request.ledgerEnabled());
         task.employeeUserId = request.employeeUserId();
         if (task.employeeUserId != null) {
             var employee = requireEmployee(task.employeeUserId);
@@ -133,16 +139,30 @@ public class HandoverService {
             var item = new HandoverTask.Item(); item.name = name.trim(); task.items.add(item);
         }
         if (task.items.isEmpty()) throw error(HttpStatus.BAD_REQUEST, "未找到已关联资产，请添加待核对项；不能据此认定员工没有资产");
-        event(task, actor, "创建" + ("ONBOARDING".equals(task.kind) ? "入职配发" : "离职交接") + "单；仅保存清单，不修改资产台账");
+        if (Boolean.TRUE.equals(task.ledgerEnabled)) {
+            tasks.saveAndFlush(task);
+            for (var item : assetItems(task)) {
+                var reservation = ledger.reserve(task.id, task.kind, task.employeeUserId, task.employeeName, item.assetId,
+                        request.assetVersions() == null ? null : request.assetVersions().get(item.assetId), request.allowLegacyAssets());
+                item.operationId = reservation.operationId(); item.assetVersion = reservation.assetVersion();
+            }
+        }
+        event(task, actor, "创建" + ("ONBOARDING".equals(task.kind) ? "入职配发" : "离职交接") + "单"
+                + (Boolean.TRUE.equals(task.ledgerEnabled) ? "；已关联领用归还工单，等待实物验收和签收" : "；仅保存清单，不修改资产台账"));
         return save(task);
     }
 
     @Transactional
     public Detail check(Long id, int index, HandoverRequest.Check request) {
         var actor = manager(); var task = writable(id, request.version(), actor); var item = item(task, index);
+        if (Boolean.TRUE.equals(task.ledgerEnabled)) {
+            if (task.employeeUserId == null) throw error(HttpStatus.CONFLICT, "请先关联员工账号，再确认配发或验收");
+            if (Objects.equals(task.employeeUserId, actor.id())) throw error(HttpStatus.FORBIDDEN, "不能为本人的设备做配发验收，请另一位交接管理员核验");
+        }
         if (item.confirmedAt != null) throw error(HttpStatus.CONFLICT, "此项已确认，不能覆盖原验收记录");
         item.checked = request.checked(); item.checkedAt = request.checked() ? LocalDateTime.now() : null;
         item.checkedBy = request.checked() ? actor.name() : null;
+        item.checkedById = request.checked() ? actor.id() : null;
         progress(task); event(task, actor, (request.checked() ? "验收／配发确认：" : "撤销验收：") + item.name);
         return save(task);
     }
@@ -153,11 +173,14 @@ public class HandoverService {
         if (request.offline()) {
             if (!actor.manager()) throw error(HttpStatus.FORBIDDEN, "只有交接管理员可以登记线下确认");
             if (clean(request.note()).isBlank()) throw error(HttpStatus.BAD_REQUEST, "请填写线下签收或验收的凭证说明");
+            if (Boolean.TRUE.equals(task.ledgerEnabled) && Objects.equals(task.employeeUserId, actor.id()))
+                throw error(HttpStatus.FORBIDDEN, "本人请使用线上确认，线下凭证由另一位交接管理员登记");
         } else if (!Objects.equals(task.employeeUserId, actor.id())) throw error(HttpStatus.FORBIDDEN, "只能确认本人交接事项，不能代替员工线上确认");
         if (!item.checked) throw error(HttpStatus.CONFLICT, "请先由管理员验收或确认配发");
         if (item.confirmedAt != null) throw error(HttpStatus.CONFLICT, "此项已确认，不能覆盖原确认记录");
         item.confirmationMethod = request.offline() ? "OFFLINE" : "ONLINE";
         item.confirmedAt = LocalDateTime.now(); item.confirmedBy = actor.name(); item.confirmationNote = clean(request.note());
+        item.confirmedById = actor.id();
         progress(task); event(task, actor, (request.offline() ? "登记线下确认：" : "员工线上确认：") + item.name + (request.offline() ? "；凭证：" + item.confirmationNote : ""));
         return save(task);
     }
@@ -167,7 +190,22 @@ public class HandoverService {
         var actor = manager(); var task = writable(id, request.version(), actor);
         if (task.items.isEmpty() || task.items.stream().anyMatch(i -> !i.checked || i.confirmedAt == null))
             throw error(HttpStatus.CONFLICT, "请完成每项验收及员工确认，无法线上确认时登记线下凭证");
-        task.state = "COMPLETED"; event(task, actor, "交接记录完结；资产台账未自动修改" + note(request.note()));
+        if (Boolean.TRUE.equals(task.ledgerEnabled)) {
+            if (task.employeeUserId == null) throw error(HttpStatus.CONFLICT, "请先明确关联员工账号");
+            if (!Boolean.TRUE.equals(request.confirmed())) throw error(HttpStatus.BAD_REQUEST, "请明确确认完结交接并更新台账");
+            for (var item : task.items) {
+                if (item.checkedById == null || Objects.equals(item.checkedById, task.employeeUserId)
+                        || item.confirmedById == null
+                        || ("ONLINE".equals(item.confirmationMethod) ? !Objects.equals(item.confirmedById, task.employeeUserId)
+                            : !"OFFLINE".equals(item.confirmationMethod) || clean(item.confirmationNote).isBlank()
+                                || Objects.equals(item.confirmedById, task.employeeUserId)))
+                    throw error(HttpStatus.CONFLICT, "验收与员工确认凭证不完整，请重新核对交接记录");
+            }
+            for (var item : assetItems(task)) ledger.finish(item.operationId, task.id, task.employeeUserId);
+            if (!assetItems(task).isEmpty()) task.ledgerAppliedAt = LocalDateTime.now();
+        }
+        task.state = "COMPLETED"; event(task, actor, (task.ledgerAppliedAt == null
+                ? "交接记录完结；无资产台账变更" : "交接完结，已更新 " + assetItems(task).size() + " 项设备的领用／归还记录") + note(request.note()));
         return save(task);
     }
 
@@ -175,17 +213,44 @@ public class HandoverService {
     public Detail cancel(Long id, HandoverRequest.Action request) {
         var actor = manager(); var task = writable(id, request.version(), actor);
         if (clean(request.note()).isBlank()) throw error(HttpStatus.BAD_REQUEST, "请填写取消原因");
+        if (Boolean.TRUE.equals(task.ledgerEnabled)) for (var item : assetItems(task)) ledger.cancel(item.operationId, task.id);
         task.state = "CANCELLED"; event(task, actor, "取消交接单：" + request.note().trim());
         return save(task);
     }
 
     @Transactional
     public Detail linkEmployee(Long id, HandoverRequest.LinkEmployee request) {
-        var actor = manager(); var task = visible(id, actor); version(task, request.version());
+        var actor = manager(); var task = lockedVisible(id, actor); version(task, request.version());
         if (task.employeeUserId != null || "CANCELLED".equals(task.state)) throw error(HttpStatus.CONFLICT, "已有明确关联或已取消的交接单不能重新关联");
         var employee = requireEmployee(request.employeeUserId());
+        if (Boolean.TRUE.equals(task.ledgerEnabled)) {
+            if (!Set.of("PENDING", "IN_PROGRESS").contains(task.state) || task.items.stream().anyMatch(i -> i.checked || i.confirmedAt != null))
+                throw error(HttpStatus.CONFLICT, "仅未验收的在途交接单可以关联账号");
+            if ("ONBOARDING".equals(task.kind) && !employee.isEnabled()) throw error(HttpStatus.CONFLICT, "入职配发不能关联已停用账号");
+            for (var item : assetItems(task)) ledger.linkEmployee(item.operationId, task.id, employee.getId());
+        }
         task.employeeUserId = employee.getId();
         event(task, actor, "人工确认关联账号：" + employee.getUsername() + "（" + employee.getDisplayName() + "）；原姓名快照保留");
+        return save(task);
+    }
+
+    @Transactional
+    public Detail bindAsset(Long id, int index, HandoverRequest.BindAsset request) {
+        var actor = manager(); var task = writable(id, request.version(), actor); var item = item(task, index);
+        if (!Boolean.TRUE.equals(task.ledgerEnabled) || item.assetId != null || item.checked || item.confirmedAt != null)
+            throw error(HttpStatus.CONFLICT, "只能给新交接单中尚未验收的准备项关联设备");
+        if (task.items.stream().anyMatch(i -> Objects.equals(i.assetId, request.assetId())))
+            throw error(HttpStatus.CONFLICT, "设备已在本交接单中");
+        var reservation = ledger.reserve(task.id, task.kind, task.employeeUserId, task.employeeName,
+                request.assetId(), request.assetVersion(), false);
+        var asset = assets.findById(request.assetId()).orElseThrow();
+        String preparation = item.name;
+        item.assetId = asset.getId(); item.assetVersion = reservation.assetVersion(); item.operationId = reservation.operationId();
+        item.assetTag = asset.getAssetTag(); item.name = asset.getName(); item.model = asset.getModel().getName();
+        item.serialNumber = asset.getManufacturerSerialNumber();
+        item.accessories = clip(asset.getAccessories().stream().map(a -> a.getName() + " ×" + a.getQuantity())
+                .collect(java.util.stream.Collectors.joining("；")), 4000);
+        event(task, actor, "准备项“" + preparation + "”关联设备 " + asset.getAssetTag());
         return save(task);
     }
 
@@ -195,9 +260,17 @@ public class HandoverService {
         return task;
     }
     private HandoverTask writable(Long id, long version, Actor actor) {
-        var task = visible(id, actor); version(task, version);
+        var task = lockedVisible(id, actor); version(task, version);
         if (!Set.of("PENDING", "IN_PROGRESS").contains(task.state)) throw error(HttpStatus.CONFLICT, "已完结或已取消的交接单不能修改");
         return task;
+    }
+    private HandoverTask lockedVisible(Long id, Actor actor) {
+        var task = tasks.locked(id).orElseThrow(() -> error(HttpStatus.NOT_FOUND, "交接单不存在或无权访问"));
+        if (!actor.manager() && !Objects.equals(task.employeeUserId, actor.id())) throw error(HttpStatus.NOT_FOUND, "交接单不存在或无权访问");
+        return task;
+    }
+    private List<HandoverTask.Item> assetItems(HandoverTask task) {
+        return task.items.stream().filter(i -> i.assetId != null).sorted(Comparator.comparing(i -> i.assetId)).toList();
     }
     private void version(HandoverTask task, long version) {
         if (task.version != version) throw error(HttpStatus.CONFLICT, "交接单已被其他人更新，请刷新后重试");
@@ -217,7 +290,7 @@ public class HandoverService {
         var saved = tasks.saveAndFlush(task);
         notifications.handover(saved.id, saved.version, saved.employeeName, saved.state,
                 saved.items.stream().filter(item -> !item.checked).count(),
-                saved.items.stream().filter(item -> item.checked && item.confirmedAt == null).count());
+                saved.items.stream().filter(item -> item.checked && item.confirmedAt == null).count(), saved.ledgerAppliedAt != null);
         return detail(saved);
     }
     private Detail detail(HandoverTask task) {
@@ -225,11 +298,13 @@ public class HandoverService {
         for (int index = 0; index < task.items.size(); index++) {
             var i = task.items.get(index);
             items.add(new Item(index, i.assetId, i.assetTag, i.name, i.model, i.serialNumber, i.accessories,
-                    i.checked, i.checkedBy, i.checkedAt, i.confirmationMethod, i.confirmedBy, i.confirmedAt, i.confirmationNote));
+                    i.checked, i.checkedBy, i.checkedAt, i.confirmationMethod, i.confirmedBy, i.confirmedAt, i.confirmationNote,
+                    i.assetVersion, i.operationId));
         }
         return new Detail(task.id, task.version, task.kind, task.state, task.employeeUserId, task.employeeName,
                 task.department, task.plannedDate, task.approvalReference, task.notes, task.createdByName, task.createdAt,
-                items, task.events.stream().map(e -> new Event(e.occurredAt, e.actorName, e.description)).toList());
+                items, task.events.stream().map(e -> new Event(e.occurredAt, e.actorName, e.description)).toList(),
+                Boolean.TRUE.equals(task.ledgerEnabled), task.ledgerAppliedAt);
     }
     private static void validateFilter(String value, Set<String> options) {
         if (!value.isBlank() && !options.contains(value)) throw error(HttpStatus.BAD_REQUEST, "交接筛选条件无效");

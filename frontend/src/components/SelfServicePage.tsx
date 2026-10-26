@@ -19,9 +19,11 @@ interface Props {
   onSelect: (asset: Asset) => void
   onNotify: (text: string, kind?: 'ok' | 'error') => void
   onOpenOa?: () => void
+  onOpenHandover?: (id: number) => void
+  onOpenOperation?: (id: number) => void
 }
 
-export function SelfServicePage({ user, assets, lookups, loading, error, onRefresh, onSelect, onNotify, onOpenOa }: Props) {
+export function SelfServicePage({ user, assets, lookups, loading, error, onRefresh, onSelect, onNotify, onOpenOa, onOpenHandover, onOpenOperation }: Props) {
   const [tab, setTab] = useState<'assets' | 'handovers' | 'registrations' | 'review' | 'notifications' | 'operations' | 'repair' | 'inventory' | 'consumables'>('assets')
   const canView = user.permissions.includes('ASSET_VIEW')
   const canReview = user.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_CREATE', 'ASSET_CHECKOUT'].every(permission => user.permissions.includes(permission as 'ASSET_VIEW' | 'ASSET_CREATE' | 'ASSET_CHECKOUT'))
@@ -44,8 +46,8 @@ export function SelfServicePage({ user, assets, lookups, loading, error, onRefre
       {canReview && <button className={`button ${tab === 'review' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'review'} onClick={() => setTab('review')}>登记审核</button>}
       {user.canManageUsers && <button className={`button ${tab === 'notifications' ? 'primary' : 'ghost'}`} aria-pressed={tab === 'notifications'} onClick={() => setTab('notifications')}>通知状态</button>}
     </div>
-    {tab === 'handovers' ? <HandoverPage currentUserId={user.id} assets={[]} selfService onNotify={onNotify} />
-      : tab === 'operations' || tab === 'repair' ? <OperationPage key={tab} user={user} assets={assets} repair={tab === 'repair'} onNotify={onNotify} onAssetsChanged={onRefresh} />
+    {tab === 'handovers' ? <HandoverPage currentUserId={user.id} assets={[]} selfService onNotify={onNotify} onAssetsChanged={onRefresh} onOpenOperation={onOpenOperation} />
+      : tab === 'operations' || tab === 'repair' ? <OperationPage key={tab} user={user} assets={assets} repair={tab === 'repair'} onNotify={onNotify} onAssetsChanged={onRefresh} onOpenHandover={onOpenHandover} />
         : tab === 'inventory' ? <InventoryPage user={user} onNotify={onNotify} />
           : tab === 'consumables' ? <ConsumablePage user={user} onNotify={onNotify} />
       : tab === 'registrations' || tab === 'review' && canReview ? <RegistrationPage key={tab} user={user} review={tab === 'review'} assets={assets} lookups={lookups} onNotify={onNotify} onAssetsChanged={onRefresh} />

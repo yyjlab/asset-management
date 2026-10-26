@@ -29,10 +29,14 @@ public class TaskNotifications {
                 "设备登记 #" + id + "\n员工：" + ownerName + "\n状态：" + label + "\n请进入资产系统“员工自助”查看详情。此通知不包含SN、价格或照片。");
     }
     public void handover(Long id, long version, String ownerName, String state, long waitingCheck, long waitingConfirm) {
+        handover(id, version, ownerName, state, waitingCheck, waitingConfirm, false);
+    }
+    public void handover(Long id, long version, String ownerName, String state, long waitingCheck, long waitingConfirm, boolean ledgerApplied) {
         String step = switch (state) { case "COMPLETED" -> "交接记录已完结"; case "CANCELLED" -> "交接记录已取消";
             default -> waitingCheck > 0 ? "请管理员核对配发／验收" : waitingConfirm > 0 ? "请员工确认收到／交还" : "请管理员核对并完结交接单"; };
         enqueue("handover:" + id + ":" + version, "HANDOVER", "资产交接进度",
-                "交接单 #" + id + "\n员工：" + ownerName + "\n" + step + "\n请进入资产系统核对；通知不代表资产台账已修改。");
+                "交接单 #" + id + "\n员工：" + ownerName + "\n" + step
+                        + (ledgerApplied ? "\n设备领用／归还已写入资产台账。" : "\n请进入资产系统核对；资产台账尚未由本单更新。"));
     }
     public record Delivery(Long id, String leaseId, String title, String content) {}
     public Optional<Delivery> claim() {

@@ -18,9 +18,13 @@ public final class HandoverRequest {
             @NotNull @Size(max = 100) List<@NotNull @Positive Long> assetIds,
             boolean includeAssignedAssets,
             boolean allowLegacyAssets,
-            @NotNull @Size(max = 50) List<@NotBlank @Size(max = 160) String> manualItems) {}
+            @NotNull @Size(max = 50) List<@NotBlank @Size(max = 160) String> manualItems,
+            Boolean ledgerEnabled,
+            @Size(max = 100) java.util.Map<@Positive Long, @NotNull @PositiveOrZero Long> assetVersions) {}
     public record Check(@NotNull @Min(0) Long version, boolean checked) {}
     public record Confirm(@NotNull @Min(0) Long version, boolean offline, @Size(max = 1000) String note) {}
-    public record Action(@NotNull @Min(0) Long version, @Size(max = 1000) String note) {}
+    public record Action(@NotNull @Min(0) Long version, @Size(max = 1000) String note, Boolean confirmed) {}
     public record LinkEmployee(@NotNull @Min(0) Long version, @NotNull @Positive Long employeeUserId) {}
+    public record BindAsset(@NotNull @Min(0) Long version, @NotNull @Positive Long assetId,
+                            @NotNull @PositiveOrZero Long assetVersion) {}
 }

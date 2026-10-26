@@ -32,7 +32,7 @@
 .handover-history time, .handover-history strong { font-size: 12px; color: var(--muted); }
 .handover-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .handover-page .handover-checkbox { display: flex; align-items: flex-start; gap: 10px; line-height: 1.7; }
-.handover-checkbox input { flex: 0 0 auto; margin-top: 5px; accent-color: var(--blue); }
+.handover-page .handover-checkbox input[type=checkbox] { flex: 0 0 18px; width: 18px; height: 18px; padding: 0; margin: 2px 0 0; box-shadow: none; accent-color: var(--blue); }
 .handover-asset-picker h4 { margin: 0 0 12px; font-size: 14px; }
 .handover-asset-choices { max-height: 260px; overflow-y: auto; display: grid; gap: 10px; margin-top: 12px; }
 @media (max-width: 650px) { .handover-form-grid { grid-template-columns: 1fr; } .handover-item, .handover-editor, .handover-finish, .handover-history { padding: 14px; } }

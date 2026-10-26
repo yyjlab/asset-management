@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Independent handover snapshots. There are deliberately no associations to mutable asset/user rows. */
+/** Handover snapshots; legacy records remain independent of asset ledger changes. */
 @Entity
 @Table(name = "asset_handover_tasks", indexes = @Index(name = "idx_handover_employee", columnList = "employeeUserId"))
 public class HandoverTask {
@@ -26,6 +26,8 @@ public class HandoverTask {
     @Column(nullable = false, length = 80) String createdByName;
     @Column(nullable = false, updatable = false) LocalDateTime createdAt;
     @Column(nullable = false) LocalDateTime updatedAt;
+    Boolean ledgerEnabled;
+    LocalDateTime ledgerAppliedAt;
 
     @ElementCollection @BatchSize(size = 50)
     @CollectionTable(name = "asset_handover_items", joinColumns = @JoinColumn(name = "task_id"))
@@ -44,6 +46,8 @@ public class HandoverTask {
     @Embeddable
     public static class Item {
         Long assetId;
+        Long assetVersion;
+        Long operationId;
         @Column(length = 80) String assetTag;
         @Column(nullable = false, length = 160) String name;
         @Column(length = 200) String model;
@@ -52,9 +56,11 @@ public class HandoverTask {
         boolean checked;
         LocalDateTime checkedAt;
         @Column(length = 80) String checkedBy;
+        Long checkedById;
         @Column(length = 20) String confirmationMethod;
         LocalDateTime confirmedAt;
         @Column(length = 80) String confirmedBy;
+        Long confirmedById;
         @Column(length = 1000) String confirmationNote;
         protected Item() {}
     }

@@ -25,6 +25,8 @@ class OperationTask {
     // A nullable unique reservation protects accepted workflows without editing the asset ledger.
     @Column(unique = true) Long reservedAssetId;
     Long assetVersion;
+    Long handoverTaskId;
+    Boolean handoverLegacyReturn;
     @Column(length = 80) String assetTag;
     // Nullable fields leave all existing, manually processed workflows unchanged.
     @Column(length = 24) String oaState;

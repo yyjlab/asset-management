@@ -6,14 +6,14 @@ import { ConfirmDialog } from './ConfirmDialog'
 import './WorkflowPages.css'
 
 const kinds: Record<OperationKind, string> = { ISSUE: '领用申请', RETURN: '归还验收', TRANSFER: '转交他人', CORRECTION: '信息纠错', REPAIR: '故障报修' }
-const states = { PENDING: '待受理', WAITING_CONFIRM: '待员工确认', PROCESSING: '维修中', CONFIRMED: '待管理员完结', COMPLETED: '已完成', REJECTED: '已驳回', CANCELLED: '已取消', OA_PENDING: '钉钉审批中', OA_FAILED: '钉钉办理需处理' }
+const states = { PENDING: '待受理', WAITING_CONFIRM: '待员工确认', PROCESSING: '维修中', CONFIRMED: '待管理员完结', COMPLETED: '已完成', REJECTED: '已驳回', CANCELLED: '已取消', OA_PENDING: '钉钉审批中', OA_FAILED: '钉钉办理需处理', HANDOVER_PENDING: '交接办理中' }
 const correctionFields = { cpu: 'CPU', memory: '内存', storage: '硬盘', ownershipDepartment: '归属部门' }
 const empty: OperationPageData = { items: [], page: 0, totalElements: 0, totalPages: 0, canManage: false }
 export const canManageWorkflows = (user: AuthUser) => user.dataScope === 'ALL' && (['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'] as Permission[]).every(value => user.permissions.includes(value))
 const message = (error: unknown) => error instanceof Error ? error.message : '工单操作失败'
-interface Props { user: AuthUser; assets: Asset[]; repair?: boolean; initialId?: number; onOpenOa?: () => void; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
+interface Props { user: AuthUser; assets: Asset[]; repair?: boolean; initialId?: number; onOpenOa?: () => void; onOpenHandover?: (id: number) => void; onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged: () => void }
 
-export function OperationPage({ user, assets, repair = false, initialId, onOpenOa, onNotify, onAssetsChanged }: Props) {
+export function OperationPage({ user, assets, repair = false, initialId, onOpenOa, onOpenHandover, onNotify, onAssetsChanged }: Props) {
   const [data, setData] = useState(empty)
   const [page, setPage] = useState(0)
   const [kind, setKind] = useState(repair ? 'REPAIR' : '')
@@ -69,7 +69,7 @@ export function OperationPage({ user, assets, repair = false, initialId, onOpenO
   }
   const task = selected?.task
   const oaTask = task && ['OA_PENDING', 'OA_FAILED'].includes(task.state)
-  const activeTask = task && !oaTask && !['COMPLETED', 'REJECTED', 'CANCELLED'].includes(task.state)
+  const activeTask = task && !oaTask && !task.handoverId && !['COMPLETED', 'REJECTED', 'CANCELLED'].includes(task.state)
   return <section className="workflow-page">
     {!repair && onOpenOa && <button className="button ghost" onClick={onOpenOa}>钉钉 OA 交接（自动领用／归还）</button>}
     {oaTask && <p className="workflow-notice">此工单由钉钉审批办理，请进入“钉钉 OA 交接”查看进度；本页面不能重复审批。</p>}
@@ -79,6 +79,7 @@ export function OperationPage({ user, assets, repair = false, initialId, onOpenO
     {creating ? <OperationEditor assets={own} repair={repair} onCancel={() => setCreating(false)} onNotify={onNotify} onCreated={result => { setCreating(false); setSelected(result); reset(); setRevision(value => value + 1); onNotify('申请已提交，正式台账未修改') }} /> : selected && task ? <>
       <div className="workflow-head"><button className="button ghost" disabled={busy || opening} onClick={() => { selection.current++; setSelected(null); reset() }}>返回列表</button><h3>#{task.id} · {task.title}</h3><span>{states[task.state]}</span></div>
       <div className="workflow-meta"><span>{kinds[task.kind]}</span><span>申请人：{task.ownerName}</span><span>接收／确认人：{task.targetName}</span><span>设备：{task.assetTag || '等待分配'}</span><span>资产快照版本：{selected.assetVersion ?? '未分配'}</span></div>
+      {task.handoverId && onOpenHandover && <div className="workflow-actions"><button className="button ghost" onClick={() => onOpenHandover(task.handoverId!)}>查看交接单 #{task.handoverId}</button></div>}
       <p className="workflow-pre">{selected.description}</p>
       {!!Object.keys(selected.proposed).length && <div className="workflow-card"><h3>申请纠正的信息</h3>{Object.entries(selected.proposed).map(([key, value]) => <p key={key}>{correctionFields[key as keyof typeof correctionFields]}：{value || '清空此字段'}</p>)}</div>}
       {selected.outcome && <p>维修结果：{selected.outcome === 'FIXED' ? '已修复' : '建议报废'} · 费用 ¥{selected.repairCost ?? 0}</p>}

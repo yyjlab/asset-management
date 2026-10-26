@@ -38,6 +38,10 @@ public class HandoverController {
     public HandoverService.Detail confirm(@PathVariable Long id, @PathVariable int index, @Valid @RequestBody HandoverRequest.Confirm request) {
         return service.confirm(id, index, request);
     }
+    @PostMapping("/{id}/items/{index}/asset")
+    public HandoverService.Detail bindAsset(@PathVariable Long id, @PathVariable int index, @Valid @RequestBody HandoverRequest.BindAsset request) {
+        return service.bindAsset(id, index, request);
+    }
     @PostMapping("/{id}/complete")
     public HandoverService.Detail complete(@PathVariable Long id, @Valid @RequestBody HandoverRequest.Action request) { return service.complete(id, request); }
     @PostMapping("/{id}/cancel")

@@ -39,7 +39,7 @@ public class OperationService {
         return user;
     }
     public record Summary(Long id, long version, String kind, String state, Long ownerId, String ownerName,
-            Long targetId, String targetName, Long assetId, String assetTag, String title, LocalDateTime updatedAt) {}
+            Long targetId, String targetName, Long assetId, String assetTag, String title, LocalDateTime updatedAt, Long handoverId) {}
     public record Page(List<Summary> items, int page, long totalElements, int totalPages, boolean canManage) {}
     public record Event(LocalDateTime occurredAt, String actor, String description) {}
     public record Detail(Summary task, Long assetVersion, String description, Map<String, String> proposed,
@@ -97,6 +97,7 @@ public class OperationService {
     @Transactional
     public Detail action(Long id, OperationRequest.Action request) {
         var actor = access.current(); var t = visible(id, true);
+        if (t.handoverTaskId != null) throw fail(HttpStatus.CONFLICT, "此工单关联交接单 #" + t.handoverTaskId + "，请在入离职交接中办理，不能重复审批");
         if (t.oaState != null) throw fail(HttpStatus.CONFLICT, "此申请由钉钉 OA 审批，请进入钉钉审批办理，不能在本地重复审批");
         if (t.version != request.version()) throw fail(HttpStatus.CONFLICT, "工单已变化，请刷新后重试");
         if (Set.of("COMPLETED", "REJECTED", "CANCELLED").contains(t.state)) throw fail(HttpStatus.CONFLICT, "已关闭的工单不能再修改");
@@ -223,7 +224,7 @@ public class OperationService {
         notifications.enqueue("operation:" + t.id + ":" + t.version, "OPERATION", "资产工单进度", "工单 #" + t.id + "\n申请人：" + t.ownerName + "\n状态：" + stateLabel + "\n请进入资产系统查看详情。");
         return detail(t);
     }
-    private Summary summary(OperationTask t) { return new Summary(t.id, t.version, t.kind, t.state, t.ownerId, t.ownerName, t.targetId, t.targetName, t.assetId, t.assetTag, t.title, t.updatedAt); }
+    private Summary summary(OperationTask t) { return new Summary(t.id, t.version, t.kind, t.state, t.ownerId, t.ownerName, t.targetId, t.targetName, t.assetId, t.assetTag, t.title, t.updatedAt, t.handoverTaskId); }
     private Detail detail(OperationTask t) { return new Detail(summary(t), t.assetVersion, t.description, Map.copyOf(t.proposed), t.outcome, t.repairCost, t.events.stream().map(e -> new Event(e.occurredAt, e.actor, e.description)).toList()); }
     private static String clean(String value) { return value == null ? "" : value.trim(); }
     private static ApiException fail(HttpStatus status, String message) { return new ApiException(status, message); }

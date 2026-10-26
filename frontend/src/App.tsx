@@ -420,13 +420,13 @@ export default function App() {
 
   if (section === 'selfService') return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><SelfServicePage key={accessKey} user={authUser} assets={suggestionAssets} lookups={lookups} loading={loading} error={assetLoadError} onRefresh={() => void load('')} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onNotify={notify} onOpenOa={openOa} /></div></main>
+    <main className="main-content">{topbar}<div className="content"><SelfServicePage key={accessKey} user={authUser} assets={suggestionAssets} lookups={lookups} loading={loading} error={assetLoadError} onRefresh={() => void load('')} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onNotify={notify} onOpenOa={openOa} onOpenHandover={id => showView('handover', { name: 'list', taskId: id })} onOpenOperation={id => showView('operations', { name: 'list', taskId: id })} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'handover') return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><HandoverPage key={`${accessKey}:${taskId || ''}`} initialId={taskId} canUseKits={canManageWorkflows(authUser)} currentUserId={authUser.id} assets={suggestionAssets} onNotify={notify} onOpenOa={openOa} /></div></main>
+    <main className="main-content">{topbar}<div className="content"><HandoverPage key={`${accessKey}:${taskId || ''}`} initialId={taskId} canUseKits={canManageWorkflows(authUser)} currentUserId={authUser.id} assets={suggestionAssets} onNotify={notify} onOpenOa={openOa} onAssetsChanged={() => void load('')} onOpenOperation={id => showView('operations', { name: 'list', taskId: id })} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
@@ -435,7 +435,7 @@ export default function App() {
     <main className="main-content">{topbar}<div className="content">{section === 'inventory'
       ? <InventoryPage key={`${accessKey}:inventory:${taskId || ''}`} initialId={taskId} user={authUser} onNotify={notify} />
       : section === 'consumables' ? <ConsumablePage key={`${accessKey}:consumables:${taskId || ''}`} initialId={taskId} user={authUser} onNotify={notify} />
-        : <OperationPage key={`${accessKey}:${section}:${taskId || ''}`} initialId={taskId} user={authUser} assets={suggestionAssets} repair={section === 'repair'} onNotify={notify} onAssetsChanged={() => void load('')} onOpenOa={openOa} />}</div></main>
+        : <OperationPage key={`${accessKey}:${section}:${taskId || ''}`} initialId={taskId} user={authUser} assets={suggestionAssets} repair={section === 'repair'} onNotify={notify} onAssetsChanged={() => void load('')} onOpenOa={openOa} onOpenHandover={id => showView('handover', { name: 'list', taskId: id })} />}</div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
