@@ -870,6 +870,36 @@ function assetTableMarkup(assets, loading = false) {
   return renderToStaticMarkup(React.createElement(AssetTable, { assets, loading, canEdit: true, canCreate: true, onSelect() {}, onEdit() {}, onClone() {} }));
 }
 
+test('table assignees use passive name tags without changing lifecycle, domain or stored names', () => {
+  for (const name of ['已经领出', '维护中', '已报废']) {
+    const assets = [domainAsset({ checkedOut: true, status: { name }, assignedTo: '  袁玉杰  ', domainJoinStatus: 'JOINED' })];
+    const before = JSON.stringify(assets);
+    const markup = assetTableMarkup(assets);
+    assert.match(markup, /<td><span class="asset-assignee-tag" title="袁玉杰">袁玉杰<\/span><\/td>/);
+    assert.match(markup, /domain-joined/);
+    assert.equal(JSON.stringify(assets), before);
+    assert.ok(!markup.includes('role="button"')); assert.ok(!markup.includes('tabindex='));
+  }
+});
+
+test('unassigned table rows stay plain and muted instead of receiving a person tag', () => {
+  for (const assignedTo of [null, undefined, '', '   ']) {
+    const markup = assetTableMarkup([domainAsset({ assignedTo })]);
+    assert.match(markup, /<span class="asset-assignee-empty">暂未领用<\/span>/);
+    assert.ok(!markup.includes('asset-assignee-tag'));
+  }
+});
+
+test('table assignee tags escape stored names and keep long names intact for the title', () => {
+  const longName = '某某公司研发部门外协工程师张三';
+  const longMarkup = assetTableMarkup([domainAsset({ assignedTo: longName })]);
+  assert.ok(longMarkup.includes(`title="${longName}">${longName}</span>`));
+  const malicious = '<img src=x onerror="alert(1)">';
+  const markup = assetTableMarkup([domainAsset({ assignedTo: malicious })]);
+  assert.ok(!markup.includes('<img src=x'));
+  assert.match(markup, /&lt;img/);
+});
+
 test('domain status has its own aligned column between custody status and assignee; current value data is not rendered', () => {
   const assets = [domainAsset({ domainJoinStatus: 'JOINED', cpu: 'i7' }), domainAsset({ id: 2, domainJoinStatus: 'NOT_JOINED' })];
   const before = JSON.stringify(assets);

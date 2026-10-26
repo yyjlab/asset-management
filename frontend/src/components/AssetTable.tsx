@@ -77,6 +77,7 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
              const stateClass = scrapped ? 'scrapped' : maintenance ? 'maintenance' : asset.checkedOut ? 'checked-out' : 'available'
              const parameters = firstThreeParameters(asset)
              const primaryImage = asset.imageUrls?.[0] || asset.imageUrl
+             const assignee = asset.assignedTo?.trim() || ''
              return <tr key={asset.id} onClick={() => onSelect(asset)}>
                <td><span className="asset-tag">{asset.assetTag}</span></td>
                <td><strong className="asset-name compact-text" title={asset.name}>{asset.name}</strong></td>
@@ -90,7 +91,7 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
                <td><span className="compact-text" title={asset.category.name}>{asset.category.name}</span></td>
                <td><span className={`status-pill ${stateClass}`}>{state}</span></td>
                <td className="asset-domain-cell"><DomainJoinBadge asset={asset} /></td>
-               <td><span className="compact-text" title={asset.assignedTo || '暂未领用'}>{asset.assignedTo || '暂未领用'}</span></td>
+               <td>{assignee ? <span className="asset-assignee-tag" title={assignee}>{assignee}</span> : <span className="asset-assignee-empty">暂未领用</span>}</td>
                <td><span className="compact-text" title={asset.location.name}>{asset.location.name}</span></td>
                {showPurchasePrice && <td className="number value-cell">{money(asset.purchasePrice)}</td>}
                <td className="sticky-action"><div className="row-actions">

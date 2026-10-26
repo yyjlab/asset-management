@@ -1057,6 +1057,10 @@ body { font-size: 15px; }
 .invoice-asset-table th,.invoice-asset-table td { min-width: 0 !important; }
 .invoice-asset-table th,.invoice-asset-table td { vertical-align: middle; }
 .invoice-asset-table .asset-domain-cell { text-align: left; white-space: nowrap; }
+.invoice-asset-table .asset-assignee-tag { display: inline-block; max-width: 100%; height: 28px; padding: 0 9px; box-sizing: border-box; border: 1px solid #bed1f6; border-radius: 7px; color: #2855a6; background: #edf3ff; font-weight: 700; line-height: 26px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.invoice-asset-table .asset-assignee-empty { color: #6d7d93; white-space: nowrap; }
+:root[data-theme="dark"] .invoice-asset-table .asset-assignee-tag { color: #b9d2ff; background: #233b60; border-color: #456392; }
+:root[data-theme="dark"] .invoice-asset-table .asset-assignee-empty { color: #9aaac0; }
 .domain-status-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 58px; padding: 5px 9px; border-radius: 7px; font-size: 11px; font-weight: 700; line-height: 16px; white-space: nowrap; vertical-align: middle; }
 .domain-status-badge.domain-joined { color: #137561; background: #e5f7f1; }
 .domain-status-badge.domain-not_joined { color: #965512; background: #fff3df; }
