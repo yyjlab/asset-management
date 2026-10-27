@@ -3,12 +3,15 @@ import { api } from '../api'
 import type { DomainJoinStatus, DomainStatusOption } from '../types'
 import { SaveIcon } from './Icons'
 import './FoundationData.css'
+import { ModelOptions } from './ModelOptions'
 
-export function FoundationData({ onNotify }: { onNotify: (message: string, kind?: 'ok' | 'error') => void }) {
+export function FoundationData({ onNotify, onLookupsChanged }: { onNotify: (message: string, kind?: 'ok' | 'error') => void; onLookupsChanged?: () => void }) {
   const [options, setOptions] = useState<DomainStatusOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState<DomainJoinStatus | null>(null)
+  const [tab, setTab] = useState<'MODEL' | 'DOMAIN'>('MODEL')
+  const [modelRevision, setModelRevision] = useState(0)
   const busy = useRef(false)
   const revision = useRef(0)
 
@@ -22,7 +25,7 @@ export function FoundationData({ onNotify }: { onNotify: (message: string, kind?
       if (revision.current === current) setError(reason instanceof Error ? reason.message : '读取基础资料失败')
     } finally { if (revision.current === current) setLoading(false) }
   }
-  useEffect(() => { void refresh(); return () => { revision.current++ } }, [])
+  useEffect(() => { if (tab === 'DOMAIN') void refresh(); return () => { revision.current++ } }, [tab])
   const save = async (option: DomainStatusOption) => {
     if (busy.current) return
     busy.current = true; setSaving(option.code)
@@ -35,9 +38,9 @@ export function FoundationData({ onNotify }: { onNotify: (message: string, kind?
   }
 
   return <section className="foundation-page">
-    <header className="foundation-heading"><div><h2>基础资料</h2><p>集中维护下拉选项，不批量改写资产档案。</p></div><button className="button ghost" disabled={loading || saving !== null} onClick={() => void refresh()}>{loading ? '读取中…' : '刷新'}</button></header>
-    <nav className="foundation-tabs" aria-label="基础资料分类"><span aria-current="page">入域状态</span></nav>
-    <article className="foundation-card">
+    <header className="foundation-heading"><h2>基础资料</h2><button className="button ghost" disabled={tab === 'DOMAIN' && (loading || saving !== null)} onClick={() => tab === 'MODEL' ? setModelRevision(value => value + 1) : void refresh()}>刷新</button></header>
+    <nav className="foundation-tabs" aria-label="基础资料分类"><button type="button" aria-pressed={tab === 'MODEL'} onClick={() => setTab('MODEL')}>设备型号</button><button type="button" aria-pressed={tab === 'DOMAIN'} disabled={saving !== null} onClick={() => setTab('DOMAIN')}>入域状态</button></nav>
+    {tab === 'MODEL' ? <ModelOptions revision={modelRevision} onNotify={onNotify} onChanged={onLookupsChanged} /> : <article className="foundation-card">
       <div className="foundation-card-heading"><h3>电脑入域状态</h3><p>固定保留三个状态，可修改说明和排列顺序；名称及含义不可改成其他状态。这里只维护选项，具体电脑请到“编辑资产 → 电脑配置”选择。</p></div>
       {error ? <p role="alert">{error}，请点击刷新重试。</p> : loading ? <p role="status">正在读取选项…</p> : <div className="foundation-options">
         {options.map(option => <form className="foundation-option" key={option.code} onSubmit={event => { event.preventDefault(); void save(option) }}>
@@ -48,6 +51,6 @@ export function FoundationData({ onNotify }: { onNotify: (message: string, kind?
         </form>)}
       </div>}
       <p className="foundation-footnote">旧电脑未核实时为“待确认”，非电脑不适用。此状态仅作人工记录，不连接 AD，也不会自动拦截领用。</p>
-    </article>
+    </article>}
   </section>
 }

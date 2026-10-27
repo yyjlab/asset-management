@@ -35,7 +35,8 @@ public class LookupController {
         List<LookupValue> values = type == null
                 ? repository.findAllByOrderByTypeAscNameAsc()
                 : repository.findByTypeOrderByNameAsc(type);
-        return values.stream().map(LookupResponse::from).toList();
+        return values.stream().filter(value -> value.getType() != LookupType.MODEL || !value.isDisabled())
+                .map(LookupResponse::from).toList();
     }
 
     @PostMapping

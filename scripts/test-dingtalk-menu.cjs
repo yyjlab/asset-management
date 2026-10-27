@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx'].map(async file => {
+  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
       build: {
@@ -1082,9 +1082,9 @@ test('foundation updates use CSRF and the version the administrator reviewed', a
 });
 
 test('foundation editor saves only option metadata, blocks duplicate submits and refreshes versions after save', async () => {
-  const states = [], refs = [], effects = [], writes = [], notifications = []; let stateIndex = 0, refIndex = 0, resolveSave;
+  const states = { 4: 'DOMAIN' }, refs = [], effects = [], writes = [], notifications = []; let stateIndex = 0, refIndex = 0, resolveSave;
   const react = { useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; }, useRef(initial) { const i = refIndex++; return refs[i] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
-  const { FoundationData } = load('components/FoundationData.tsx', { react, './FoundationData.css': {}, './Icons': load('components/Icons.tsx'), '../api': { api: {
+  const { FoundationData } = load('components/FoundationData.tsx', { react, './FoundationData.css': {}, './ModelOptions': { ModelOptions: () => null }, './Icons': load('components/Icons.tsx'), '../api': { api: {
     domainStatuses: async () => load('domainJoin.ts').domainStatusOptions,
     updateDomainStatus: (code, payload) => { writes.push({ code, payload }); return new Promise(resolve => { resolveSave = () => resolve({ code, label: '已入域', ...payload, version: 1 }); }); },
   } } });
@@ -1103,4 +1103,123 @@ test('foundation editor saves only option metadata, blocks duplicate submits and
   resolveSave(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(states[0].find(option => option.code === 'JOINED').version, 1);
   assert.equal(notifications.length, 1);
+});
+
+function comboboxHarness(props = {}) {
+  const states = [], refs = [], effects = [], calls = []; let stateIndex = 0, refIndex = 0, value = props.value || '', selectedId = props.selectedId ?? null;
+  const react = { useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect: effect => effects.push(effect), useId: () => 'model-search' };
+  const exports = load('components/EditableCombobox.tsx', { react, './Icons': load('components/Icons.tsx') }, false, { document: { activeElement: null, addEventListener() {}, removeEventListener() {} }, HTMLElement: class {}, window: { setTimeout: callback => callback() } });
+  return { states, calls, effects, filter: exports.filterSuggestions, render() { stateIndex = 0; refIndex = 0; return treeElements(exports.EditableCombobox({ options: [], placeholder: '输入型号搜索', editable: true, suggestOnly: true, ...props, value, selectedId, onChange(next, id) { value = next; selectedId = id; calls.push([next, id]); } })); } };
+}
+function comboKey(key, extra = {}) { return { key, keyCode: 0, nativeEvent: { isComposing: false }, prevented: false, preventDefault() { this.prevented = true; }, stopPropagation() {}, ...extra }; }
+const modelChoices = () => [{ id: 1, label: 'ThinkPad L13' }, { id: 2, label: 'ThinkPad T14' }, { id: 3, label: 'HUAWEI' }, { id: 4, label: '锐捷 RG-NBS3100-48GT4SFPV2' }];
+
+test('model suggestions are input-triggered and never expand the full list on empty focus', () => {
+  const view = comboboxHarness({ options: modelChoices() });
+  view.render().find(item => item.type === 'input').props.onFocus();
+  const empty = view.render(); assert.equal(empty.filter(item => item.props.role === 'option').length, 0);
+  assert.equal(empty.find(item => item.type === 'input').props['aria-expanded'], false);
+  assert.equal(empty.filter(item => item.props.className === 'combobox-arrow').length, 0);
+  empty.find(item => item.type === 'input').props.onChange({ target: { value: '锐' } });
+  const matches = view.render().filter(item => item.props.role === 'option'); assert.equal(matches.length, 1);
+  assert.equal(matches[0].props.children[1].props.children, '锐捷 RG-NBS3100-48GT4SFPV2');
+});
+test('suggestions ignore case and harmless spacing, rank exact matches first and cap at eight without changing options', () => {
+  const view = comboboxHarness(), options = Object.freeze([{ id: 1, label: 'prefix ThinkPad' }, { id: 2, label: 'ThinkPad T14' }, { id: 3, label: 'THINKPAD' }, ...Array.from({ length: 12 }, (_, i) => ({ id: i + 4, label: `ThinkPad ${i}` }))]);
+  const result = view.filter(options, ' ｔｈｉｎｋ pad '); assert.equal(result.length, 8);
+  assert.equal(result[0].id, 3); assert.equal(result[1].id, 2); assert.equal(options[0].id, 1);
+  assert.equal(view.filter(options, '   ').length, 0);
+});
+test('arrows and Enter choose explicitly, Escape closes and Chinese composition cannot accidentally select or submit', () => {
+  const view = comboboxHarness({ options: modelChoices() });
+  view.render().find(item => item.type === 'input').props.onChange({ target: { value: 'think' } });
+  const enter = comboKey('Enter'); view.render()[0].props.onKeyDown(enter); assert.ok(enter.prevented); assert.equal(view.calls.length, 1);
+  view.render()[0].props.onKeyDown(comboKey('ArrowDown'));
+  const input = view.render().find(item => item.type === 'input'); assert.equal(input.props['aria-activedescendant'], 'model-search-0');
+  const composing = comboKey('Enter', { nativeEvent: { isComposing: true } }); view.render()[0].props.onKeyDown(composing);
+  assert.equal(view.calls.length, 1); assert.equal(composing.prevented, false);
+  view.render()[0].props.onKeyDown(comboKey('Enter', { keyCode: 229 })); assert.equal(view.calls.length, 1);
+  view.render()[0].props.onKeyDown(comboKey('Enter')); assert.deepEqual(view.calls.at(-1), ['ThinkPad L13', 1]);
+  view.render().find(item => item.type === 'input').props.onFocus(); view.render()[0].props.onKeyDown(comboKey('Escape'));
+  assert.equal(view.render().find(item => item.type === 'input').props['aria-expanded'], false);
+});
+test('mouse selection retains the real option ID and no match retains free input without automatic data creation', () => {
+  const view = comboboxHarness({ options: modelChoices() });
+  view.render().find(item => item.type === 'input').props.onChange({ target: { value: 'huawei' } });
+  view.render().find(item => item.props.role === 'option').props.onClick(); assert.deepEqual(view.calls.at(-1), ['HUAWEI', 3]);
+  view.render().find(item => item.type === 'input').props.onChange({ target: { value: '新型号自填' } });
+  assert.deepEqual(view.calls.at(-1), ['新型号自填', null]); assert.equal(view.render().filter(item => item.props.role === 'option').length, 0);
+  assert.ok(view.render().some(item => item.props.children === '未找到匹配型号'));
+});
+test('other lookup dropdowns retain their current selection behavior and only model fields remove inline deletion', () => {
+  const view = comboboxHarness({ options: modelChoices(), suggestOnly: false });
+  view.render().find(item => item.props.className === 'combobox-arrow').props.onClick();
+  assert.equal(view.render().filter(item => item.props.role === 'option').length, 4);
+  const enter = comboKey('Enter'); view.render()[0].props.onKeyDown(enter); assert.equal(enter.prevented, false);
+  const asset = domainAsset(), form = assetFormHarness(asset), model = treeElements(form.render()).find(item => item.props.suggestOnly);
+  assert.ok(model); assert.equal(model.props.selectedId, asset.model.id); assert.equal(model.props.value, asset.model.name);
+  assert.equal(model.props.onDelete, undefined); assert.equal(model.props.allowCreate, undefined);
+});
+test('long model labels grow vertically instead of overflowing a fixed-height row', () => {
+  const css = require('node:fs').readFileSync(path.join(frontend, 'src/styles.css'), 'utf8');
+  const label = css.match(/\.combobox-option-label\s*\{([^}]+)\}/)[1];
+  assert.match(label, /min-height:\s*39px/); assert.match(label, /overflow-wrap:\s*anywhere/);
+  assert.ok(!/(?:^|;)\s*height:/.test(label));
+});
+
+function modelManagerHarness(api = {}, rows = [{ id: 4, name: '历史电脑型号', disabled: false, version: 2, assetCount: 3 }]) {
+  const states = [rows, false, '', '', '', '', false, null], refs = [], effects = [], notices = []; let index = 0, refIndex = 0, refreshed = 0;
+  const ApiError = class extends Error { constructor(message, status) { super(message); this.status = status; } };
+  const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
+  const { ModelOptions } = load('components/ModelOptions.tsx', { react, '../api': { api, ApiError }, './Icons': load('components/Icons.tsx'), './ConfirmDialog': { ConfirmDialog: () => null } }, false, { Error });
+  return { states, effects, notices, ApiError, get refreshed() { return refreshed; }, render(revision = 0) { index = 0; refIndex = 0; return treeElements(ModelOptions({ revision, onNotify: (text, kind) => notices.push({ text, kind }), onChanged: () => { refreshed++; } })); } };
+}
+test('model manager filters locally and offers availability controls without rename or deletion', () => {
+  const view = modelManagerHarness({}, [{ id: 4, name: 'ThinkPad', disabled: false, version: 0, assetCount: 3 }, { id: 5, name: 'HUAWEI', disabled: true, version: 1, assetCount: 1 }]);
+  const first = view.render(); assert.equal(first.filter(item => item.type === 'tr').length, 3);
+  first.find(item => item.props['aria-label'] === '搜索设备型号').props.onChange({ target: { value: 'think' } });
+  const filtered = view.render(); assert.equal(filtered.filter(item => item.type === 'tr').length, 2);
+  const text = renderToStaticMarkup(filtered[0]); assert.match(text, /ThinkPad/); assert.ok(!text.includes('HUAWEI'));
+  assert.ok(!text.includes('删除')); assert.ok(!text.includes('改名'));
+});
+test('model creation prevents double submissions and changes only the option list', async () => {
+  const writes = []; let release;
+  const view = modelManagerHarness({ createModelOption: name => { writes.push(name); return new Promise(resolve => { release = resolve; }); } });
+  view.render().find(item => item.props['aria-label'] === '新型号名称').props.onChange({ target: { value: ' New Model ' } });
+  const form = view.render().find(item => item.type === 'form'); form.props.onSubmit({ preventDefault() {} }); form.props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(writes, ['New Model']); assert.equal(view.refreshed, 0);
+  release({ id: 9, name: 'New Model', disabled: false, version: 0, assetCount: 0 }); await new Promise(setImmediate);
+  assert.equal(view.states[0].length, 2); assert.equal(view.states[0].find(row => row.id === 4).assetCount, 3);
+  assert.equal(view.refreshed, 1); assert.equal(view.states[5], '');
+});
+test('disabling a used model requires confirmation and sends exactly the reviewed metadata version once', async () => {
+  const writes = []; let release;
+  const view = modelManagerHarness({ setModelAvailability: (...args) => { writes.push(args); return new Promise(resolve => { release = resolve; }); } });
+  view.render().find(item => item.type === 'button' && item.props.children === '停用').props.onClick(); assert.equal(writes.length, 0);
+  const dialog = view.render().find(item => item.props.title === '停用设备型号'); assert.match(dialog.props.description, /3 项资产保留原型号/);
+  dialog.props.onConfirm(); dialog.props.onConfirm(); assert.deepEqual(writes, [[4, 2, true]]);
+  release({ id: 4, name: '历史电脑型号', disabled: true, version: 3, assetCount: 3 }); await new Promise(setImmediate);
+  assert.equal(view.states[0][0].version, 3); assert.equal(view.states[0][0].name, '历史电脑型号'); assert.equal(view.refreshed, 1);
+});
+test('canceling model disable has no writes and version conflicts reload without automatically retrying', async () => {
+  let writes = 0, reads = 0;
+  const view = modelManagerHarness({ setModelAvailability: async () => { writes++; throw new view.ApiError('状态已更新', 409); }, modelOptions: async () => { reads++; return [{ id: 4, name: '历史电脑型号', disabled: true, version: 4, assetCount: 3 }]; } });
+  view.render().find(item => item.type === 'button' && item.props.children === '停用').props.onClick();
+  view.render().find(item => item.props.title === '停用设备型号').props.onCancel(); assert.equal(writes, 0);
+  view.render().find(item => item.type === 'button' && item.props.children === '停用').props.onClick();
+  view.render().find(item => item.props.title === '停用设备型号').props.onConfirm(); await new Promise(setImmediate);
+  assert.equal(writes, 1); assert.equal(reads, 1); assert.equal(view.states[0][0].version, 4); assert.equal(view.refreshed, 0);
+});
+test('failed model loads clear cached management rows rather than showing stale data', async () => {
+  const view = modelManagerHarness({ modelOptions: async () => { throw new Error('无权访问'); } });
+  view.render(); view.effects[0](); await new Promise(setImmediate);
+  assert.equal(view.states[0].length, 0); assert.equal(view.states[1], false); assert.match(view.states[2], /无权访问/);
+});
+test('model management APIs reuse CSRF, remain scoped to metadata and refreshing options never reloads or updates assets', async () => {
+  const calls = [], { api } = load('api.ts', {}, false, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf-model' } : [] }; } });
+  await api.modelOptions(); await api.createModelOption('新型号'); await api.setModelAvailability(4, 7, true);
+  assert.deepEqual(calls.map(call => call.url), ['/api/foundation/models', '/api/auth/csrf', '/api/foundation/models', '/api/foundation/models/4/availability']);
+  assert.deepEqual(JSON.parse(calls[3].options.body), { version: 7, disabled: true }); assert.equal(calls[3].options.headers['X-CSRF-TOKEN'], 'csrf-model');
+  let reads = 0; const page = appMarkup('foundation', { canManageUsers: true }, { name: 'list' }, { api: { listLookups: async () => { reads++; return []; } } });
+  page.componentProps.FoundationData.onLookupsChanged(); await new Promise(setImmediate); assert.equal(reads, 1);
 });

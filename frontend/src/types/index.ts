@@ -18,6 +18,8 @@ export interface LookupValue {
   parameterTemplate?: string[]
 }
 
+export interface ModelOption { id: number; name: string; disabled: boolean; version: number; assetCount: number }
+
 export interface Asset {
   id: number
   version: number

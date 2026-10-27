@@ -85,4 +85,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                or a.location.id = :lookupId
             """)
     long countUsingLookup(@Param("lookupId") Long lookupId);
+
+    @Query("select a.model.id, count(a) from Asset a group by a.model.id")
+    java.util.List<Object[]> countModelUsage();
 }

@@ -3,7 +3,7 @@ import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 import type { DingTalkQrAuthorization } from './types'
 import type { OaCandidate, OaCreate, OaItem, OaPage, OaStatus } from './types/dingtalkOa'
-import type { DomainJoinStatus, DomainStatusOption } from './types'
+import type { DomainJoinStatus, DomainStatusOption, ModelOption } from './types'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
@@ -82,6 +82,9 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  modelOptions: () => request<ModelOption[]>('/api/foundation/models'),
+  createModelOption: (name: string) => mutate<ModelOption>('/api/foundation/models', { method: 'POST', body: JSON.stringify({ name }) }),
+  setModelAvailability: (id: number, version: number, disabled: boolean) => mutate<ModelOption>(`/api/foundation/models/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),
   domainStatuses: () => request<DomainStatusOption[]>('/api/foundation/domain-statuses'),
   updateDomainStatus: (code: DomainJoinStatus, payload: Pick<DomainStatusOption, 'description' | 'sortOrder' | 'version'>) => mutate<DomainStatusOption>(`/api/foundation/domain-statuses/${code}`, { method: 'PUT', body: JSON.stringify(payload) }),
   oaStatus: () => request<OaStatus>('/api/dingtalk-oa/status'),

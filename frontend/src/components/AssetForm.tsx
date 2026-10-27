@@ -234,7 +234,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
     const lookup = lookups.find((item) => item.id === option.id)
     return lookup ? onDeleteLookup(lookup) : false
   }
-  const modelField = (label: string) => <label><span>{label} *</span><EditableCombobox editable required value={form.modelName} selectedId={form.modelId} placeholder="输入或选择型号" options={lookups.filter((item) => item.type === 'MODEL').map((item) => ({ id: item.id, label: item.name }))} onChange={(value, id) => setForm((current) => ({ ...current, modelName: value, modelId: typeof id === 'number' ? id : null }))} onDelete={async (option: ComboboxOption) => onDeleteLookup(lookups.find((item) => item.id === option.id)!)} /></label>
+  const modelField = (label: string) => <label><span>{label} *</span><EditableCombobox editable required suggestOnly value={form.modelName} selectedId={form.modelId} placeholder="输入型号搜索" options={lookups.filter((item) => item.type === 'MODEL').map((item) => ({ id: item.id, label: item.name }))} onChange={(value, id) => setForm((current) => ({ ...current, modelName: value, modelId: typeof id === 'number' ? id : null }))} /></label>
 
   return <section className="invoice-form-page">
     <div className="invoice-form-outer"><form className="invoice-form-card symmetric-asset-form" onSubmit={async (event) => { event.preventDefault(); if (!imageProcessingRef.current && !saving) await onSave({ ...form, domainJoinStatus: profile === 'COMPUTER' ? form.domainJoinStatus || 'UNKNOWN' : null }) }}>

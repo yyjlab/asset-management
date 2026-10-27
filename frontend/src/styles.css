@@ -1009,10 +1009,13 @@ body { font-size: 15px; }
 .combobox-menu { width: 100%; padding: 6px; position: absolute; left: 0; top: 49px; z-index: 6; border-radius: 13px; background: #fff; box-shadow: 0 22px 58px rgba(34,53,84,.18),inset 0 0 0 1px rgba(72,98,134,.09); }
 .combobox-options { max-height: 192px; overflow-y: auto; }
 .combobox-option { min-height: 39px; display: grid; grid-template-columns: 1fr; align-items: center; border-radius: 8px; cursor: pointer; transition: background .4s cubic-bezier(.32,.72,0,1); }
-.combobox-option.deletable { grid-template-columns: 34px 1fr; }
+.combobox-option.deletable { grid-template-columns: 34px minmax(0,1fr); }
 .combobox-option:hover { background: #f3f6fc; }
 .combobox-option:focus-visible { outline: 0; box-shadow: inset 0 0 0 2px rgba(93,135,255,.5); }
-.combobox-option-label { min-width: 0; height: 39px; padding: 0 10px; display: flex; align-items: center; color: #42546e; font-size: 13px; font-weight: 650; }
+.combobox-option-label { min-width: 0; min-height: 39px; padding: 10px; display: block; overflow-wrap: anywhere; line-height: 1.5; color: #42546e; font-size: 13px; font-weight: 650; }
+.editable-combobox.autocomplete > input { padding-right: 14px; }
+.autocomplete .combobox-menu { width: max(100%,min(360px,calc(100vw - 64px))); }
+.combobox-option.keyboard-active { background: #edf3ff; box-shadow: inset 0 0 0 1px rgba(93,135,255,.35); }
 .combobox-option.deletable .combobox-option-label { grid-column: 2; }
 .combobox-option.selected .combobox-option-label { color: #356ff1; }
 .combobox-delete { width: 27px; height: 27px; margin-left: 4px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 7px; color: #e65b67; background: #fff0f2; }
@@ -1813,6 +1816,7 @@ body { font-size: 15px; }
 :root[data-theme="dark"] .combobox-arrow:hover { background: #253653; }
 :root[data-theme="dark"] .combobox-menu { background: #182333; box-shadow: 0 22px 58px rgba(99,117,143,0.18),inset 0 0 0 1px rgba(99,117,143,0.09); }
 :root[data-theme="dark"] .combobox-option:hover { background: #131e2d; }
+:root[data-theme="dark"] .combobox-option.keyboard-active { background: #253653; }
 :root[data-theme="dark"] .combobox-option-label { color: #dce5f2; }
 :root[data-theme="dark"] .combobox-option.selected .combobox-option-label { color: #91b2ff; }
 :root[data-theme="dark"] .combobox-delete { color: #ff9da5; background: #131e2d; }

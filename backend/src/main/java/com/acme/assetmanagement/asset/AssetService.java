@@ -264,7 +264,7 @@ public class AssetService {
         asset.setManufacturerSerialNumber(clean(request.manufacturerSerialNumber()));
         asset.setOrderNumber(clean(request.orderNumber()));
         asset.setCompany(findLookup(request.companyId(), LookupType.COMPANY));
-        asset.setModel(resolveModel(request.modelId(), request.modelName()));
+        asset.setModel(resolveModel(request.modelId(), request.modelName(), asset.getModel()));
         LookupValue category = findLookup(request.categoryId(), LookupType.CATEGORY);
         asset.setCategory(category);
         AssetProfile profile = profileOf(category);
@@ -458,12 +458,18 @@ public class AssetService {
         return value;
     }
 
-    private LookupValue resolveModel(Long id, String modelName) {
-        if (id != null) return findLookup(id, LookupType.MODEL);
-        String name = clean(modelName);
-        if (name == null) throw new ApiException(HttpStatus.BAD_REQUEST, "设备型号不能为空");
-        return lookupRepository.findByTypeAndNameIgnoreCase(LookupType.MODEL, name)
-                .orElseGet(() -> lookupRepository.save(new LookupValue(LookupType.MODEL, name)));
+    private LookupValue resolveModel(Long id, String modelName, LookupValue currentModel) {
+        LookupValue model;
+        if (id != null) model = findLookup(id, LookupType.MODEL);
+        else {
+            String name = clean(modelName);
+            if (name == null) throw new ApiException(HttpStatus.BAD_REQUEST, "设备型号不能为空");
+            model = lookupRepository.findByTypeAndNameIgnoreCase(LookupType.MODEL, name)
+                    .orElseGet(() -> lookupRepository.save(new LookupValue(LookupType.MODEL, name)));
+        }
+        if (model.isDisabled() && (currentModel == null || !Objects.equals(currentModel.getId(), model.getId())))
+            throw new ApiException(HttpStatus.CONFLICT, "型号“" + model.getName() + "”已停用，请选择其他型号或联系管理员启用");
+        return model;
     }
 
     private void rememberCpu(String cpu) {

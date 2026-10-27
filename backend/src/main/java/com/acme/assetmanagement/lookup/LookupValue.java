@@ -18,6 +18,10 @@ public class LookupValue {
     @Column(nullable = false, length = 200)
     private String name;
 
+    // Nullable metadata: existing options remain enabled without rewriting any asset or option row.
+    private Boolean disabled;
+    private Long optionVersion;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "asset_profile", length = 30)
     private AssetProfile assetProfile;
@@ -52,6 +56,9 @@ public class LookupValue {
     public Long getId() { return id; }
     public LookupType getType() { return type; }
     public String getName() { return name; }
+    public boolean isDisabled() { return Boolean.TRUE.equals(disabled); }
+    public long getOptionVersion() { return optionVersion == null ? 0 : optionVersion; }
+    public void setDisabled(boolean disabled) { this.disabled = disabled; this.optionVersion = getOptionVersion() + 1; }
     public AssetProfile getAssetProfile() { return assetProfile; }
     public void setAssetProfile(AssetProfile assetProfile) {
         this.assetProfile = type == LookupType.CATEGORY ? assetProfile : null;
