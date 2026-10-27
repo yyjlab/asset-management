@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx'].map(async file => {
+  compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx', 'components/AccessoryOptions.tsx', 'components/AssetAccessories.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
       build: {
@@ -37,6 +37,7 @@ function load(file, mocks = {}, collapsed = false, globals = {}) {
     module, exports: module.exports, window: browser, URLSearchParams, FormData, Blob, File, crypto: require('node:crypto').webcrypto, ...globals,
     require: id => {
       if (Object.hasOwn(mocks, id)) return mocks[id];
+      if (id.endsWith('.css')) return {};
       const local = path.posix.normalize(path.posix.join(path.posix.dirname(file), id));
       const target = id.startsWith('.') && [local, `${local}.ts`, `${local}.tsx`].find(candidate => Object.hasOwn(compiled, candidate));
       return target ? load(target, {}, collapsed, globals) : frontendRequire(id);
@@ -1084,7 +1085,7 @@ test('foundation updates use CSRF and the version the administrator reviewed', a
 test('foundation editor saves only option metadata, blocks duplicate submits and refreshes versions after save', async () => {
   const states = { 4: 'DOMAIN' }, refs = [], effects = [], writes = [], notifications = []; let stateIndex = 0, refIndex = 0, resolveSave;
   const react = { useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value; }]; }, useRef(initial) { const i = refIndex++; return refs[i] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
-  const { FoundationData } = load('components/FoundationData.tsx', { react, './FoundationData.css': {}, './ModelOptions': { ModelOptions: () => null }, './Icons': load('components/Icons.tsx'), '../api': { api: {
+  const { FoundationData } = load('components/FoundationData.tsx', { react, './FoundationData.css': {}, './ModelOptions': { ModelOptions: () => null }, './AccessoryOptions': { AccessoryOptions: () => null }, './Icons': load('components/Icons.tsx'), '../api': { api: {
     domainStatuses: async () => load('domainJoin.ts').domainStatusOptions,
     updateDomainStatus: (code, payload) => { writes.push({ code, payload }); return new Promise(resolve => { resolveSave = () => resolve({ code, label: '已入域', ...payload, version: 1 }); }); },
   } } });
@@ -1222,4 +1223,142 @@ test('model management APIs reuse CSRF, remain scoped to metadata and refreshing
   assert.deepEqual(JSON.parse(calls[3].options.body), { version: 7, disabled: true }); assert.equal(calls[3].options.headers['X-CSRF-TOKEN'], 'csrf-model');
   let reads = 0; const page = appMarkup('foundation', { canManageUsers: true }, { name: 'list' }, { api: { listLookups: async () => { reads++; return []; } } });
   page.componentProps.FoundationData.onLookupsChanged(); await new Promise(setImmediate); assert.equal(reads, 1);
+});
+
+const accessoryChoice = (overrides = {}) => ({ id: 1, name: '鼠标', model: 'Logitech M185', specification: '无线 USB', disabled: false, version: 0, ...overrides });
+function accessoryHarness(api = {}, overrides = {}) {
+  const states = [], refs = [], changes = [], effects = []; let index = 0, refIndex = 0;
+  const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
+  const exports = load('components/AssetAccessories.tsx', { react, '../api': { api }, './Icons': load('components/Icons.tsx') }, false, { Error });
+  const props = { relatedDevices: [], accessories: [], disabled: false, onChange: (relatedDevices, accessories) => { changes.push({ relatedDevices, accessories }); props.relatedDevices = relatedDevices; props.accessories = accessories; }, ...overrides };
+  return { states, effects, changes, props, ...exports, render() { index = 0; refIndex = 0; effects.length = 0; return treeElements(exports.AssetAccessories(props)); } };
+}
+const accessoryButton = (items, text) => items.find(item => item.type === 'button' && React.Children.toArray(item.props.children).some(value => value === text));
+
+test('accessory lookup waits for input, searches full-width case-insensitively, excludes disabled options and caps results without mutation', () => {
+  const view = accessoryHarness();
+  const choices = Object.freeze([accessoryChoice(), accessoryChoice({ id: 2, name: '停用鼠标', disabled: true }), ...Array.from({ length: 12 }, (_, i) => accessoryChoice({ id: i + 3 }))]);
+  const before = JSON.stringify(choices);
+  assert.equal(view.matchingAccessories(choices, ' ').length, 0);
+  assert.equal(view.matchingAccessories(choices, 'ｌｏｇｉ tech').length, 8);
+  assert.ok(!view.matchingAccessories(choices, '鼠标').some(row => row.id === 2));
+  assert.equal(view.matchingAccessories(choices, 'USB').length, 8);
+  assert.equal(JSON.stringify(choices), before);
+});
+
+test('new accessory selections are independent snapshots, not catalogue links or stock transactions', () => {
+  const view = accessoryHarness(), option = accessoryChoice();
+  const first = view.accessorySnapshot(option), second = view.accessorySnapshot(option);
+  assert.deepEqual(JSON.parse(JSON.stringify(first)), { name: '鼠标', model: 'Logitech M185', specification: '无线 USB', quantity: 1, serialNumber: '', orderNumber: '' });
+  option.name = '目录已改名'; first.quantity = 4;
+  assert.equal(first.name, '鼠标'); assert.equal(second.quantity, 1); assert.equal(second.name, '鼠标');
+  assert.equal(Object.hasOwn(first, 'id'), false);
+});
+
+test('asset editor keeps legacy and current accessory rows in their original collections when saving unrelated edits', async () => {
+  const old = { name: '历史充电器', specification: '旧规格', quantity: 2 };
+  const current = { name: '旧鼠标', model: '旧型号', specification: '旧规格', quantity: 3, serialNumber: '原SN', orderNumber: '原订单' };
+  const asset = domainAsset({ relatedDevices: [current], accessories: [old] }), before = JSON.stringify(asset);
+  const view = assetFormHarness(asset); const tree = view.render();
+  const editor = treeElements(tree).find(item => item.type.name === 'AssetAccessories');
+  assert.ok(editor); assert.equal(editor.props.relatedDevices.length, 1); assert.equal(editor.props.accessories.length, 1);
+  treeElements(tree).find(item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+  const sent = JSON.parse(JSON.stringify(view.submissions[0]));
+  assert.deepEqual(sent.relatedDevices, [current]); assert.deepEqual(sent.accessories, [old]); assert.equal(JSON.stringify(asset), before);
+});
+
+test('accessory picker supports multiple selections across searches and changes the form only after Add', async () => {
+  let reads = 0;
+  const choices = [accessoryChoice(), accessoryChoice({ id: 2, name: '充电器', model: 'Lenovo', specification: '65W' })];
+  const view = accessoryHarness({ accessoryChoices: async () => { reads++; return choices; } });
+  accessoryButton(view.render(), '选择配件').props.onClick(); view.render(); view.effects[0](); await new Promise(setImmediate);
+  const search = () => view.render().find(item => item.type === 'input' && item.props.type === 'search');
+  search().props.onChange({ target: { value: '鼠标' } });
+  view.render().find(item => item.props.type === 'checkbox').props.onChange({ target: { checked: true } });
+  search().props.onChange({ target: { value: '65w' } });
+  view.render().find(item => item.props.type === 'checkbox').props.onChange({ target: { checked: true } });
+  assert.equal(view.changes.length, 0); assert.equal(reads, 1);
+  view.render().find(item => item.type === 'button' && item.props.className === 'button primary').props.onClick();
+  assert.equal(view.changes.length, 1); assert.equal(view.changes[0].relatedDevices.length, 2);
+  assert.equal(view.changes[0].relatedDevices[1].quantity, 1); assert.equal(view.states[0], false);
+});
+
+test('accessory picker cancellation, Enter search and failed catalogue reads cannot submit or erase existing records', async () => {
+  const existing = { name: '旧配件', model: '', specification: '', quantity: 1, serialNumber: '旧SN', orderNumber: '旧订单' };
+  const view = accessoryHarness({ accessoryChoices: async () => { throw new Error('目录不可用'); } }, { relatedDevices: [existing] });
+  accessoryButton(view.render(), '选择配件').props.onClick(); view.render(); view.effects[0](); await new Promise(setImmediate);
+  const items = view.render(); assert.equal(items.find(item => item.props.role === 'alert').props.children, '目录不可用');
+  assert.equal(items.find(item => item.type === 'button' && item.props.className === 'button primary').props.disabled, true);
+  let prevented = 0; items.find(item => item.props.type === 'search').props.onKeyDown({ key: 'Enter', preventDefault() { prevented++; } });
+  assert.equal(prevented, 1); accessoryButton(items, '取消').props.onClick();
+  assert.equal(view.changes.length, 0); assert.equal(view.props.relatedDevices[0].serialNumber, '旧SN');
+});
+
+test('late accessory reads are ignored after picker closure and retry does not reuse stale options', async () => {
+  let finish;
+  const view = accessoryHarness({ accessoryChoices: () => new Promise(resolve => { finish = resolve; }) });
+  accessoryButton(view.render(), '选择配件').props.onClick(); view.render(); const cleanup = view.effects[0]();
+  accessoryButton(view.render(), '取消').props.onClick(); cleanup(); finish([accessoryChoice()]); await new Promise(setImmediate);
+  assert.equal(view.states[1].length, 0); assert.equal(view.changes.length, 0);
+});
+
+test('accessory quantities and optional identifiers only update their own row and removing a row never deletes the catalogue', () => {
+  const related = [{ name: '鼠标', model: '原型号', specification: '原规格', quantity: 1, serialNumber: '', orderNumber: '' }];
+  const old = [{ name: '历史配件', specification: '原规格', quantity: 1 }];
+  const view = accessoryHarness({}, { relatedDevices: related, accessories: old });
+  view.render().find(item => item.props['aria-label'] === '鼠标 1 数量').props.onChange({ target: { value: '20000' } });
+  assert.equal(view.props.relatedDevices[0].quantity, 9999); assert.equal(related[0].quantity, 1);
+  view.render().find(item => item.props['aria-label'] === '鼠标 1 序列号').props.onChange({ target: { value: 'SN123' } });
+  assert.equal(view.props.relatedDevices[0].serialNumber, 'SN123'); assert.equal(view.props.accessories[0].name, '历史配件');
+  view.render().find(item => item.props['aria-label'] === '历史配件 原有配件 1 数量').props.onChange({ target: { value: '2' } });
+  assert.equal(view.props.accessories[0].quantity, 2);
+  view.render().find(item => item.props.title === '移除配件 鼠标').props.onClick();
+  assert.equal(view.props.relatedDevices.length, 0); assert.equal(view.props.accessories.length, 1);
+});
+
+function accessoryManagerHarness(api = {}, rows = []) {
+  const states = [rows, false, '', '', '', { name: '', model: '', specification: '' }, null, false, null], refs = [], effects = [], notices = []; let index = 0, refIndex = 0;
+  const ApiError = class extends Error { constructor(message, status) { super(message); this.status = status; } };
+  const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
+  const { AccessoryOptions } = load('components/AccessoryOptions.tsx', { react, '../api': { api, ApiError }, './Icons': load('components/Icons.tsx'), './ConfirmDialog': { ConfirmDialog: () => null } }, false, { Error });
+  return { states, effects, notices, ApiError, render() { index = 0; refIndex = 0; return treeElements(AccessoryOptions({ revision: 0, onNotify: (text, kind) => notices.push({ text, kind }) })); } };
+}
+
+test('accessory manager creates only catalogue metadata and blocks duplicate submissions', async () => {
+  const writes = []; let finish;
+  const view = accessoryManagerHarness({ createAccessoryOption: payload => { writes.push(payload); return new Promise(resolve => { finish = () => resolve(accessoryChoice(payload)); }); } });
+  view.states[5] = { name: ' 鼠标 ', model: ' M185 ', specification: ' USB ' };
+  const form = view.render().find(item => item.type === 'form'); form.props.onSubmit({ preventDefault() {} }); form.props.onSubmit({ preventDefault() {} });
+  assert.equal(writes.length, 1); assert.deepEqual(JSON.parse(JSON.stringify(writes[0])), { name: '鼠标', model: 'M185', specification: 'USB' });
+  finish(); await new Promise(setImmediate);
+  assert.equal(view.states[0].length, 1); assert.equal(view.states[5].name, ''); assert.equal(view.notices.length, 1);
+});
+
+test('accessory manager does not replay stale edits, retains the draft and filters without more API reads', async () => {
+  let writes = 0, reads = 0;
+  const view = accessoryManagerHarness({ updateAccessoryOption: async () => { writes++; throw new view.ApiError('目录已更新', 409); }, accessoryOptions: async () => { reads++; return [accessoryChoice({ version: 8, name: '其他人已更新' })]; } }, [accessoryChoice({ version: 2 })]);
+  accessoryButton(view.render(), '编辑').props.onClick(); view.states[5] = { ...view.states[5], name: '我的修改' };
+  view.render().find(item => item.type === 'form').props.onSubmit({ preventDefault() {} }); await new Promise(setImmediate);
+  assert.equal(writes, 1); assert.equal(reads, 1); assert.equal(view.states[6].version, 2); assert.equal(view.states[5].name, '我的修改');
+  view.render().find(item => item.props['aria-label'] === '搜索配件目录').props.onChange({ target: { value: '找不到' } });
+  assert.equal(view.render().filter(item => item.type === 'li').length, 0); assert.equal(reads, 1);
+});
+
+test('accessory catalogue API preserves CSRF and reviewed versions and choice reads remain read-only', async () => {
+  const calls = [], { api } = load('api.ts', {}, false, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => url.endsWith('/csrf') ? { headerName: 'X-CSRF-TOKEN', token: 'accessory-csrf' } : [] }; } });
+  await api.accessoryChoices(); await api.accessoryOptions(); await api.createAccessoryOption({ name: '鼠标', model: 'M185', specification: 'USB' });
+  await api.updateAccessoryOption(4, 7, { name: '键盘', model: 'K120', specification: 'USB' }); await api.setAccessoryAvailability(4, 8, true);
+  assert.deepEqual(calls.map(call => call.url), ['/api/foundation/accessories/choices', '/api/foundation/accessories', '/api/auth/csrf', '/api/foundation/accessories', '/api/foundation/accessories/4', '/api/foundation/accessories/4/availability']);
+  assert.equal(calls[0].options.method, undefined); assert.equal(calls[4].options.headers['X-CSRF-TOKEN'], 'accessory-csrf');
+  assert.equal(JSON.parse(calls[4].options.body).version, 7); assert.deepEqual(JSON.parse(calls[5].options.body), { version: 8, disabled: true });
+});
+
+test('foundation accessory tab and refresh affect only catalogue metadata, not asset lists', () => {
+  const states = { 4: 'ACCESSORY' }, effects = []; let index = 0;
+  const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef: initial => ({ current: initial }), useEffect: effect => effects.push(effect) };
+  const { FoundationData } = load('components/FoundationData.tsx', { react, '../api': { api: {} }, './Icons': load('components/Icons.tsx'), './ModelOptions': { ModelOptions: () => null }, './AccessoryOptions': { AccessoryOptions: () => null } });
+  const render = () => { index = 0; return treeElements(FoundationData({ onNotify() {}, onLookupsChanged() { assert.fail('Accessory refresh must not reload lookups or assets'); } })); };
+  const items = render(); effects[0]();
+  const editor = items.find(item => item.type.name === 'AccessoryOptions'); assert.ok(editor); assert.equal(editor.props.revision, 0);
+  accessoryButton(items, '刷新').props.onClick(); assert.equal(render().find(item => item.type.name === 'AccessoryOptions').props.revision, 1);
 });

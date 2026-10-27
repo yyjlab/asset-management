@@ -3,7 +3,7 @@ import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 import type { DingTalkQrAuthorization } from './types'
 import type { OaCandidate, OaCreate, OaItem, OaPage, OaStatus } from './types/dingtalkOa'
-import type { DomainJoinStatus, DomainStatusOption, ModelOption } from './types'
+import type { DomainJoinStatus, DomainStatusOption, ModelOption, AccessoryOption, AccessoryOptionWrite } from './types'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
@@ -82,6 +82,11 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  accessoryOptions: () => request<AccessoryOption[]>('/api/foundation/accessories'),
+  accessoryChoices: () => request<AccessoryOption[]>('/api/foundation/accessories/choices'),
+  createAccessoryOption: (payload: AccessoryOptionWrite) => mutate<AccessoryOption>('/api/foundation/accessories', { method: 'POST', body: JSON.stringify(payload) }),
+  updateAccessoryOption: (id: number, version: number, payload: AccessoryOptionWrite) => mutate<AccessoryOption>(`/api/foundation/accessories/${id}`, { method: 'PUT', body: JSON.stringify({ ...payload, version }) }),
+  setAccessoryAvailability: (id: number, version: number, disabled: boolean) => mutate<AccessoryOption>(`/api/foundation/accessories/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),
   modelOptions: () => request<ModelOption[]>('/api/foundation/models'),
   createModelOption: (name: string) => mutate<ModelOption>('/api/foundation/models', { method: 'POST', body: JSON.stringify({ name }) }),
   setModelAvailability: (id: number, version: number, disabled: boolean) => mutate<ModelOption>(`/api/foundation/models/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),

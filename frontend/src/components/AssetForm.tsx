@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Assignee, Asset, AssetPayload, AssetProfile, CustomParameter, LookupType, LookupValue, RelatedDevice } from '../types'
+import type { Assignee, Asset, AssetPayload, AssetProfile, CustomParameter, LookupType, LookupValue } from '../types'
 import { lookupLabels } from '../types'
 import { DragHandleIcon, PlusIcon, SaveIcon, TrashIcon, UploadIcon } from './Icons'
 import { EditableCombobox } from './EditableCombobox'
+import { AssetAccessories } from './AssetAccessories'
 import type { ComboboxOption } from './EditableCombobox'
 import { api } from '../api'
 import { domainStatusOf, domainStatusOptions } from '../domainJoin'
@@ -54,11 +55,8 @@ function fromAsset(asset: Asset | null, clone = false): AssetPayload {
     notes: asset.notes || '',
     boundDisplayIds: clone ? [] : (asset.boundDisplays || []).map((item) => item.id),
     boundComputerId: clone ? null : asset.boundComputer?.id ?? null,
-    relatedDevices: [
-      ...(asset.relatedDevices || []).map((item) => ({ ...item })),
-      ...(asset.accessories || []).map((item) => ({ name: item.name, model: '', serialNumber: '', orderNumber: '', specification: item.specification, quantity: item.quantity })),
-    ],
-    accessories: [],
+    relatedDevices: (asset.relatedDevices || []).map((item) => ({ ...item })),
+    accessories: (asset.accessories || []).map((item) => ({ ...item })),
     customParameters: (asset.customParameters || []).map((parameter) => ({ ...parameter })),
   }
 }
@@ -213,7 +211,6 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
     return { ...current, imageUrls, imageUrl: imageUrls[0] || '' }
   })
 
-  const updateDevice = (index: number, change: Partial<RelatedDevice>) => set('relatedDevices', form.relatedDevices.map((item, itemIndex) => itemIndex === index ? { ...item, ...change } : item))
   const updateCustomParameter = (index: number, change: Partial<CustomParameter>) => set('customParameters', form.customParameters.map((item, itemIndex) => itemIndex === index ? { ...item, ...change } : item))
   const selectedCategory = lookups.find((item) => item.type === 'CATEGORY' && item.id === form.categoryId)
   const profile = categoryProfile(selectedCategory)
@@ -333,21 +330,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
           : <label className="bound-computer-field"><span>绑定电脑</span><select value={form.boundComputerId ?? ''} onChange={(event) => set('boundComputerId', event.target.value ? Number(event.target.value) : null)}><option value="">暂不绑定电脑</option>{availableComputers.map((item) => <option key={item.id} value={item.id}>{item.assetTag} · {item.name} · {item.model.name}</option>)}</select></label>}
       </section>}
 
-      <section className="form-section full-width-section">
-        <div className="form-section-head"><div><h3>随附配件</h3><p>鼠标、充电器等不单独贴资产标签的配件，记录型号、订单号、规格和数量</p></div><button type="button" className="section-add-button" onClick={() => set('relatedDevices', [...form.relatedDevices, { name: '', model: '', serialNumber: '', orderNumber: '', specification: '', quantity: 1 }])}><PlusIcon />添加随附配件</button></div>
-        <div className="dynamic-editor related-editor">
-          <div className="dynamic-head"><span>设备名称</span><span>型号</span><span>序列号</span><span>订单号</span><span>规格参数</span><span>数量</span><span className="related-action-head">操作</span></div>
-          {form.relatedDevices.length === 0 ? <div className="dynamic-empty">暂无随附配件，可添加鼠标、充电器或其他不单独建档的配件</div> : form.relatedDevices.map((device, index) => <div className="dynamic-row related-device-row" key={index}>
-            <input required maxLength={120} value={device.name} onChange={(e) => updateDevice(index, { name: e.target.value })} placeholder="鼠标 / 充电器 / 其他配件" />
-            <input maxLength={160} value={device.model} onChange={(e) => updateDevice(index, { model: e.target.value })} placeholder="Dell U2723QE" />
-            <input maxLength={160} value={device.serialNumber} onChange={(e) => updateDevice(index, { serialNumber: e.target.value })} placeholder="厂家 SN" />
-            <input maxLength={160} value={device.orderNumber || ''} onChange={(e) => updateDevice(index, { orderNumber: e.target.value })} placeholder="采购订单号" />
-            <input maxLength={300} value={device.specification} onChange={(e) => updateDevice(index, { specification: e.target.value })} placeholder="27英寸 / 4K / HDMI" />
-            <input className="related-quantity-input" min="1" max="9999" type="number" value={device.quantity} onChange={(e) => updateDevice(index, { quantity: Math.max(1, Number(e.target.value) || 1) })} />
-            <button type="button" className="remove-row-button" title="删除随附配件" onClick={() => set('relatedDevices', form.relatedDevices.filter((_, itemIndex) => itemIndex !== index))}><TrashIcon /></button>
-          </div>)}
-        </div>
-      </section>
+      <AssetAccessories relatedDevices={form.relatedDevices} accessories={form.accessories} disabled={saving} onChange={(relatedDevices, accessories) => setForm(current => ({ ...current, relatedDevices, accessories }))} />
 
       <section className="form-section">
         <div className="form-section-head"><div><h3>价值与领用</h3><p>价格和当前使用状态</p></div></div>

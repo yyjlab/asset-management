@@ -19,6 +19,8 @@ export interface LookupValue {
 }
 
 export interface ModelOption { id: number; name: string; disabled: boolean; version: number; assetCount: number }
+export interface AccessoryOption { id: number; name: string; model: string; specification: string; disabled: boolean; version: number }
+export type AccessoryOptionWrite = Pick<AccessoryOption, 'name' | 'model' | 'specification'>
 
 export interface Asset {
   id: number
