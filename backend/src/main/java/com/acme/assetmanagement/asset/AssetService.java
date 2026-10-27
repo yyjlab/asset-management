@@ -259,6 +259,7 @@ public class AssetService {
             throw new ApiException(HttpStatus.FORBIDDEN, "不能保存到授权数据范围以外");
         }
         assetImageStorageService.removeAfterCommit(imageReferences(asset));
+        requireEnabledSuggestion(LookupType.ASSET_NAME, request.name(), asset.getId() == null ? null : asset.getName());
         asset.setName(request.name().trim());
         asset.setOwnershipDepartment(clean(request.ownershipDepartment()));
         asset.setManufacturerSerialNumber(clean(request.manufacturerSerialNumber()));
@@ -276,6 +277,7 @@ public class AssetService {
         // Omitted by an older client: preserve the stored value instead of clearing it.
         if (profile == AssetProfile.COMPUTER) {
             String cpu = clean(request.cpu());
+            requireEnabledSuggestion(LookupType.CPU, cpu, asset.getId() == null ? null : asset.getCpu());
             asset.setCpu(cpu);
             rememberCpu(cpu);
             asset.setMemory(clean(request.memory()));
@@ -476,6 +478,14 @@ public class AssetService {
         if (cpu == null) return;
         lookupRepository.findByTypeAndNameIgnoreCase(LookupType.CPU, cpu)
                 .orElseGet(() -> lookupRepository.save(new LookupValue(LookupType.CPU, cpu)));
+    }
+
+    private void requireEnabledSuggestion(LookupType type, String value, String current) {
+        String name = clean(value), previous = clean(current);
+        if (name == null || previous != null && name.equalsIgnoreCase(previous)) return;
+        lookupRepository.findByTypeAndNameIgnoreCase(type, name).filter(LookupValue::isDisabled).ifPresent(option -> {
+            throw new ApiException(HttpStatus.CONFLICT, type.getLabel() + "“" + name + "”已停用，请选择其他选项或联系管理员启用");
+        });
     }
 
     private void rememberSuggestions(Asset asset) {

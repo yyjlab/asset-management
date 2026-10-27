@@ -88,4 +88,10 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
 
     @Query("select a.model.id, count(a) from Asset a group by a.model.id")
     java.util.List<Object[]> countModelUsage();
+
+    @Query("select lower(trim(a.cpu)), count(a) from Asset a where a.cpu is not null group by lower(trim(a.cpu))")
+    List<Object[]> countCpuUsage();
+
+    @Query("select lower(trim(a.name)), count(a) from Asset a group by lower(trim(a.name))")
+    List<Object[]> countNameUsage();
 }

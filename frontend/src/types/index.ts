@@ -19,6 +19,7 @@ export interface LookupValue {
 }
 
 export interface ModelOption { id: number; name: string; disabled: boolean; version: number; assetCount: number }
+export type ManagedLookupType = 'MODEL' | 'CPU' | 'ASSET_NAME'
 export interface AccessoryOption { id: number; name: string; model: string; specification: string; disabled: boolean; version: number }
 export type AccessoryOptionWrite = Pick<AccessoryOption, 'name' | 'model' | 'specification'>
 

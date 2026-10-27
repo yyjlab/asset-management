@@ -35,7 +35,7 @@ public class LookupController {
         List<LookupValue> values = type == null
                 ? repository.findAllByOrderByTypeAscNameAsc()
                 : repository.findByTypeOrderByNameAsc(type);
-        return values.stream().filter(value -> value.getType() != LookupType.MODEL || !value.isDisabled())
+        return values.stream().filter(value -> !List.of(LookupType.MODEL, LookupType.CPU, LookupType.ASSET_NAME).contains(value.getType()) || !value.isDisabled())
                 .map(LookupResponse::from).toList();
     }
 

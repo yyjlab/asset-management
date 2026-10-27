@@ -1152,12 +1152,12 @@ test('mouse selection retains the real option ID and no match retains free input
   assert.deepEqual(view.calls.at(-1), ['新型号自填', null]); assert.equal(view.render().filter(item => item.props.role === 'option').length, 0);
   assert.ok(view.render().some(item => item.props.children === '未找到匹配型号'));
 });
-test('other lookup dropdowns retain their current selection behavior and only model fields remove inline deletion', () => {
+test('unmanaged lookup dropdowns retain their current selection behavior and model fields retain the real ID without inline deletion', () => {
   const view = comboboxHarness({ options: modelChoices(), suggestOnly: false });
   view.render().find(item => item.props.className === 'combobox-arrow').props.onClick();
   assert.equal(view.render().filter(item => item.props.role === 'option').length, 4);
   const enter = comboKey('Enter'); view.render()[0].props.onKeyDown(enter); assert.equal(enter.prevented, false);
-  const asset = domainAsset(), form = assetFormHarness(asset), model = treeElements(form.render()).find(item => item.props.suggestOnly);
+  const asset = domainAsset(), form = assetFormHarness(asset), model = treeElements(form.render()).find(item => item.props.placeholder === '输入型号搜索');
   assert.ok(model); assert.equal(model.props.selectedId, asset.model.id); assert.equal(model.props.value, asset.model.name);
   assert.equal(model.props.onDelete, undefined); assert.equal(model.props.allowCreate, undefined);
 });
@@ -1173,7 +1173,7 @@ function modelManagerHarness(api = {}, rows = [{ id: 4, name: '历史电脑型�
   const ApiError = class extends Error { constructor(message, status) { super(message); this.status = status; } };
   const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
   const { ModelOptions } = load('components/ModelOptions.tsx', { react, '../api': { api, ApiError }, './Icons': load('components/Icons.tsx'), './ConfirmDialog': { ConfirmDialog: () => null } }, false, { Error });
-  return { states, effects, notices, ApiError, get refreshed() { return refreshed; }, render(revision = 0) { index = 0; refIndex = 0; return treeElements(ModelOptions({ revision, onNotify: (text, kind) => notices.push({ text, kind }), onChanged: () => { refreshed++; } })); } };
+  return { states, effects, notices, ApiError, get refreshed() { return refreshed; }, render(revision = 0, type = 'MODEL') { index = 0; refIndex = 0; return treeElements(ModelOptions({ revision, type, onNotify: (text, kind) => notices.push({ text, kind }), onChanged: () => { refreshed++; } })); } };
 }
 test('model manager filters locally and offers availability controls without rename or deletion', () => {
   const view = modelManagerHarness({}, [{ id: 4, name: 'ThinkPad', disabled: false, version: 0, assetCount: 3 }, { id: 5, name: 'HUAWEI', disabled: true, version: 1, assetCount: 1 }]);
@@ -1361,4 +1361,74 @@ test('foundation accessory tab and refresh affect only catalogue metadata, not a
   const items = render(); effects[0]();
   const editor = items.find(item => item.type.name === 'AccessoryOptions'); assert.ok(editor); assert.equal(editor.props.revision, 0);
   accessoryButton(items, '刷新').props.onClick(); assert.equal(render().find(item => item.type.name === 'AccessoryOptions').props.revision, 1);
+});
+
+test('CPU and asset-name inputs reuse model input-triggered suggestions and remove inline deletion without touching other fields', () => {
+  const asset = domainAsset({ name: '历史电脑名称', cpu: '历史 CPU' }), view = assetFormHarness(asset), items = treeElements(view.render());
+  const cpu = items.find(item => item.props.placeholder === '输入 CPU 搜索'), name = items.find(item => item.props.placeholder === '输入资产名称搜索');
+  for (const field of [cpu, name]) {
+    assert.ok(field); assert.equal(field.props.suggestOnly, true); assert.equal(field.props.editable, true); assert.equal(field.props.onDelete, undefined);
+    assert.equal(field.props.allowCreate, undefined); assert.ok(!field.props.emptyText.includes('型号'));
+  }
+  assert.equal(cpu.props.value, '历史 CPU'); assert.equal(name.props.value, '历史电脑名称');
+  cpu.props.onChange('x'.repeat(210)); name.props.onChange('y'.repeat(170));
+  assert.equal(view.states[0].cpu.length, 200); assert.equal(view.states[0].name.length, 160);
+  assert.equal(asset.name, '历史电脑名称'); assert.equal(asset.cpu, '历史 CPU');
+});
+
+test('managed text fields keep empty focus closed, support keyword matches and use field-specific no-match labels', () => {
+  for (const [emptyText, options, query] of [
+    ['未找到匹配 CPU', [{ id: 1, label: 'Intel i5-1155G7' }, { id: 2, label: 'AMD Ryzen 7' }], 'i5'],
+    ['未找到匹配资产名称', [{ id: 1, label: '笔记本电脑' }, { id: 2, label: '显示器' }], '笔'],
+  ]) {
+    const view = comboboxHarness({ options, emptyText });
+    view.render().find(item => item.type === 'input').props.onFocus(); assert.equal(view.render().filter(item => item.props.role === 'option').length, 0);
+    view.render().find(item => item.type === 'input').props.onChange({ target: { value: query } }); assert.equal(view.render().filter(item => item.props.role === 'option').length, 1);
+    view.render().find(item => item.type === 'input').props.onChange({ target: { value: '没有匹配内容' } });
+    assert.equal(view.render().find(item => item.props.role === 'status').props.children, emptyText);
+  }
+});
+
+test('CPU and asset-name managers reuse versioned availability controls and preserve type-specific field lengths', async () => {
+  for (const [type, title, maximum] of [['CPU', 'CPU', 200], ['ASSET_NAME', '资产名称', 160]]) {
+    const writes = [], view = modelManagerHarness({ setTextAvailability: async (...args) => { writes.push(args); return { id: 4, name: '历史值', disabled: true, version: 3, assetCount: 3 }; } });
+    const initial = view.render(0, type); assert.equal(initial[0].props['aria-label'], `${title}管理`);
+    assert.equal(initial.find(item => item.props.maxLength).props.maxLength, maximum);
+    initial.find(item => item.type === 'button' && item.props.children === '停用').props.onClick(); assert.equal(writes.length, 0);
+    const dialog = view.render(0, type).find(item => item.props.title === `停用${title}`); assert.ok(dialog);
+    dialog.props.onConfirm(); await new Promise(setImmediate);
+    assert.deepEqual(writes, [[type, 4, 2, true]]); assert.equal(view.refreshed, 1);
+  }
+});
+
+test('CPU and asset-name manager creation only saves metadata to the chosen category', async () => {
+  for (const type of ['CPU', 'ASSET_NAME']) {
+    const writes = [], view = modelManagerHarness({ createTextOption: async (...args) => { writes.push(args); return { id: 9, name: '新值', disabled: false, version: 0, assetCount: 0 }; } });
+    view.states[5] = ' 新值 ';
+    view.render(0, type).find(item => item.type === 'form').props.onSubmit({ preventDefault() {} }); await new Promise(setImmediate);
+    assert.deepEqual(writes, [[type, '新值']]); assert.equal(view.states[0].length, 2); assert.equal(view.states[5], '');
+  }
+});
+
+test('CPU and asset-name APIs preserve CSRF and reviewed metadata versions without asset mutation', async () => {
+  const calls = [], { api } = load('api.ts', {}, false, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => url.endsWith('/csrf') ? { headerName: 'X-CSRF-TOKEN', token: 'text-csrf' } : [] }; } });
+  for (const type of ['CPU', 'ASSET_NAME']) {
+    await api.textOptions(type); await api.createTextOption(type, '新值'); await api.setTextAvailability(type, 5, 9, true);
+  }
+  assert.deepEqual(calls.map(call => call.url), ['/api/foundation/cpus', '/api/auth/csrf', '/api/foundation/cpus', '/api/foundation/cpus/5/availability', '/api/foundation/asset-names', '/api/foundation/asset-names', '/api/foundation/asset-names/5/availability']);
+  for (const index of [3, 6]) {
+    assert.deepEqual(JSON.parse(calls[index].options.body), { version: 9, disabled: true }); assert.equal(calls[index].options.headers['X-CSRF-TOKEN'], 'text-csrf');
+  }
+});
+
+test('foundation text tabs refresh the correct manager and reset component identity on category switches', () => {
+  const states = { 4: 'CPU' }, effects = []; let index = 0;
+  const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef: initial => ({ current: initial }), useEffect: effect => effects.push(effect) };
+  const { FoundationData } = load('components/FoundationData.tsx', { react, '../api': { api: {} }, './Icons': load('components/Icons.tsx'), './ModelOptions': { ModelOptions: () => null }, './AccessoryOptions': { AccessoryOptions: () => null } });
+  const render = () => { index = 0; return treeElements(FoundationData({ onNotify() {} })); };
+  const items = render(); effects[0]();
+  const cpu = items.find(item => item.type.name === 'ModelOptions'); assert.equal(cpu.props.type, 'CPU'); assert.equal(cpu.key, 'CPU');
+  accessoryButton(items, '刷新').props.onClick(); assert.equal(render().find(item => item.type.name === 'ModelOptions').props.revision, 1);
+  accessoryButton(render(), '资产名称').props.onClick(); const name = render().find(item => item.type.name === 'ModelOptions');
+  assert.equal(name.props.type, 'ASSET_NAME'); assert.notEqual(name.key, cpu.key);
 });

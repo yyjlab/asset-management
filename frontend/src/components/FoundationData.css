@@ -3,7 +3,7 @@
 .foundation-heading h2 { margin: 0 0 8px; font-size: 24px; }
 .foundation-heading p,.foundation-card-heading p,.foundation-footnote { color: #7a8ba3; font-size: 13px; line-height: 1.8; }
 .foundation-heading p { margin: 0; }
-.foundation-tabs { display: flex; border-bottom: 1px solid rgba(96,122,160,.14); }
+.foundation-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid rgba(96,122,160,.14); }
 .foundation-tabs > button { padding: 12px 18px; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; font-size: 14px; font-weight: 700; }
 .foundation-tabs > button[aria-pressed=true] { color: var(--blue); border-bottom-color: currentColor; }
 .foundation-model-tools,.foundation-model-filters,.foundation-model-create { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

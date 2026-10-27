@@ -11,7 +11,7 @@ export function FoundationData({ onNotify, onLookupsChanged }: { onNotify: (mess
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState<DomainJoinStatus | null>(null)
-  const [tab, setTab] = useState<'MODEL' | 'DOMAIN' | 'ACCESSORY'>('MODEL')
+  const [tab, setTab] = useState<'MODEL' | 'CPU' | 'ASSET_NAME' | 'DOMAIN' | 'ACCESSORY'>('MODEL')
   const [modelRevision, setModelRevision] = useState(0)
   const [accessoryRevision, setAccessoryRevision] = useState(0)
   const busy = useRef(false)
@@ -40,9 +40,9 @@ export function FoundationData({ onNotify, onLookupsChanged }: { onNotify: (mess
   }
 
   return <section className="foundation-page">
-    <header className="foundation-heading"><h2>基础资料</h2><button className="button ghost" disabled={tab === 'DOMAIN' && (loading || saving !== null)} onClick={() => tab === 'MODEL' ? setModelRevision(value => value + 1) : tab === 'ACCESSORY' ? setAccessoryRevision(value => value + 1) : void refresh()}>刷新</button></header>
-    <nav className="foundation-tabs" aria-label="基础资料分类"><button type="button" aria-pressed={tab === 'MODEL'} onClick={() => setTab('MODEL')}>设备型号</button><button type="button" aria-pressed={tab === 'DOMAIN'} disabled={saving !== null} onClick={() => setTab('DOMAIN')}>入域状态</button><button type="button" aria-pressed={tab === 'ACCESSORY'} disabled={saving !== null} onClick={() => setTab('ACCESSORY')}>随附配件</button></nav>
-    {tab === 'MODEL' ? <ModelOptions revision={modelRevision} onNotify={onNotify} onChanged={onLookupsChanged} /> : tab === 'ACCESSORY' ? <AccessoryOptions revision={accessoryRevision} onNotify={onNotify} /> : <article className="foundation-card">
+    <header className="foundation-heading"><h2>基础资料</h2><button className="button ghost" disabled={tab === 'DOMAIN' && (loading || saving !== null)} onClick={() => tab === 'MODEL' || tab === 'CPU' || tab === 'ASSET_NAME' ? setModelRevision(value => value + 1) : tab === 'ACCESSORY' ? setAccessoryRevision(value => value + 1) : void refresh()}>刷新</button></header>
+    <nav className="foundation-tabs" aria-label="基础资料分类"><button type="button" aria-pressed={tab === 'MODEL'} onClick={() => setTab('MODEL')}>设备型号</button><button type="button" aria-pressed={tab === 'CPU'} disabled={saving !== null} onClick={() => setTab('CPU')}>CPU</button><button type="button" aria-pressed={tab === 'ASSET_NAME'} disabled={saving !== null} onClick={() => setTab('ASSET_NAME')}>资产名称</button><button type="button" aria-pressed={tab === 'DOMAIN'} disabled={saving !== null} onClick={() => setTab('DOMAIN')}>入域状态</button><button type="button" aria-pressed={tab === 'ACCESSORY'} disabled={saving !== null} onClick={() => setTab('ACCESSORY')}>随附配件</button></nav>
+    {tab === 'MODEL' || tab === 'CPU' || tab === 'ASSET_NAME' ? <ModelOptions key={tab} type={tab} revision={modelRevision} onNotify={onNotify} onChanged={onLookupsChanged} /> : tab === 'ACCESSORY' ? <AccessoryOptions revision={accessoryRevision} onNotify={onNotify} /> : <article className="foundation-card">
       <div className="foundation-card-heading"><h3>电脑入域状态</h3><p>固定保留三个状态，可修改说明和排列顺序；名称及含义不可改成其他状态。这里只维护选项，具体电脑请到“编辑资产 → 电脑配置”选择。</p></div>
       {error ? <p role="alert">{error}，请点击刷新重试。</p> : loading ? <p role="status">正在读取选项…</p> : <div className="foundation-options">
         {options.map(option => <form className="foundation-option" key={option.code} onSubmit={event => { event.preventDefault(); void save(option) }}>

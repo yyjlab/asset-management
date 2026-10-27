@@ -447,7 +447,7 @@ export default function App() {
 
   if ((section === 'settings' || section === 'foundation') && authUser.canManageUsers) return <div className="app-shell">
     <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content">{section === 'foundation' ? <FoundationData key={accessKey} onNotify={notify} onLookupsChanged={() => void api.listLookups().then(setLookups).catch(() => notify('型号已保存，选项刷新失败，请刷新页面', 'error'))} /> : <SystemSettings onNotify={notify} />}</div></main>
+    <main className="main-content">{topbar}<div className="content">{section === 'foundation' ? <FoundationData key={accessKey} onNotify={notify} onLookupsChanged={() => void api.listLookups().then(setLookups).catch(() => notify('选项已保存，列表刷新失败，请刷新页面', 'error'))} /> : <SystemSettings onNotify={notify} />}</div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

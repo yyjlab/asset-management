@@ -3,7 +3,7 @@ import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 import type { DingTalkQrAuthorization } from './types'
 import type { OaCandidate, OaCreate, OaItem, OaPage, OaStatus } from './types/dingtalkOa'
-import type { DomainJoinStatus, DomainStatusOption, ModelOption, AccessoryOption, AccessoryOptionWrite } from './types'
+import type { DomainJoinStatus, DomainStatusOption, ModelOption, AccessoryOption, AccessoryOptionWrite, ManagedLookupType } from './types'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
@@ -82,6 +82,9 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  textOptions: (type: Exclude<ManagedLookupType, 'MODEL'>) => request<ModelOption[]>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}`),
+  createTextOption: (type: Exclude<ManagedLookupType, 'MODEL'>, name: string) => mutate<ModelOption>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}`, { method: 'POST', body: JSON.stringify({ name }) }),
+  setTextAvailability: (type: Exclude<ManagedLookupType, 'MODEL'>, id: number, version: number, disabled: boolean) => mutate<ModelOption>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),
   accessoryOptions: () => request<AccessoryOption[]>('/api/foundation/accessories'),
   accessoryChoices: () => request<AccessoryOption[]>('/api/foundation/accessories/choices'),
   createAccessoryOption: (payload: AccessoryOptionWrite) => mutate<AccessoryOption>('/api/foundation/accessories', { method: 'POST', body: JSON.stringify(payload) }),

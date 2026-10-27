@@ -15,6 +15,7 @@ interface Props {
   required?: boolean
   allowCreate?: boolean
   suggestOnly?: boolean
+  emptyText?: string
   onChange: (value: string, selectedId: number | string | null) => void
   onCreate?: () => void
   onDelete?: (option: ComboboxOption) => Promise<boolean>
@@ -31,7 +32,7 @@ export function filterSuggestions(options: ComboboxOption[], input: string, limi
     .slice(0, limit).map(item => item.option)
 }
 
-export function EditableCombobox({ value, selectedId, options, placeholder, editable = false, required, allowCreate, suggestOnly = false, onChange, onCreate, onDelete }: Props) {
+export function EditableCombobox({ value, selectedId, options, placeholder, editable = false, required, allowCreate, suggestOnly = false, emptyText = '未找到匹配型号', onChange, onCreate, onDelete }: Props) {
   const [open, setOpen] = useState(false)
   const [activeId, setActiveId] = useState<ComboboxOption['id'] | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -87,7 +88,7 @@ export function EditableCombobox({ value, selectedId, options, placeholder, edit
     {!suggestOnly && <button type="button" className="combobox-arrow" aria-label={expanded ? '收起选项' : '展开选项'} aria-expanded={expanded} onClick={() => setOpen((current) => !current)}><ChevronIcon /></button>}
     {expanded && <div className="combobox-menu">
       <div className="combobox-options" role="listbox" id={listId}>
-        {visible.length === 0 ? <span className="combobox-empty" role="status">{suggestOnly ? '未找到匹配型号' : '暂无可选项'}</span> : visible.map((option, index) => <div
+        {visible.length === 0 ? <span className="combobox-empty" role="status">{suggestOnly ? emptyText : '暂无可选项'}</span> : visible.map((option, index) => <div
           className={`combobox-option ${onDelete ? 'deletable' : ''} ${option.id === selectedId ? 'selected' : ''} ${option.id === activeId ? 'keyboard-active' : ''}`}
           key={option.id}
           id={`${listId}-${index}`}
