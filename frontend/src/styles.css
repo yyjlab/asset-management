@@ -1413,6 +1413,7 @@ body { font-size: 15px; }
 .label-print-canvas { min-height: 0; padding: 34px 20px; display: grid; place-items: center; }
 .label-print-sheet { width: min(480px,calc(100vw - 40px)); aspect-ratio: 6/5; overflow: hidden; display: grid; place-items: center; background: #fff; box-shadow: 0 20px 60px rgba(39,60,93,.18); }
 .label-print-sheet img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.label-print-page.batch .label-print-canvas { display: flex; flex-direction: column; gap: 24px; }
 .label-print-error { padding: 24px; color: #b64b55; text-align: center; font-size: 13px; line-height: 1.7; }
 
 @media (max-width: 600px) {
@@ -1430,6 +1431,11 @@ body { font-size: 15px; }
   .label-print-canvas { width: 100%; height: 100%; min-height: 0; padding: 0; display: block; overflow: hidden; background: #fff; }
   .label-print-sheet { width: 100%; height: 100%; aspect-ratio: auto; overflow: hidden; box-shadow: none; }
   .label-print-sheet img { width: 100%; height: 100%; object-fit: contain; }
+  html:has(.label-print-page.batch),body:has(.label-print-page.batch),#root:has(.label-print-page.batch) { height: auto; overflow: visible; }
+  .label-print-page.batch { position: static; height: auto; overflow: visible; }
+  .label-print-page.batch .label-print-canvas { height: auto; display: block; overflow: visible; }
+  .label-print-page.batch .label-print-sheet { width: 60mm; max-width: 100%; height: 50mm; break-inside: avoid; break-after: page; }
+  .label-print-page.batch .label-print-sheet:last-child { break-after: auto; }
 }
 
 /* Dark palette is screen-only; printed asset labels retain their original colors. */

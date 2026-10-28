@@ -14,6 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
+  const bundleFiles = ['assetBundle.ts', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
   compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx', 'components/AccessoryOptions.tsx', 'components/AssetAccessories.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
@@ -28,13 +29,18 @@ before(async () => {
     });
     return [file, result.output.find(item => item.type === 'chunk').code];
   })));
+  for (const file of bundleFiles) {
+    const result = await build({ root: frontend, configFile: false, logLevel: 'silent', build: { ssr: true, write: false, minify: false,
+      rollupOptions: { input: path.join(frontend, 'src', file), external: (_id, importer) => Boolean(importer), output: { format: 'cjs' } } } });
+    compiled[file] = result.output.find(item => item.type === 'chunk').code;
+  }
 });
 
 function load(file, mocks = {}, collapsed = false, globals = {}) {
   const module = { exports: {} };
   const browser = { location: { pathname: '/' }, history: { state: null, pushState() {}, replaceState() {} }, localStorage: { getItem: () => String(collapsed) } };
   vm.runInNewContext(compiled[file], {
-    module, exports: module.exports, window: browser, URLSearchParams, FormData, Blob, File, crypto: require('node:crypto').webcrypto, ...globals,
+    module, exports: module.exports, window: browser, URLSearchParams, FormData, Blob, File, TextEncoder, crypto: require('node:crypto').webcrypto, ...globals,
     require: id => {
       if (Object.hasOwn(mocks, id)) return mocks[id];
       if (id.endsWith('.css')) return {};
@@ -1431,4 +1437,139 @@ test('foundation text tabs refresh the correct manager and reset component ident
   accessoryButton(items, '刷新').props.onClick(); assert.equal(render().find(item => item.type.name === 'ModelOptions').props.revision, 1);
   accessoryButton(render(), '资产名称').props.onClick(); const name = render().find(item => item.type.name === 'ModelOptions');
   assert.equal(name.props.type, 'ASSET_NAME'); assert.notEqual(name.key, cpu.key);
+});
+
+function bundleFormHarness(options = {}) {
+  const states = [], refs = [], submissions = [], ordinary = [], continued = [];
+  let stateIndex = 0, refIndex = 0;
+  class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
+  const react = { useState(initial) { const i = stateIndex++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect() {} };
+  const lookups = [domainAsset().category, { id: 9, name: '显示器', assetProfile: 'DISPLAY' }].map(value => ({ ...value, type: 'CATEGORY' }));
+  lookups.push({ id: 22, type: 'STATUS', name: '当前可用' });
+  const { AssetForm } = load('components/AssetForm.tsx', { react, '../api': { ApiError, api: { getAssetBundle: async key => options.recover(key) } }, './Icons': load('components/Icons.tsx'), './EditableCombobox': { EditableCombobox: () => null }, '../types': { lookupLabels: {} } }, false, { window: { confirm: () => true } });
+  const props = { asset: domainAsset(), clone: false, lookups, bindableAssets: [], assignees: [], canAssign: true, saving: false, createdLookup: null, canCreateRelated: true,
+    onSave: async payload => ordinary.push(payload), onCancel() {}, onDeleteLookup() {}, onNewLookup() {}, onContinueBundle: defaults => continued.push(defaults),
+    onSaveBundle: async payload => { submissions.push(payload); if (options.save) return options.save(payload, ApiError); return { computer: domainAsset(), displays: [{ ...domainAsset(), id: 91, assetTag: '202610280091', name: '显示器' }], replayed: false }; }, ...options.props };
+  return { states, submissions, ordinary, continued, props, ApiError, render() { stateIndex = 0; refIndex = 0; return AssetForm(props); } };
+}
+function bundlePayload() {
+  const view = bundleFormHarness(); view.render();
+  return { ...view.states[0], boundDisplayIds: [] };
+}
+function addBundleDisplay(view) {
+  accessoryButton(treeElements(view.render()), '新建显示器').props.onClick();
+  return treeElements(view.render()).find(item => item.type.name === 'NewDisplayEditor');
+}
+test('bundle builder shares only common defaults and preserves independent monitor details', () => {
+  const { buildAssetBundle } = load('assetBundle.ts');
+  const pc = { ...bundlePayload(), companyId: 11, locationId: 12, ownershipDepartment: '研发', statusId: 13, checkedOut: true, assignedTo: '本人', assignedUserId: 10, imageUrl: 'data:pc', imageUrls: ['data:pc'], boundDisplayIds: [8] };
+  const monitor = { ...bundlePayload(), companyId: 21, locationId: 22, ownershipDepartment: '仓库', manufacturerSerialNumber: 'MONITOR-SN', purchasePrice: 629, modelName: 'AOC27', imageUrl: 'data:display', imageUrls: ['data:display'] };
+  const inherited = buildAssetBundle(pc, [{ id: 'draft', inheritCommon: true, data: monitor }], [{ id: 8, version: 4 }], 'key', { id: 1 });
+  assert.equal(inherited.computerId, 1); assert.equal(inherited.computerVersion, pc.version); assert.equal(inherited.computer.version, undefined);
+  assert.equal(inherited.computer.imageUrl, ''); assert.equal(inherited.displays[0].imageUrl, ''); assert.equal(inherited.displays[0].imageUrls[0], 'data:display');
+  assert.equal(inherited.displays[0].companyId, 11); assert.equal(inherited.displays[0].assignedUserId, 10);
+  assert.equal(inherited.displays[0].manufacturerSerialNumber, 'MONITOR-SN'); assert.equal(inherited.displays[0].purchasePrice, 629);
+  assert.equal(inherited.existingDisplays[0].version, 4); assert.equal(inherited.displays[0].boundComputerId, null); assert.equal(inherited.displays[0].domainJoinStatus, null);
+  const independent = buildAssetBundle({ ...pc, boundDisplayIds: [] }, [{ id: 'draft', inheritCommon: false, data: monitor }], [], 'key', { id: 1 }, true);
+  assert.equal(independent.cloneSourceId, 1); assert.equal(independent.computerId, undefined); assert.equal(independent.displays[0].companyId, 21);
+  assert.equal(monitor.imageUrl, 'data:display');
+});
+test('bundle builder refuses missing reviewed monitors and oversized photo submissions', () => {
+  const { buildAssetBundle } = load('assetBundle.ts'); const pc = bundlePayload();
+  assert.throws(() => buildAssetBundle({ ...pc, boundDisplayIds: [9] }, [], [], 'key'), /信息不完整/);
+  assert.throws(() => buildAssetBundle({ ...pc, imageUrls: ['x'.repeat(10 * 1024 * 1024)] }, [], [], 'key'), /总量过大/);
+});
+test('bundle request IDs work on HTTP intranet browsers without randomUUID', () => {
+  const { newBundleKey } = load('assetBundle.ts', {}, false, { crypto: { getRandomValues: bytes => { bytes.fill(17); return bytes; } } });
+  assert.match(newBundleKey(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+test('adding and removing monitors only edits drafts; ordinary asset save remains available', async () => {
+  const view = bundleFormHarness(); const editor = addBundleDisplay(view);
+  assert.equal(editor.props.draft.inheritCommon, true); assert.equal(editor.props.draft.data.manufacturerSerialNumber, '');
+  assert.equal(view.submissions.length, 0); editor.props.onRemove();
+  await findNativeElement(view.render(), item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(view.ordinary.length, 1); assert.equal(view.submissions.length, 0);
+  const restricted = bundleFormHarness({ props: { canCreateRelated: false } });
+  assert.equal(accessoryButton(treeElements(restricted.render()), '新建显示器'), undefined);
+});
+test('bundle save waits for all monitor photos then shows independent and batch label links', async () => {
+  const view = bundleFormHarness(); const editor = addBundleDisplay(view);
+  editor.props.onProcessing(editor.props.draft.id, true);
+  await findNativeElement(view.render(), item => item.type === 'form').props.onSubmit({ preventDefault() {} }); assert.equal(view.submissions.length, 0);
+  editor.props.onProcessing(editor.props.draft.id, false);
+  await findNativeElement(view.render(), item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+  const result = treeElements(view.render()), links = result.filter(item => item.type === 'a');
+  assert.equal(links.length, 3); assert.ok(links.some(item => item.props.href === '/label-print?assetIds=1,91'));
+  accessoryButton(result, '继续录入下一套').props.onClick();
+  assert.deepEqual(Object.keys(view.continued[0]).sort(), ['categoryId', 'companyId', 'locationId', 'ownershipDepartment']);
+});
+test('network failure freezes the exact bundle for retry and duplicate clicks are blocked', async () => {
+  let attempt = 0, resolveSave;
+  const view = bundleFormHarness({ save: async () => { if (!attempt++) throw new TypeError('网络中断'); return new Promise(resolve => { resolveSave = () => resolve({ computer: domainAsset(), displays: [], replayed: true }); }); } });
+  addBundleDisplay(view); await findNativeElement(view.render(), item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(findNativeElement(view.render(), item => item.type === 'fieldset').props.disabled, true);
+  const retry = accessoryButton(treeElements(view.render()), '重试保存整套'); const firstRetry = retry.props.onClick(); retry.props.onClick();
+  assert.equal(view.submissions.length, 2); assert.equal(view.submissions[0], view.submissions[1]);
+  resolveSave(); await firstRetry; await new Promise(resolve => setImmediate(resolve));
+  assert.equal(findNativeElement(view.render(), item => item.type === 'form'), undefined);
+});
+test('unknown bundle result can be recovered and a 404 does not unlock a possibly in-flight request', async () => {
+  let found = false, expectedKey;
+  const view = bundleFormHarness({ save: async payload => { expectedKey = payload.requestKey; throw new TypeError('网络中断'); }, recover: async key => { assert.equal(key, expectedKey); if (!found) throw new view.ApiError('未完成', 404); return { computer: domainAsset(), displays: [], replayed: true }; } });
+  addBundleDisplay(view); await findNativeElement(view.render(), item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+  await accessoryButton(treeElements(view.render()), '查询保存结果').props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(findNativeElement(view.render(), item => item.type === 'fieldset').props.disabled, true);
+  found = true; await accessoryButton(treeElements(view.render()), '查询保存结果').props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(findNativeElement(view.render(), item => item.type === 'form'), undefined);
+});
+test('known validation conflicts preserve editable drafts and next-set defaults clear device identity and photos', async () => {
+  const view = bundleFormHarness({ save: async (_payload, ApiError) => { throw new ApiError('SN已存在', 409); } });
+  addBundleDisplay(view); await findNativeElement(view.render(), item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(findNativeElement(view.render(), item => item.type === 'fieldset').props.disabled, false);
+  assert.equal(treeElements(view.render()).filter(item => item.type.name === 'NewDisplayEditor').length, 1);
+  const next = bundleFormHarness({ props: { asset: null, entryDefaults: { companyId: 11, ownershipDepartment: '研发', locationId: 12, categoryId: domainAsset().category.id } } }); next.render();
+  assert.equal(next.states[0].companyId, 11); assert.equal(next.states[0].assignedTo, ''); assert.equal(next.states[0].manufacturerSerialNumber, '');
+  assert.equal(next.states[0].imageUrls.length, 0); assert.equal(next.states[0].checkedOut, false);
+});
+test('existing monitor selection is search-first and retains already selected monitors', () => {
+  const monitor = { ...domainAsset(), id: 9, assetTag: '202610280009', name: '显示器', category: { id: 9, name: '显示器', assetProfile: 'DISPLAY' }, boundComputer: null };
+  const view = bundleFormHarness({ props: { bindableAssets: [monitor] } });
+  assert.equal(treeElements(view.render()).filter(item => item.type === 'input' && item.props.type === 'checkbox').length, 0);
+  accessoryButton(treeElements(view.render()), '选择已有显示器').props.onClick();
+  findNativeElement(view.render(), item => item.type === 'input' && item.props.type === 'search').props.onChange({ target: { value: '202610280009' } });
+  const checkbox = findNativeElement(view.render(), item => item.type === 'input' && item.props.type === 'checkbox'); checkbox.props.onChange({ target: { checked: true } });
+  findNativeElement(view.render(), item => item.type === 'input' && item.props.type === 'search').props.onChange({ target: { value: '' } });
+  assert.equal(findNativeElement(view.render(), item => item.type === 'input' && item.props.type === 'checkbox').props.checked, true);
+});
+test('bundle mutations reuse CSRF and recovery stays read-only', async () => {
+  const calls = []; const { api } = load('api.ts', {}, false, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: 200, json: async () => url === '/api/auth/csrf' ? { headerName: 'X-CSRF-TOKEN', token: 'csrf' } : {} }; } });
+  await api.saveAssetBundle({ requestKey: 'key' }); await api.getAssetBundle('key');
+  assert.equal(calls[1].url, '/api/assets/bundles'); assert.equal(calls[1].options.method, 'POST'); assert.equal(calls[1].options.headers['X-CSRF-TOKEN'], 'csrf');
+  assert.equal(calls[2].url, '/api/assets/bundles/key'); assert.equal(calls[2].options.method, undefined);
+});
+test('Safari missing FileReader reports a clear restriction without bypassing browser security', async () => {
+  const { prepareImage } = load('components/AssetForm.tsx', { '../types': { lookupLabels: {} } });
+  await assert.rejects(prepareImage({ type: 'image/jpeg', size: 10 }), /当前浏览器禁止读取照片.*锁定模式/);
+});
+function labelHarness(search) {
+  const states = []; let index = 0, prints = 0;
+  const react = { useMemo: callback => callback(), useEffect() {}, useState(initial) { const i = index++; if (!(i in states)) states[i] = initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; } };
+  const { AssetLabelPrintPreview } = load('components/AssetLabelPrintPreview.tsx', { react }, false, { window: { location: { search }, print: () => prints++ } });
+  return { render() { index = 0; return AssetLabelPrintPreview(); }, prints: () => prints };
+}
+test('batch labels require every authorized image to load before printing', () => {
+  const view = labelHarness('?assetIds=1,2,3'); const items = treeElements(view.render()), images = items.filter(item => item.type === 'img');
+  assert.deepEqual(images.map(item => item.props.src), ['/api/assets/1/qr', '/api/assets/2/qr', '/api/assets/3/qr']);
+  const print = () => treeElements(view.render()).find(item => item.type === 'button');
+  assert.equal(print().props.disabled, true); images[0].props.onLoad(); images[1].props.onLoad(); assert.equal(print().props.disabled, true);
+  images[2].props.onLoad(); assert.equal(print().props.disabled, false); print().props.onClick(); assert.equal(view.prints(), 1);
+  images[1].props.onError(); assert.equal(print().props.disabled, true);
+});
+test('batch label URL validation rejects invalid or duplicate IDs and preserves single-label download', () => {
+  for (const search of ['?assetIds=', '?assetIds=1,1', '?assetIds=1,x', '?assetIds=1,-2', '?assetIds=1,9007199254740992', '?assetIds=' + Array.from({ length: 30 }, (_, i) => i + 1).join(',')]) {
+    assert.equal(treeElements(labelHarness(search).render()).filter(item => item.type === 'img').length, 0);
+  }
+  const tree = treeElements(labelHarness('?assetId=9&assetTag=202610280009').render());
+  assert.equal(tree.find(item => item.type === 'a').props.download, 'asset-202610280009-label.png');
+  assert.equal(tree.find(item => item.type === 'img').props.src, '/api/assets/9/qr');
 });

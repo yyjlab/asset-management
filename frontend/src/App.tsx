@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, api } from './api'
-import type { Assignee, DashboardOverview, Asset, AssetFilter, AssetPayload, AssetProfile, AuthUser, LookupType, LookupValue, Permission, Summary } from './types'
+import type { Assignee, DashboardOverview, Asset, AssetBundlePayload, AssetEntryDefaults, AssetFilter, AssetPayload, AssetProfile, AuthUser, LookupType, LookupValue, Permission, Summary } from './types'
+import { newBundleKey } from './assetBundle'
 import { AssetDetail } from './components/AssetDetail'
 import { AssetForm } from './components/AssetForm'
 import { AssetTable } from './components/AssetTable'
@@ -34,7 +35,7 @@ import { FoundationData } from './components/FoundationData'
 import { domainStatusOptions, matchesDomainStatus } from './domainJoin'
 import type { DomainJoinStatus } from './types'
 
-type Page = { name: 'list'; taskId?: number; review?: boolean; oa?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean } | { name: 'detail'; asset: Asset }
+type Page = { name: 'list'; taskId?: number; review?: boolean; oa?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean; defaults?: AssetEntryDefaults; fresh?: string } | { name: 'detail'; asset: Asset }
 type AppHistoryState = { assetManagement: true; section: AppSection; page: Page; depth: number }
 type LookupDeleteRequest = { lookup: LookupValue; resolve: (deleted: boolean) => void }
 
@@ -308,6 +309,16 @@ export default function App() {
     finally { setSaving(false) }
   }
 
+  const saveAssetBundle = async (payload: AssetBundlePayload) => {
+    setSaving(true)
+    try {
+      const result = await api.saveAssetBundle(payload)
+      notify(result.replayed ? '已确认上次整套保存结果' : '整套设备已保存')
+      void load('')
+      return result
+    } finally { setSaving(false) }
+  }
+
   const createLookup = async (name: string, assetProfile?: AssetProfile) => {
     if (!lookupType) return
     setLookupLoading(true)
@@ -519,7 +530,7 @@ export default function App() {
   </section>
 
   const assetPage = page.name === 'form' && (page.clone || !page.asset ? hasPermission('ASSET_CREATE') : hasPermission('ASSET_EDIT'))
-    ? <AssetForm key={`${page.clone ? 'clone' : 'form'}-${page.asset?.id ?? 'new'}`} asset={page.asset} clone={page.clone} lookups={lookups} assignees={assignees} canAssign={hasPermission('ASSET_CHECKOUT')} bindableAssets={suggestionAssets} saving={saving} createdLookup={createdLookup} onCancel={returnToPreviousView} onSave={saveAsset} onDeleteLookup={deleteLookup} onNewLookup={(type) => { setCreatedLookup(null); setLookupType(type) }} />
+    ? <AssetForm key={`${page.clone ? 'clone' : 'form'}-${page.asset?.id ?? 'new'}-${page.fresh ?? ''}`} asset={page.asset} clone={page.clone} entryDefaults={page.defaults} lookups={lookups} assignees={assignees} canAssign={hasPermission('ASSET_CHECKOUT')} bindableAssets={suggestionAssets} saving={saving} createdLookup={createdLookup} onCancel={returnToPreviousView} onSave={saveAsset} canCreateRelated={hasPermission('ASSET_VIEW') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_EDIT')} onSaveBundle={saveAssetBundle} onContinueBundle={defaults => showView('assets', { name: 'form', asset: null, defaults, fresh: newBundleKey() }, 'replace')} onBundleRecovered={() => void load('')} onDeleteLookup={deleteLookup} onNewLookup={(type) => { setCreatedLookup(null); setLookupType(type) }} />
     : page.name === 'detail'
       ? <AssetDetail asset={page.asset} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} canReturn={hasPermission('ASSET_RETURN')} canDelete={hasPermission('ASSET_DELETE')} onClose={returnToPreviousView} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} onReturn={setReturnTarget} onDelete={(asset) => void deleteAsset(asset)} />
       : listPage

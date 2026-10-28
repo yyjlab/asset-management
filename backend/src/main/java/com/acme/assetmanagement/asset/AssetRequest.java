@@ -40,6 +40,14 @@ public record AssetRequest(
         Long assignedUserId,
         DomainJoinStatus domainJoinStatus
 ) {
+    public AssetRequest withBindings(List<Long> displayIds, Long computerId) {
+        return new AssetRequest(assetTag, name, ownershipDepartment, cpu, memory, storage, graphicsCard,
+                manufacturerSerialNumber, screenSize, displayResolution, displayInterface, orderNumber,
+                companyId, modelId, modelName, categoryId, statusId, locationId, purchasePrice, currentValue,
+                checkedOut, assignedTo, imageUrl, imageUrls, notes, displayIds, computerId, relatedDevices,
+                accessories, customParameters, assignedUserId, domainJoinStatus);
+    }
+
     public record RelatedDeviceRequest(
             @NotBlank(message = "随附配件名称不能为空") @Size(max = 120) String name,
             @Size(max = 160) String model,

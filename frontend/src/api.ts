@@ -1,4 +1,4 @@
-import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
+import type { AccessPayload, Assignee, DashboardOverview, Asset, AssetPayload, AssetBundlePayload, AssetBundleResult, AssetProfile, AuditFilters, AuditLogPage, AuthUser, AvatarResponse, CreateUserPayload, CsvImportPreview, CsvImportResult, LookupType, LookupValue, ManagedUser, PublicAsset, QrSetting, Summary, UpdateUserPayload } from './types'
 import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData } from './types'
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 import type { DingTalkQrAuthorization } from './types'
@@ -82,6 +82,8 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  saveAssetBundle: (payload: AssetBundlePayload) => mutate<AssetBundleResult>('/api/assets/bundles', { method: 'POST', body: JSON.stringify(payload) }),
+  getAssetBundle: (requestKey: string) => request<AssetBundleResult>(`/api/assets/bundles/${encodeURIComponent(requestKey)}`),
   textOptions: (type: Exclude<ManagedLookupType, 'MODEL'>) => request<ModelOption[]>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}`),
   createTextOption: (type: Exclude<ManagedLookupType, 'MODEL'>, name: string) => mutate<ModelOption>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}`, { method: 'POST', body: JSON.stringify({ name }) }),
   setTextAvailability: (type: Exclude<ManagedLookupType, 'MODEL'>, id: number, version: number, disabled: boolean) => mutate<ModelOption>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),

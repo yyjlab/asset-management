@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Assignee, Asset, AssetPayload, AssetProfile, CustomParameter, LookupType, LookupValue } from '../types'
+import type { Assignee, Asset, AssetBundlePayload, AssetBundleResult, AssetEntryDefaults, AssetPayload, AssetProfile, CustomParameter, LookupType, LookupValue } from '../types'
 import { lookupLabels } from '../types'
 import { DragHandleIcon, PlusIcon, SaveIcon, TrashIcon, UploadIcon } from './Icons'
 import { EditableCombobox } from './EditableCombobox'
 import { AssetAccessories } from './AssetAccessories'
 import type { ComboboxOption } from './EditableCombobox'
-import { api } from '../api'
+import { ApiError, api } from '../api'
+import { buildAssetBundle, newBundleKey } from '../assetBundle'
+import type { DisplayDraft } from '../assetBundle'
+import { NewDisplayEditor } from './NewDisplayEditor'
+import './AssetBundle.css'
 import { domainStatusOf, domainStatusOptions } from '../domainJoin'
 import type { DomainJoinStatus } from '../types'
 
@@ -22,6 +26,11 @@ interface Props {
   onSave: (payload: AssetPayload) => Promise<void>
   onNewLookup: (type: LookupType) => void
   onDeleteLookup: (lookup: LookupValue) => Promise<boolean>
+  canCreateRelated?: boolean
+  entryDefaults?: AssetEntryDefaults
+  onSaveBundle?: (payload: AssetBundlePayload) => Promise<AssetBundleResult>
+  onContinueBundle?: (defaults: AssetEntryDefaults) => void
+  onBundleRecovered?: () => void
 }
 
 const emptyPayload = (): AssetPayload => ({
@@ -105,6 +114,7 @@ const MAX_CAMERA_SOURCE_BYTES = 20 * 1024 * 1024
 const MAX_IMAGE_EDGE = 1920
 
 const readImage = (file: File) => new Promise<string>((resolve, reject) => {
+  if (typeof FileReader === 'undefined') { reject(new Error('当前浏览器禁止读取照片；Safari 开启锁定模式时，请检查此网站的设置')); return }
   const reader = new FileReader()
   reader.onload = () => resolve(String(reader.result))
   reader.onerror = () => reject(new Error('读取图片失败'))
@@ -142,9 +152,14 @@ export async function prepareImage(file: File) {
   throw new Error('照片压缩后仍然过大，请降低相机分辨率后重试')
 }
 
-export function AssetForm({ asset, clone = false, lookups, bindableAssets, assignees, canAssign, saving, createdLookup, onCancel, onSave, onNewLookup, onDeleteLookup }: Props) {
+export function AssetForm({ asset, clone = false, lookups, bindableAssets, assignees, canAssign, saving, createdLookup, onCancel, onSave, onNewLookup, onDeleteLookup, canCreateRelated = false, entryDefaults, onSaveBundle, onContinueBundle, onBundleRecovered }: Props) {
   const [form, setForm] = useState<AssetPayload>(() => {
     const initial = fromAsset(asset, clone)
+    if (!asset && entryDefaults) {
+      Object.assign(initial, entryDefaults)
+      initial.name = lookups.find(item => item.id === entryDefaults.categoryId)?.name || ''
+      initial.statusId = lookups.find(item => item.type === 'STATUS' && ['当前可用', '可领用'].includes(item.name))?.id ?? null
+    }
     if (clone) initial.statusId = lookups.find((item) => item.type === 'STATUS' && ['当前可用', '可领用'].includes(item.name))?.id ?? null
     return initial
   })
@@ -162,6 +177,18 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
   const [processingImages, setProcessingImages] = useState(false)
   const [domainOptions, setDomainOptions] = useState(domainStatusOptions)
   const [domainOptionsError, setDomainOptionsError] = useState('')
+  const [newDisplays, setNewDisplays] = useState<DisplayDraft[]>([])
+  const [showExisting, setShowExisting] = useState(false)
+  const [displayQuery, setDisplayQuery] = useState('')
+  const [bundleError, setBundleError] = useState('')
+  const [bundleResult, setBundleResult] = useState<AssetBundleResult | null>(null)
+  const [uncertain, setUncertain] = useState(false)
+  const [bundleWorking, setBundleWorking] = useState(false)
+  const [processingDisplayCount, setProcessingDisplayCount] = useState(0)
+  const bundleKey = useRef('')
+  const lastSubmission = useRef<AssetBundlePayload | null>(null)
+  const bundleBusy = useRef(false)
+  const displayJobs = useRef(new Set<string>())
   const imageProcessingRef = useRef(false)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -232,10 +259,61 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
     return lookup ? onDeleteLookup(lookup) : false
   }
   const modelField = (label: string) => <label><span>{label} *</span><EditableCombobox editable required suggestOnly value={form.modelName} selectedId={form.modelId} placeholder="输入型号搜索" options={lookups.filter((item) => item.type === 'MODEL').map((item) => ({ id: item.id, label: item.name }))} onChange={(value, id) => setForm((current) => ({ ...current, modelName: value, modelId: typeof id === 'number' ? id : null }))} /></label>
+  const onDisplayProcessing = (id: string, active: boolean) => {
+    if (active) displayJobs.current.add(id); else displayJobs.current.delete(id)
+    setProcessingDisplayCount(displayJobs.current.size)
+  }
+  const canBundle = canCreateRelated && Boolean(onSaveBundle) && profile === 'COMPUTER'
+  // Keep ordinary edits of legacy records outside the new bundle-size limit working.
+  const bundleMode = canBundle && (newDisplays.length > 0 || form.boundDisplayIds.length > 0 && form.boundDisplayIds.length <= 20)
+  const matchingDisplays = availableDisplays.filter(item => form.boundDisplayIds.includes(item.id)
+    || showExisting && displayQuery.trim() && `${item.assetTag} ${item.name} ${item.model.name} ${item.manufacturerSerialNumber || ''}`.toLowerCase().includes(displayQuery.trim().toLowerCase()))
+  const selectedDisplays = matchingDisplays.filter(item => form.boundDisplayIds.includes(item.id))
+  const visibleDisplays = [...selectedDisplays, ...matchingDisplays.filter(item => !form.boundDisplayIds.includes(item.id)).slice(0, 8)]
+  const addDisplay = () => {
+    if (newDisplays.length >= 8 || newDisplays.length + form.boundDisplayIds.length >= 20) return
+    const category = lookups.find(item => item.type === 'CATEGORY' && categoryProfile(item) === 'DISPLAY')
+    setNewDisplays(current => [...current, { id: newBundleKey(), inheritCommon: true, data: { ...emptyPayload(),
+      companyId: form.companyId, ownershipDepartment: form.ownershipDepartment, locationId: form.locationId,
+      statusId: form.statusId, checkedOut: form.checkedOut, assignedTo: form.assignedTo, assignedUserId: form.assignedUserId,
+      name: category?.name || '显示器', categoryId: category?.id ?? null, domainJoinStatus: null } }])
+  }
+  const submitBundle = async (payload: AssetBundlePayload) => {
+    if (!onSaveBundle || bundleBusy.current) return
+    bundleBusy.current = true; setBundleWorking(true); setBundleError(''); lastSubmission.current = payload
+    try { setBundleResult(await onSaveBundle(payload)); setUncertain(false) }
+    catch (reason) {
+      const unknown = !(reason instanceof ApiError) || reason.status >= 500 || reason.status === 408
+      setUncertain(unknown)
+      setBundleError(`${reason instanceof Error ? reason.message : '保存失败'}${unknown ? '。保存结果尚未确认，请查询结果或重试原提交，不要重复新建。' : ''}`)
+    } finally { bundleBusy.current = false; setBundleWorking(false) }
+  }
+  const recoverBundle = async () => {
+    if (!lastSubmission.current || bundleBusy.current) return
+    bundleBusy.current = true; setBundleWorking(true)
+    try { setBundleResult(await api.getAssetBundle(lastSubmission.current.requestKey)); setUncertain(false); setBundleError(''); onBundleRecovered?.() }
+    catch (reason) { setBundleError(reason instanceof ApiError && reason.status === 404 ? '暂未查到完成记录，请稍后查询或重试原提交；不会重复建档。' : reason instanceof Error ? reason.message : '查询失败') }
+    finally { bundleBusy.current = false; setBundleWorking(false) }
+  }
+  const submit = async () => {
+    if (imageProcessingRef.current || displayJobs.current.size || saving || bundleBusy.current || uncertain) return
+    const computer = { ...form, domainJoinStatus: profile === 'COMPUTER' ? form.domainJoinStatus || 'UNKNOWN' : null }
+    if (!bundleMode) { await onSave(computer); return }
+    try {
+      if (!bundleKey.current) bundleKey.current = newBundleKey()
+      const payload = buildAssetBundle(computer, newDisplays, bindableAssets, bundleKey.current, asset, clone)
+      await submitBundle(payload)
+    } catch (reason) { setBundleError(reason instanceof Error ? reason.message : '请检查整套设备信息') }
+  }
+  if (bundleResult) {
+    const saved = [bundleResult.computer, ...bundleResult.displays]
+    return <section className="bundle-result"><h2>整套设备已保存</h2><ul className="bundle-result-list">{saved.map(item => <li key={item.id}><span><strong>{item.assetTag}</strong> · {item.name} · {item.model.name}</span><a className="button ghost" href={`/label-print?assetId=${item.id}&assetTag=${encodeURIComponent(item.assetTag)}`} target="_blank" rel="noopener noreferrer">打印标签</a></li>)}</ul><div className="bundle-result-actions"><a className="button primary" href={`/label-print?assetIds=${saved.map(item => item.id).join(',')}`} target="_blank" rel="noopener noreferrer">打印本套标签</a>{onContinueBundle && <button type="button" className="button ghost" onClick={() => onContinueBundle({ companyId: form.companyId, ownershipDepartment: form.ownershipDepartment, locationId: form.locationId, categoryId: form.categoryId })}>继续录入下一套</button>}<button type="button" className="button ghost" onClick={onCancel}>返回资产列表</button></div></section>
+  }
 
   return <section className="invoice-form-page">
-    <div className="invoice-form-outer"><form className="invoice-form-card symmetric-asset-form" onSubmit={async (event) => { event.preventDefault(); if (!imageProcessingRef.current && !saving) await onSave({ ...form, domainJoinStatus: profile === 'COMPUTER' ? form.domainJoinStatus || 'UNKNOWN' : null }) }}>
+    <div className="invoice-form-outer"><form className="invoice-form-card symmetric-asset-form" onSubmit={async (event) => { event.preventDefault(); await submit() }}>
       <div className="invoice-form-scroll-body">
+      <fieldset className="bundle-form-fields" disabled={saving || bundleWorking || uncertain} inert={saving || bundleWorking || uncertain}>
       <div className="invoice-form-heading"><div><h2>{clone ? '克隆资产' : asset ? '编辑资产' : '新增资产'}</h2><p>资产编号：{form.assetTag || '保存后按日期与当日流水自动生成'} · {new Date().toLocaleDateString('zh-CN')}</p></div><span className="form-mode">{clone ? 'CLONE' : asset ? 'EDIT' : 'CREATE'}</span></div>
 
       <section className="form-section">
@@ -248,6 +326,10 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
           <label><span>资产分类 *</span><LookupField type="CATEGORY" required value={form.categoryId} values={lookups} onChange={(v) => {
             const category = lookups.find((item) => item.id === v)
             const nextProfile = categoryProfile(category)
+            if (nextProfile !== 'COMPUTER' && newDisplays.length) {
+              if (!window.confirm('切换分类将移除尚未保存的新显示器，是否继续？')) return
+              setNewDisplays([])
+            }
             setForm((current) => ({ ...current, categoryId: v,
               domainJoinStatus: nextProfile === 'COMPUTER' ? current.domainJoinStatus || 'UNKNOWN' : null,
               customParameters: !asset && current.categoryId !== v && nextProfile === 'GENERAL'
@@ -320,13 +402,14 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
               <div><input required maxLength={1000} value={parameter.value} onChange={(event) => updateCustomParameter(index, { value: event.target.value })} placeholder="参数值" aria-label={`自定义参数 ${index + 1} 值`} /><button type="button" className="remove-row-button" title="删除参数" onClick={() => set('customParameters', form.customParameters.filter((_, itemIndex) => itemIndex !== index))}><TrashIcon /></button></div>
             </div>)}
           </>}
+          <label><span>厂家序列号 SN</span><input maxLength={160} value={form.manufacturerSerialNumber} onChange={event => set('manufacturerSerialNumber', event.target.value)} placeholder="设备机身上的序列号" /></label>
         </div>
       </section>
 
       {profile !== 'GENERAL' && <section className="form-section full-width-section asset-binding-section">
-        <div className="form-section-head"><div><h3>设备绑定</h3><p>{profile === 'COMPUTER' ? '从已有显示器资产中选择，可绑定多台显示器' : '选择这台显示器当前所属的电脑，可暂时不绑定'}</p></div></div>
+        <div className="form-section-head"><div><h3>{profile === 'COMPUTER' ? '显示器' : '设备绑定'}</h3></div>{profile === 'COMPUTER' && <div className="bundle-display-tools"><button type="button" className="button ghost" onClick={() => setShowExisting(current => !current)}>选择已有显示器</button>{canBundle && <button type="button" className="section-add-button" disabled={newDisplays.length >= 8} onClick={addDisplay}><PlusIcon />新建显示器</button>}</div>}</div>
         {profile === 'COMPUTER'
-          ? <div className="asset-binding-grid">{availableDisplays.length === 0 ? <div className="dynamic-empty">暂无可绑定的显示器资产；请先新建“显示设备”资产</div> : availableDisplays.map((item) => <label className={`asset-binding-option ${form.boundDisplayIds.includes(item.id) ? 'selected' : ''}`} key={item.id}><input type="checkbox" checked={form.boundDisplayIds.includes(item.id)} onChange={(event) => set('boundDisplayIds', event.target.checked ? [...form.boundDisplayIds, item.id] : form.boundDisplayIds.filter((id) => id !== item.id))} /><span><strong>{item.assetTag}</strong><b>{item.name}</b><small>{item.model.name} · {item.location.name}</small></span></label>)}</div>
+          ? <>{showExisting && <label className="bundle-display-search"><span>搜索已有显示器</span><input type="search" value={displayQuery} onChange={event => setDisplayQuery(event.target.value)} placeholder="输入资产编号、型号或 SN 搜索" /></label>}<div className="asset-binding-grid">{visibleDisplays.map((item) => <label className={`asset-binding-option ${form.boundDisplayIds.includes(item.id) ? 'selected' : ''}`} key={item.id}><input type="checkbox" checked={form.boundDisplayIds.includes(item.id)} disabled={!form.boundDisplayIds.includes(item.id) && form.boundDisplayIds.length >= 20} onChange={(event) => set('boundDisplayIds', event.target.checked ? [...form.boundDisplayIds, item.id] : form.boundDisplayIds.filter((id) => id !== item.id))} /><span><strong>{item.assetTag}</strong><b>{item.name}</b><small>{item.model.name} · {item.location.name}</small></span></label>)}</div>{showExisting && displayQuery.trim() && !matchingDisplays.length && <p>未找到可绑定的显示器</p>}{newDisplays.map((draft, index) => <NewDisplayEditor key={draft.id} draft={draft} number={index + 1} lookups={lookups} assignees={assignees} canAssign={canAssign} preparePhoto={prepareImage} onChange={next => setNewDisplays(current => current.map(item => item.id === next.id ? next : item))} onRemove={() => setNewDisplays(current => current.filter(item => item.id !== draft.id))} onProcessing={onDisplayProcessing} />)}</>
           : <label className="bound-computer-field"><span>绑定电脑</span><select value={form.boundComputerId ?? ''} onChange={(event) => set('boundComputerId', event.target.value ? Number(event.target.value) : null)}><option value="">暂不绑定电脑</option>{availableComputers.map((item) => <option key={item.id} value={item.id}>{item.assetTag} · {item.name} · {item.model.name}</option>)}</select></label>}
       </section>}
 
@@ -352,9 +435,12 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
           <label><span>备注</span><textarea maxLength={2000} rows={7} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="记录保修、附件或其他说明…" /></label>
         </div>
       </section>
+      </fieldset>
+      {bundleError && <p role="alert" className="field-error">{bundleError}</p>}
+      {uncertain && <div className="bundle-recovery"><button type="button" className="button ghost" disabled={bundleWorking} onClick={() => void recoverBundle()}>查询保存结果</button><button type="button" className="button primary" disabled={bundleWorking} onClick={() => lastSubmission.current && void submitBundle(lastSubmission.current)}>重试保存整套</button></div>}
       </div>
 
-      <div className="invoice-form-actions"><button type="button" className="button ghost" onClick={onCancel}>取消</button><button className="button primary" disabled={saving || processingImages}><SaveIcon />{processingImages ? '图片处理中…' : saving ? '保存中…' : clone ? '创建克隆资产' : asset ? '保存修改' : '创建资产'}</button></div>
+      <div className="invoice-form-actions"><button type="button" className="button ghost" disabled={saving || bundleWorking} onClick={() => { if (!uncertain || window.confirm('上次保存结果尚未确认，退出后请先检查资产列表，避免重复新建。仍要退出吗？')) onCancel() }}>取消</button><button className="button primary" disabled={saving || bundleWorking || processingImages || processingDisplayCount > 0 || uncertain}><SaveIcon />{processingImages || processingDisplayCount > 0 ? '图片处理中…' : saving || bundleWorking ? '保存中…' : bundleMode ? '保存整套设备' : clone ? '创建克隆资产' : asset ? '保存修改' : '创建资产'}</button></div>
     </form></div>
   </section>
 }

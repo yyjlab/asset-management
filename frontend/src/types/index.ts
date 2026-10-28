@@ -98,6 +98,18 @@ export interface AssetPayload {
   customParameters: CustomParameter[]
 }
 
+export interface AssetBundlePayload {
+  requestKey: string
+  computerId?: number
+  computerVersion?: number
+  cloneSourceId?: number
+  computer: AssetPayload
+  displays: AssetPayload[]
+  existingDisplays: { id: number; version: number }[]
+}
+export interface AssetBundleResult { computer: Asset; displays: Asset[]; replayed: boolean }
+export type AssetEntryDefaults = Pick<AssetPayload, 'companyId' | 'ownershipDepartment' | 'locationId' | 'categoryId'>
+
 export interface AssetLink {
   id: number
   assetTag: string
