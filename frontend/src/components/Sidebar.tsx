@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AssetFilter, Permission } from '../types'
+import { featureVisibility } from '../featureVisibility'
 const version = 'v26.915.1651'
 import { BoxesIcon, ClipboardIcon, DashboardIcon, SettingsIcon, SidebarPanelIcon, UploadIcon, UserIcon, UsersIcon } from './Icons'
 
@@ -44,14 +45,14 @@ export function Sidebar({ section, canManageUsers, dingtalkLogin, permissions, o
         <button aria-label="驾驶舱" title={collapsed ? '驾驶舱' : undefined} className={`nav-item ${section === 'dashboard' ? 'active' : ''}`} onClick={() => onSection('dashboard')}>
           <DashboardIcon /><span>驾驶舱</span>
         </button>
-        <button aria-label="我的待办" title={collapsed ? '我的待办' : undefined} className={`nav-item ${section === 'workbench' ? 'active' : ''}`} onClick={() => onSection('workbench')}><ClipboardIcon /><span>我的待办</span></button>
+        {featureVisibility.businessWorkflows && <><button aria-label="我的待办" title={collapsed ? '我的待办' : undefined} className={`nav-item ${section === 'workbench' ? 'active' : ''}`} onClick={() => onSection('workbench')}><ClipboardIcon /><span>我的待办</span></button>
         <button aria-label="员工自助" title={collapsed ? '员工自助' : undefined} className={`nav-item ${section === 'selfService' ? 'active' : ''}`} onClick={() => onSection('selfService')}>
           <UserIcon /><span>员工自助</span>
-        </button>
+        </button></>}
         {(dingtalkLogin || permissions.includes('ASSET_VIEW')) && <button aria-label="资产" title={collapsed ? '资产' : undefined} className={`nav-item ${section === 'assets' ? 'active' : ''}`} onClick={() => { onSection('assets'); onFilter('all') }}>
           <BoxesIcon /><span>资产</span>
         </button>}
-        <button aria-label="入离职交接" title={collapsed ? '入离职交接' : undefined} className={`nav-item ${section === 'handover' ? 'active' : ''}`} onClick={() => onSection('handover')}>
+        {featureVisibility.businessWorkflows && <><button aria-label="入离职交接" title={collapsed ? '入离职交接' : undefined} className={`nav-item ${section === 'handover' ? 'active' : ''}`} onClick={() => onSection('handover')}>
           <ClipboardIcon /><span>入离职交接</span>
         </button>
         <button aria-label="领用归还" title={collapsed ? '领用归还' : undefined} className={`nav-item ${section === 'operations' ? 'active' : ''}`} onClick={() => onSection('operations')}><ClipboardIcon /><span>领用归还</span></button>
@@ -60,6 +61,7 @@ export function Sidebar({ section, canManageUsers, dingtalkLogin, permissions, o
         <button aria-label="耗材管理" title={collapsed ? '耗材管理' : undefined} className={`nav-item ${section === 'consumables' ? 'active' : ''}`} onClick={() => onSection('consumables')}><BoxesIcon /><span>耗材管理</span></button>
         <button aria-label="采购补货" title={collapsed ? '采购补货' : undefined} className={`nav-item ${section === 'procurement' ? 'active' : ''}`} onClick={() => onSection('procurement')}><BoxesIcon /><span>采购补货</span></button>
         {(dingtalkLogin || canManageUsers || permissions.includes('ASSET_EDIT') && permissions.includes('ASSET_CHECKOUT') && permissions.includes('ASSET_RETURN')) && <>{([['kits', '岗位配发模板'], ['support', '保修与供应商'], ['reports', '管理统计']] as const).map(([key, label]) => <button key={key} aria-label={label} title={collapsed ? label : undefined} className={`nav-item ${section === key ? 'active' : ''}`} onClick={() => onSection(key)}><ClipboardIcon /><span>{label}</span></button>)}</>}
+        </>}
         {(dingtalkLogin || canManageUsers) && <button aria-label="用户" title={collapsed ? '用户' : undefined} className={`nav-item ${section === 'users' ? 'active' : ''}`} onClick={() => onSection('users')}>
           <UsersIcon /><span>用户</span>
         </button>}

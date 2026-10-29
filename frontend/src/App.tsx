@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, api } from './api'
 import type { Assignee, DashboardOverview, Asset, AssetBundlePayload, AssetEntryDefaults, AssetFilter, AssetPayload, AssetProfile, AuthUser, LookupType, LookupValue, Permission, Summary } from './types'
 import { newBundleKey } from './assetBundle'
+import { isSectionVisible, visibleSection } from './featureVisibility'
 import { AssetDetail } from './components/AssetDetail'
 import { AssetForm } from './components/AssetForm'
 import { AssetTable } from './components/AssetTable'
@@ -57,7 +58,8 @@ export default function App() {
   const [authChecking, setAuthChecking] = useState(true)
   const [loginLoading, setLoginLoading] = useState(false)
   const [loginError, setLoginError] = useState('')
-  const [section, setSection] = useState<AppSection>('dashboard')
+  const [requestedSection, setSection] = useState<AppSection>('dashboard')
+  const section = visibleSection(requestedSection)
   const [page, setPage] = useState<Page>({ name: 'list' })
   const [assets, setAssets] = useState<Asset[]>([])
   const [suggestionAssets, setSuggestionAssets] = useState<Asset[]>([])
@@ -95,6 +97,7 @@ export default function App() {
   }, [accessKey])
 
   const showView = (nextSection: AppSection, nextPage: Page, mode: 'push' | 'replace' = 'push') => {
+    if (!isSectionVisible(nextSection)) { nextSection = 'dashboard'; nextPage = { name: 'list' } }
     navigationRevision.current++
     setCreatedLookup(null)
     setSection(nextSection)
@@ -204,6 +207,11 @@ export default function App() {
       if (!state?.assetManagement) return
       const revision = ++navigationRevision.current
       setCreatedLookup(null)
+      if (!isSectionVisible(state.section)) {
+        setSection('dashboard'); setPage({ name: 'list' })
+        window.history.replaceState({ ...state, section: 'dashboard', page: { name: 'list' } }, '', window.location.href)
+        return
+      }
       setSection(state.section)
       if (state.page.name === 'list' || !state.page.asset) { setPage(state.page); return }
       setPage({ name: 'list' })

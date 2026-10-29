@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  const bundleFiles = ['assetBundle.ts', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
+  const bundleFiles = ['assetBundle.ts', 'featureVisibility.ts', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
   compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx', 'components/AccessoryOptions.tsx', 'components/AssetAccessories.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
@@ -52,9 +52,10 @@ function load(file, mocks = {}, collapsed = false, globals = {}) {
   return module.exports;
 }
 
-function sidebarMarkup(overrides = {}, collapsed = false) {
+function sidebarMarkup(overrides = {}, collapsed = false, businessWorkflows = false) {
   const icons = load('components/Icons.tsx');
-  const { Sidebar } = load('components/Sidebar.tsx', { './Icons': icons }, collapsed);
+  const visibility = load('featureVisibility.ts'); visibility.featureVisibility.businessWorkflows = businessWorkflows;
+  const { Sidebar } = load('components/Sidebar.tsx', { './Icons': icons, '../featureVisibility': visibility }, collapsed);
   return renderToStaticMarkup(React.createElement(Sidebar, {
     section: 'dashboard', canManageUsers: false, dingtalkLogin: false,
     permissions: ['ASSET_VIEW'], onFilter() {}, onSection() {}, ...overrides,
@@ -65,26 +66,26 @@ function menuLabels(markup) {
   return [...markup.matchAll(/class="nav-item[^>]*>.*?<span>(.*?)<\/span>/g)].map(match => match[1]);
 }
 
-test('DingTalk employees see all non-settings menus including handovers', () => {
-  assert.deepEqual(menuLabels(sidebarMarkup({ dingtalkLogin: true, permissions: [] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '岗位配发模板', '保修与供应商', '管理统计', '用户', '日志', '数据']);
+test('DingTalk employees see retained menus without unfinished business modules', () => {
+  assert.deepEqual(menuLabels(sidebarMarkup({ dingtalkLogin: true, permissions: [] })), ['驾驶舱', '资产', '用户', '日志', '数据']);
 });
 
 test('collapsed DingTalk menus retain their labels and accessible names', () => {
   const markup = sidebarMarkup({ dingtalkLogin: true }, true);
   assert.match(markup, /sidebar collapsed/);
-  for (const label of ['驾驶舱', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '用户', '日志', '数据']) assert.ok(markup.includes(`aria-label="${label}"`));
+  for (const label of ['驾驶舱', '资产', '用户', '日志', '数据']) assert.ok(markup.includes(`aria-label="${label}"`));
   assert.ok(!markup.includes('aria-label="设置"'));
 });
 
 test('password login retains existing permission-based menus', () => {
-  assert.deepEqual(menuLabels(sidebarMarkup()), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货']);
-  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: [] })), ['驾驶舱', '我的待办', '员工自助', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货']);
-  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '数据']);
+  assert.deepEqual(menuLabels(sidebarMarkup()), ['驾驶舱', '资产']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: [] })), ['驾驶舱']);
+  assert.deepEqual(menuLabels(sidebarMarkup({ permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '资产', '数据']);
 });
 
 test('administrator keeps the settings menu with either login method', () => {
   for (const dingtalkLogin of [true, false]) {
-    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '我的待办', '员工自助', '资产', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '岗位配发模板', '保修与供应商', '管理统计', '用户', '日志', '基础资料', '设置', '数据']);
+    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '资产', '用户', '日志', '基础资料', '设置', '数据']);
   }
 });
 
@@ -102,7 +103,7 @@ test('every visible DingTalk menu navigates to its own section', () => {
   const nav = tree.props.children.find(child => child.type === 'nav');
   const click = children => React.Children.forEach(children, child => { if (!child) return; if (child.type === 'button') child.props.onClick(); else if (child.props?.children) click(child.props.children); });
   click(nav.props.children);
-  assert.deepEqual(sections, ['dashboard', 'workbench', 'selfService', 'assets', 'handover', 'operations', 'inventory', 'repair', 'consumables', 'procurement', 'kits', 'support', 'reports', 'users', 'logs', 'transfer']);
+  assert.deepEqual(sections, ['dashboard', 'assets', 'users', 'logs', 'transfer']);
   assert.deepEqual(filters, ['all']);
 });
 
@@ -114,27 +115,30 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, opti
   };
   let stateIndex = 0;
   const changes = [], componentProps = {};
-  const react = { ...React, useState(initial) {
+  const react = { ...React, useEffect: options.effects ? effect => options.effects.push(effect) : React.useEffect, useState(initial) {
     const index = stateIndex++;
     const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : index === 7 && options.assets ? options.assets : index === 16 && options.search !== undefined ? options.search : index === 17 && options.loading !== undefined ? options.loading : index === 33 && options.domainFilter !== undefined ? options.domainFilter : initial);
     return [value, next => changes.push({ index, value: typeof next === 'function' ? next(value) : next })];
   } };
   const icons = load('components/Icons.tsx');
-  const sidebar = load('components/Sidebar.tsx', { './Icons': icons });
+  // Keep retained workflow integration tests running with the group enabled.
+  // Release-policy tests below explicitly use businessWorkflows:false and verify the real default.
+  const visibility = load('featureVisibility.ts'); visibility.featureVisibility.businessWorkflows = options.businessWorkflows ?? true;
+  const sidebar = load('components/Sidebar.tsx', { './Icons': icons, '../featureVisibility': visibility });
   const rendered = [];
   const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
-  const mocks = { react, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
+  const mocks = { react, './featureVisibility': visibility, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
     componentProps[name] = props;
     return React.createElement('div', null, name);
   } };
   mocks['./components/OperationPage'].canManageWorkflows = user => user.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CHECKOUT', 'ASSET_RETURN'].every(permission => user.permissions.includes(permission));
-  const loaded = load('App.tsx', mocks);
+  const loaded = load('App.tsx', mocks, false, options.window ? { window: options.window } : {});
   const App = loaded.default || loaded;
   let tree;
   const Capture = () => { tree = App(); return tree; };
-  return { markup: renderToStaticMarkup(React.createElement(Capture)), rendered, componentProps, changes, tree };
+  return { markup: renderToStaticMarkup(React.createElement(Capture)), rendered, componentProps, changes, tree, visibility };
 }
 
 function findNativeElement(tree, predicate) {
@@ -147,6 +151,62 @@ function findNativeElement(tree, predicate) {
   visit(tree);
   return found;
 }
+
+const hiddenBusinessSections = ['workbench', 'selfService', 'handover', 'operations', 'inventory', 'repair', 'consumables', 'procurement', 'kits', 'support', 'reports', 'registrations'];
+test('release visibility defaults closed for business modules while all seven core sections remain visible', () => {
+  const visibility = load('featureVisibility.ts');
+  assert.equal(visibility.featureVisibility.businessWorkflows, false);
+  for (const section of hiddenBusinessSections) {
+    assert.equal(visibility.isSectionVisible(section), false); assert.equal(visibility.visibleSection(section), 'dashboard');
+  }
+  for (const section of ['dashboard', 'assets', 'users', 'logs', 'foundation', 'settings', 'transfer']) {
+    assert.equal(visibility.isSectionVisible(section), true); assert.equal(visibility.visibleSection(section), section);
+  }
+  assert.equal(visibility.visibleSection('unknown-section'), 'dashboard');
+});
+test('release guard never mounts hidden workflows or OA, even for an administrator with full permissions', () => {
+  for (const canManageUsers of [false, true]) for (const section of hiddenBusinessSections) {
+    const result = appMarkup(section, { canManageUsers, dataScope: 'ALL', permissions: ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CREATE', 'ASSET_CHECKOUT', 'ASSET_RETURN'] }, { name: 'list', taskId: 9, review: true, oa: true }, { businessWorkflows: false });
+    assert.deepEqual(result.rendered, ['ComputerDashboard']);
+    assert.ok(!result.markup.includes('钉钉 OA'));
+  }
+});
+test('hiding workflows preserves all core pages and their existing authorization checks', () => {
+  const user = { canManageUsers: true, dataScope: 'ALL', permissions: ['ASSET_VIEW', 'ASSET_EDIT', 'ASSET_CREATE', 'ASSET_CHECKOUT', 'ASSET_RETURN', 'ASSET_EXPORT'] };
+  for (const [section, component] of Object.entries({ dashboard: 'ComputerDashboard', assets: 'AssetTable', users: 'UserManagement', logs: 'AuditLogPage', foundation: 'FoundationData', settings: 'SystemSettings', transfer: 'AssetTransfer' })) {
+    assert.ok(appMarkup(section, user, { name: 'list' }, { businessWorkflows: false }).rendered.includes(component), section);
+  }
+  assert.match(appMarkup('settings', {}, { name: 'list' }, { businessWorkflows: false }).markup, /尚未获得此功能的访问权限/);
+  assert.ok(!appMarkup('users', {}, { name: 'list' }, { businessWorkflows: false }).rendered.includes('UserManagement'));
+});
+test('a stale workflow shortcut is normalized to the dashboard before it updates page or history', () => {
+  const result = appMarkup('workbench'); result.visibility.featureVisibility.businessWorkflows = false;
+  result.componentProps.WorkbenchPage.onOpen('handover', 42);
+  assert.equal(result.changes.findLast(change => change.index === 5).value, 'dashboard');
+  assert.equal(JSON.stringify(result.changes.findLast(change => change.index === 6).value), '{"name":"list"}');
+});
+test('reload and browser back cannot restore hidden workflow pages or fetch their stale assets', async () => {
+  const effects = [], replacements = [], reads = [], listeners = {};
+  const state = section => ({ assetManagement: true, section, page: { name: 'detail', asset: { id: 123 } }, depth: 2 });
+  const browser = { location: { pathname: '/', href: 'http://asset.test/' }, history: { state: state('handover'), replaceState(next) { this.state = next; replacements.push(next); } }, addEventListener(name, callback) { listeners[name] = callback; }, removeEventListener(name) { delete listeners[name]; } };
+  appMarkup('dashboard', {}, { name: 'list' }, { businessWorkflows: false, effects, window: browser, api: { getAsset: async id => { reads.push(id); return domainAsset(); } } });
+  const restore = effects.find(effect => effect.toString().includes('popstate')); assert.ok(restore);
+  const cleanup = restore(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(replacements[0].section, 'dashboard');
+  for (const section of hiddenBusinessSections) listeners.popstate({ state: state(section) });
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(reads.length, 0);
+  assert.ok(replacements.every(next => next.section === 'dashboard' && next.page.name === 'list'));
+  listeners.popstate({ state: state('assets') }); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(reads, [123]); assert.equal(replacements.at(-1).section, 'assets');
+  cleanup(); assert.equal(listeners.popstate, undefined);
+});
+test('the single release switch can restore retained business navigation without elevating permissions', () => {
+  const visibility = load('featureVisibility.ts'); visibility.featureVisibility.businessWorkflows = true;
+  for (const section of hiddenBusinessSections) assert.equal(visibility.visibleSection(section), section);
+  const labels = menuLabels(sidebarMarkup({ canManageUsers: true }, false, true));
+  for (const label of ['我的待办', '员工自助', '入离职交接', '领用归还', '资产盘点', '报修维修', '耗材管理', '采购补货', '岗位配发模板', '保修与供应商', '管理统计']) assert.ok(labels.includes(label), label);
+  assert.ok(!menuLabels(sidebarMarkup({ canManageUsers: false }, false, true)).includes('设置'));
+});
 
 test('asset search exposes a clickable submit button and shares its handler with Enter', async () => {
   const terms = [];
