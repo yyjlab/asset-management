@@ -51,7 +51,8 @@ public class Asset {
     @Column(length = 20)
     private DomainJoinStatus domainJoinStatus;
 
-    @Column(name = "manufacturer_serial_number", unique = true, length = 160)
+    // SN is descriptive, not an asset identity. Existing databases need the explicit index migration.
+    @Column(name = "manufacturer_serial_number", length = 160)
     private String manufacturerSerialNumber;
 
     @Column(name = "screen_size", length = 80)

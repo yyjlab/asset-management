@@ -92,6 +92,10 @@ public class AuditLogService {
         if (authentication != null && authentication.getPrincipal() instanceof AccountPrincipal principal) {
             return new Actor(principal.id(), principal.username(), principal.role().name());
         }
+        if (authentication != null && authentication.getPrincipal() instanceof
+                com.acme.assetmanagement.integration.deployment.DeploymentPrincipal principal) {
+            return new Actor(null, principal.getName(), "INTEGRATION");
+        }
         return new Actor(null, "系统", null);
     }
 

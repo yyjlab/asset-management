@@ -36,6 +36,8 @@ asset:
     password: ${ASSET_ADMIN_PASSWORD:ChangeMe123!}
 
 app:
+  ad-deployment:
+    enabled: ${AD_DEPLOYMENT_REGISTRATION_ENABLED:false}
   public-base-url: ${ASSET_PUBLIC_BASE_URL:}
   asset-images:
     directory: ${ASSET_IMAGE_DIRECTORY:./data/asset-images}

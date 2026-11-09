@@ -24,6 +24,11 @@ public class AssetAccess {
     }
     public Scope scope() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof com.acme.assetmanagement.integration.deployment.DeploymentPrincipal
+                && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(
+                        com.acme.assetmanagement.integration.deployment.DeploymentPrincipal.AUTHORITY))) {
+            return new Scope(DataScope.ALL, null, Set.of());
+        }
         if (auth == null || !(auth.getPrincipal() instanceof AccountPrincipal principal)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "请先登录");
         }
@@ -37,6 +42,10 @@ public class AssetAccess {
     }
     public void permission(Permission permission) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (permission == Permission.ASSET_CREATE && auth != null
+                && auth.getPrincipal() instanceof com.acme.assetmanagement.integration.deployment.DeploymentPrincipal
+                && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(
+                        com.acme.assetmanagement.integration.deployment.DeploymentPrincipal.AUTHORITY))) return;
         if (auth == null || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals(permission.name()))) {
             throw new ApiException(HttpStatus.FORBIDDEN, "没有此操作权限");
         }

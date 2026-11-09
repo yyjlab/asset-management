@@ -69,6 +69,10 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
     @EntityGraph(attributePaths = {"company", "model", "category", "status", "location"})
     Optional<Asset> findByQrToken(String qrToken);
     Optional<Asset> findByAssetTagIgnoreCase(String assetTag);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {"company", "model", "category", "status", "location"})
+    @Query("select a from Asset a where a.assetTag = :assetTag")
+    Optional<Asset> findByExactTagForDeployment(@Param("assetTag") String assetTag);
     Optional<Asset> findTopByAssetTagStartingWithOrderByAssetTagDesc(String prefix);
 
     boolean existsByAssetTagIgnoreCase(String assetTag);

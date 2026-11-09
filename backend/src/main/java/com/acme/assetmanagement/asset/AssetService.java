@@ -28,11 +28,12 @@ public class AssetService {
     private final AssetImageStorageService assetImageStorageService;
     private final AssetAccess access;
     private final com.acme.assetmanagement.user.UserRepository users;
+    private final AssetTagSequenceRepository sequences;
 
     public AssetService(AssetRepository assetRepository, LookupRepository lookupRepository,
                         AuditLogService auditLogService, AssetTagGenerator assetTagGenerator,
                         AssetImageStorageService assetImageStorageService, AssetAccess access,
-                        com.acme.assetmanagement.user.UserRepository users) {
+                        com.acme.assetmanagement.user.UserRepository users, AssetTagSequenceRepository sequences) {
         this.assetRepository = assetRepository;
         this.lookupRepository = lookupRepository;
         this.auditLogService = auditLogService;
@@ -40,6 +41,7 @@ public class AssetService {
         this.assetImageStorageService = assetImageStorageService;
         this.access = access;
         this.users = users;
+        this.sequences = sequences;
     }
 
     @Transactional(readOnly = true)
@@ -72,10 +74,23 @@ public class AssetService {
     }
 
     public AssetResponse create(AssetRequest request, Long cloneSourceId) {
+        return create(request, cloneSourceId, false);
+    }
+
+    public AssetResponse createFromDeployment(AssetRequest request) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof
+                com.acme.assetmanagement.integration.deployment.DeploymentPrincipal))
+            throw new ApiException(HttpStatus.FORBIDDEN, "仅装机平台专用凭据可以执行此创建路径");
+        access.permission(com.acme.assetmanagement.user.Permission.ASSET_CREATE);
+        return create(request, null, true);
+    }
+
+    private AssetResponse create(AssetRequest request, Long cloneSourceId, boolean descriptiveSerial) {
         if (cloneSourceId != null) findAsset(cloneSourceId);
         String assetTag = clean(request.assetTag());
         if (assetTag == null) assetTag = assetTagGenerator.nextTag();
-        validateUnique(request, null, assetTag);
+        validateUnique(request, null, assetTag, descriptiveSerial);
         Asset asset = new Asset();
         apply(asset, request);
         // A cloned record is a different device, not a verified copy of domain membership.
@@ -204,13 +219,21 @@ public class AssetService {
     }
 
     private void validateUnique(AssetRequest request, Long id, String tag) {
+        validateUnique(request, id, tag, false);
+    }
+
+    private void validateUnique(AssetRequest request, Long id, String tag, boolean descriptiveSerial) {
+        // The SN index is no longer unique; serialize the unchanged manual/CSV SN check through commit.
+        if (!descriptiveSerial && clean(request.manufacturerSerialNumber()) != null) {
+            sequences.findLockedByDate(AssetTagGenerator.ALLOCATION_LOCK_DATE).orElseThrow();
+        }
         boolean tagExists = id == null
                 ? assetRepository.existsByAssetTagIgnoreCase(tag)
                 : assetRepository.existsByAssetTagIgnoreCaseAndIdNot(tag, id);
         if (tagExists) throw new ApiException(HttpStatus.CONFLICT, "资产编号“" + tag + "”已存在");
 
         String manufacturerSerialNumber = clean(request.manufacturerSerialNumber());
-        if (manufacturerSerialNumber != null) {
+        if (manufacturerSerialNumber != null && !descriptiveSerial) {
             boolean serialExists = id == null
                     ? assetRepository.existsByManufacturerSerialNumberIgnoreCase(manufacturerSerialNumber)
                     : assetRepository.existsByManufacturerSerialNumberIgnoreCaseAndIdNot(manufacturerSerialNumber, id);

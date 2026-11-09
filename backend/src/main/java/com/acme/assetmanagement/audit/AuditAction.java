@@ -20,7 +20,8 @@ public enum AuditAction {
     USER_DELETE("用户", "删除用户"),
     SETTING_UPDATE("设置", "修改设置"),
     CSV_TEMPLATE_EXPORT("导入导出", "导出资产数据"),
-    CSV_IMPORT("导入导出", "导入CSV");
+    CSV_IMPORT("导入导出", "导入CSV"),
+    AD_DEPLOYMENT_REGISTER("资产", "装机平台资产登记");
 
     private final String module;
     private final String label;
