@@ -22,6 +22,7 @@ export function DeploymentIntegration({ onNotify }: Props) {
   const [issued, setIssued] = useState<{ credential: DeploymentCredential; token: string } | null>(null)
   const [revoke, setRevoke] = useState<DeploymentCredential | null>(null)
   const [detail, setDetail] = useState<DeploymentEntry | null>(null)
+  const [accessDraft, setAccessDraft] = useState<{ enabled: boolean; allowHttp: boolean; confirmed: boolean } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -64,6 +65,15 @@ export function DeploymentIntegration({ onNotify }: Props) {
       onNotify('已复制凭据')
     } catch { onNotify('复制失败，请选中密钥手动复制', 'error') }
   }
+  const saveAccess = async () => {
+    if (!accessDraft || (accessDraft.enabled && accessDraft.allowHttp && !accessDraft.confirmed)) return
+    setBusy(true)
+    try {
+      const updated = await api.updateDeploymentSettings(accessDraft.enabled, accessDraft.allowHttp, accessDraft.confirmed)
+      setStatus(updated); setAccessDraft(null); onNotify('接入设置已保存，立即生效，无需重启')
+    } catch (e) { onNotify(e instanceof Error ? e.message : '保存接入设置失败', 'error') }
+    finally { setBusy(false) }
+  }
 
   return <div className="deployment-settings">
     <header className="deployment-header"><div><h2>装机平台接入</h2><p>AD 服务器提交 PE 采集的资产信息；不自动领用或覆盖已有资产。</p></div>
@@ -74,19 +84,22 @@ export function DeploymentIntegration({ onNotify }: Props) {
       <section className="deployment-section" aria-label="接入状态">
         <dl className="deployment-status">
           <div><dt>登记接口</dt><dd>{status.enabled ? '已启用' : '未启用'}</dd></div>
-          <div><dt>后端识别 HTTPS</dt><dd>{status.secureRequest ? '是' : '否，不能签发凭据'}</dd></div>
+          <div><dt>接入方式</dt><dd>{status.allowHttp ? '受信内网 HTTP / HTTPS' : '仅 HTTPS'}</dd></div>
           <div><dt>有效凭据</dt><dd>{credentials.filter(item => item.active).length}</dd></div>
           <div><dt>最近收到登记</dt><dd>{time(status.lastReceivedAt)}</dd></div>
         </dl>
         <p className="deployment-endpoint">POST <code>{status.endpoint}</code></p>
-        {!status.enabled && <p>后端需配置 AD_DEPLOYMENT_REGISTRATION_ENABLED=true；本页不会更改服务器配置。</p>}
+        <button className="button primary" disabled={busy} onClick={() => setAccessDraft({ enabled: status.enabled, allowHttp: status.allowHttp, confirmed: false })}>接入设置</button>
+        {!status.enabled && <p>请在接入设置中启用，无需修改 .env 或重启容器。</p>}
+        {!status.secureRequest && !status.allowHttp && <p>当前后端未识别 HTTPS；使用可信 HTTPS 入口，或在接入设置中确认允许受信内网 HTTP。</p>}
+        {status.allowHttp && <p className="deployment-error">内网 HTTP 已允许：凭据和资产资料可能明文传输，仅限受信内网，需由网络配置限制外部访问。</p>}
         {!status.lastReceivedAt && <p>尚无登记记录，未验证 AD 发送端连通性。</p>}
       </section>
       <section className="deployment-section"><h3>专用服务凭据</h3>
         <form className="deployment-create" onSubmit={event => void issue(event)}>
           <label>凭据名称<input required maxLength={80} value={name} onChange={event => setName(event.target.value)} /></label>
           <label>有效期（天）<input required type="number" min={1} max={366} step={1} value={Number.isNaN(days) ? '' : days} onChange={event => setDays(event.target.valueAsNumber)} /></label>
-          <button className="button primary" disabled={busy || !status.secureRequest}>{busy ? '处理中…' : '创建凭据'}</button>
+          <button className="button primary" disabled={busy || (!status.secureRequest && !status.allowHttp)}>{busy ? '处理中…' : '创建凭据'}</button>
         </form>
         <div className="deployment-table"><table><thead><tr><th>名称</th><th>创建时间</th><th>到期时间</th><th>状态</th><th>操作</th></tr></thead><tbody>
           {credentials.map(item => <tr key={item.id}><td>{item.name}</td><td>{time(item.createdAt)}</td><td>{time(item.expiresAt)}</td><td>{item.revokedAt ? '已撤销' : item.active ? '有效' : '已过期'}</td><td><button className="button ghost" disabled={busy || !!item.revokedAt} onClick={() => setRevoke(item)}>撤销</button></td></tr>)}
@@ -101,6 +114,14 @@ export function DeploymentIntegration({ onNotify }: Props) {
         <div className="deployment-pagination"><span>共 {history?.totalElements || 0} 条 · 第 {page + 1} 页</span><button className="button ghost" disabled={page === 0} onClick={() => setPage(value => value - 1)}>上一页</button><button className="button ghost" disabled={!history || page + 1 >= history.totalPages} onClick={() => setPage(value => value + 1)}>下一页</button></div>
       </section>
     </>}
+    {accessDraft && <div className="modal-backdrop"><section className="deployment-dialog" role="dialog" aria-modal="true" aria-labelledby="deployment-access-title">
+      <h3 id="deployment-access-title">接入设置</h3>
+      <label className="deployment-check"><input type="checkbox" checked={accessDraft.enabled} disabled={busy} onChange={event => setAccessDraft({ ...accessDraft, enabled: event.target.checked })} />启用装机平台接入</label>
+      <label className="deployment-mode">连接方式<select disabled={busy || !accessDraft.enabled} value={accessDraft.allowHttp ? 'http' : 'https'} onChange={event => setAccessDraft({ ...accessDraft, allowHttp: event.target.value === 'http', confirmed: false })}><option value="https">HTTPS（推荐）</option><option value="http">受信内网 HTTP / HTTPS</option></select></label>
+      {accessDraft.enabled && accessDraft.allowHttp && <label className="deployment-check deployment-error"><input type="checkbox" checked={accessDraft.confirmed} disabled={busy} onChange={event => setAccessDraft({ ...accessDraft, confirmed: event.target.checked })} />我确认仅在受信内网使用，并接受凭据和资产资料明文传输的风险；本开关不会自动限制网络来源。</label>}
+      <p>设置保存在数据库，保存后立即生效。停用不会删除资产、凭据或登记记录。</p>
+      <div className="modal-actions"><button className="button ghost" disabled={busy} onClick={() => setAccessDraft(null)}>取消</button><button className="button primary" disabled={busy || (accessDraft.enabled && accessDraft.allowHttp && !accessDraft.confirmed)} onClick={() => void saveAccess()}>保存设置</button></div>
+    </section></div>}
     {issued && <div className="modal-backdrop"><section className="deployment-dialog" role="dialog" aria-modal="true" aria-labelledby="deployment-token-title">
       <h3 id="deployment-token-title">凭据已创建，仅显示本次</h3><p>仅供 AD 后端保存。关闭后无法再次查看；不要发给 PE 或员工。</p>
       <label>服务密钥<textarea autoFocus readOnly value={issued.token} rows={4} onFocus={event => event.target.select()} /></label>

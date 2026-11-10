@@ -16,18 +16,21 @@ import tools.jackson.databind.ObjectMapper;
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 @Transactional(readOnly = true)
 public class DeploymentManagementController {
-    private final DeploymentProperties properties;
+    private final DeploymentAccessService access;
     private final DeploymentRegistrationRepository registrations;
     private final ObjectMapper json;
 
-    public DeploymentManagementController(DeploymentProperties properties,
+    public DeploymentManagementController(DeploymentAccessService access,
             DeploymentRegistrationRepository registrations, ObjectMapper json) {
-        this.properties = properties;
+        this.access = access;
         this.registrations = registrations;
         this.json = json;
     }
 
-    public record Status(boolean enabled, boolean secureRequest, String endpoint, Instant lastReceivedAt) {}
+    public record Status(boolean enabled, boolean secureRequest, boolean allowHttp, String endpoint, Instant lastReceivedAt) {}
+    public record Update(@jakarta.validation.constraints.NotNull Boolean enabled,
+                         @jakarta.validation.constraints.NotNull Boolean allowHttp,
+                         boolean acknowledgeHttpRisk) {}
     public record Entry(String externalRegistrationId, String assetTag, Long assetId, Instant receivedAt,
             String credentialId, DeploymentRegistrationRequest.Operator declaredOperator,
             String result, List<DeploymentRegistrationResult.Difference> differences, List<String> warnings) {}
@@ -35,9 +38,21 @@ public class DeploymentManagementController {
 
     @GetMapping("/status")
     public ResponseEntity<Status> status(jakarta.servlet.http.HttpServletRequest request) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Status(properties.isEnabled(),
-                request.isSecure(), DeploymentSecurityConfig.PATH,
+        var config = access.current();
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Status(config.enabled(),
+                request.isSecure(), config.allowHttp(), DeploymentSecurityConfig.PATH,
                 registrations.findFirstByOrderByCreatedAtDescExternalIdDesc().map(row -> row.createdAt).orElse(null)));
+    }
+
+    @PutMapping("/settings")
+    @Transactional
+    public ResponseEntity<Status> update(@jakarta.validation.Valid @RequestBody Update value,
+            jakarta.servlet.http.HttpServletRequest request) {
+        if (value.enabled() && value.allowHttp() && !value.acknowledgeHttpRisk())
+            throw new DeploymentApiException(HttpStatus.BAD_REQUEST, "HTTP_RISK_CONFIRMATION_REQUIRED",
+                    "内网HTTP会明文传输凭据和资产资料，须明确确认风险，仅限受信内网使用");
+        access.save(value.enabled(), value.allowHttp());
+        return status(request);
     }
 
     @GetMapping("/registrations")

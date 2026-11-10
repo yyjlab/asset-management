@@ -20,7 +20,7 @@ before(async () => {
 });
 
 const credential = { id: 'test-id', name: 'Test AD', createdAt: '2026-01-01T00:00:00Z', expiresAt: '2027-01-01T00:00:00Z', revokedAt: null, active: true };
-const status = { enabled: false, secureRequest: true, endpoint: '/api/integrations/ad-deployment/v1/registrations', lastReceivedAt: null };
+const status = { enabled: false, secureRequest: true, allowHttp: false, endpoint: '/api/integrations/ad-deployment/v1/registrations', lastReceivedAt: null };
 function harness(api = {}, overrides = {}) {
   const states = { 0: status, 1: [credential], 2: { items: [], totalElements: 0, totalPages: 0 }, 4: false, ...overrides };
   let index = 0;
@@ -49,11 +49,32 @@ function harness(api = {}, overrides = {}) {
 }
 const button = (tree, label) => tree.find(node => node.type === 'button' && node.props.children === label);
 
-test('disabled integration does not claim a successful connection and has no enable mutation', () => {
+test('disabled integration does not claim a successful connection or mutate on page load', () => {
   const ui = harness(); const tree = ui.render();
   assert.ok(tree.some(node => node.type === 'dd' && node.props.children === '未启用'));
   assert.ok(tree.some(node => node.type === 'p' && node.props.children === '尚无登记记录，未验证 AD 发送端连通性。'));
   assert.equal(tree.filter(node => node.type === 'input' && node.props.type === 'checkbox').length, 0);
+});
+
+test('confirmed internal HTTP enables credential issuance without HTTPS', () => {
+  const ui = harness({}, { 0: { ...status, enabled: true, secureRequest: false, allowHttp: true } });
+  assert.equal(button(ui.render(), '创建凭据').props.disabled, false);
+});
+
+test('web settings require explicit HTTP acknowledgement and save without env or restart', async () => {
+  const calls = [];
+  const ui = harness({ updateDeploymentSettings: async (...args) => { calls.push(args); return { ...status, enabled: true, allowHttp: true }; } });
+  button(ui.render(), '接入设置').props.onClick();
+  let tree = ui.render();
+  tree.find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } });
+  tree = ui.render(); tree.find(node => node.type === 'select').props.onChange({ target: { value: 'http' } });
+  tree = ui.render(); assert.equal(button(tree, '保存设置').props.disabled, true); assert.deepEqual(calls, []);
+  const checks = tree.filter(node => node.type === 'input' && node.props.type === 'checkbox');
+  checks[1].props.onChange({ target: { checked: true } });
+  tree = ui.render(); assert.equal(button(tree, '保存设置').props.disabled, false);
+  button(tree, '保存设置').props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, [[true, true, true]]);
+  assert.equal(ui.states[13], null); assert.equal(ui.states[0].allowHttp, true);
 });
 
 test('insecure backend request prevents credential issuance', () => {

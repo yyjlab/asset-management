@@ -10,6 +10,7 @@ export interface DeploymentCredential {
 export interface DeploymentStatus {
   enabled: boolean
   secureRequest: boolean
+  allowHttp: boolean
   endpoint: string
   lastReceivedAt: string | null
 }

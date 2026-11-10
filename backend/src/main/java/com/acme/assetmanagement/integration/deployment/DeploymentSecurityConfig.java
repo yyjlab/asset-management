@@ -23,7 +23,7 @@ public class DeploymentSecurityConfig {
     static final int MAX_BYTES = 32768;
     @Bean @Order(1)
     SecurityFilterChain deploymentSecurity(HttpSecurity http, DeploymentCredentialService credentials,
-                                          DeploymentProperties properties) throws Exception {
+                                          DeploymentAccessService properties) throws Exception {
         http.securityMatcher("/api/integrations/ad-deployment/**")
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .securityContext(context -> context.securityContextRepository(new org.springframework.security.web.context.NullSecurityContextRepository()))
@@ -44,15 +44,15 @@ public class DeploymentSecurityConfig {
     }
     static final class TokenFilter extends OncePerRequestFilter {
         private final DeploymentCredentialService credentials;
-        private final DeploymentProperties properties;
-        TokenFilter(DeploymentCredentialService credentials, DeploymentProperties properties) {
+        private final DeploymentAccessService properties;
+        TokenFilter(DeploymentCredentialService credentials, DeploymentAccessService properties) {
             this.credentials = credentials; this.properties = properties;
         }
         @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
             response.setHeader("Cache-Control", "no-store");
             if (!properties.isEnabled()) { error(response, 503, "INTEGRATION_DISABLED", "装机平台登记接口未启用"); return; }
-            if (!request.isSecure()) { error(response, 403, "HTTPS_REQUIRED", "专用凭据接口仅允许通过可信 HTTPS 入口访问"); return; }
+            if (!properties.allowsRequest(request.isSecure())) { error(response, 403, "HTTPS_REQUIRED", "请使用HTTPS，或由管理员在装机平台接入页面确认开启内网HTTP"); return; }
             var headers = java.util.Collections.list(request.getHeaders("Authorization"));
             String value = headers.size() == 1 ? headers.getFirst() : null;
             var principal = value != null && value.startsWith("Bearer ") ? credentials.authenticate(value.substring(7)) : null;

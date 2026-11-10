@@ -6,17 +6,18 @@
 
 1. 管理员核对现有字典中存在且唯一、启用的 `公司=微丰启`、`位置=公司`、`状态=当前可用`，并取得实际电脑分类的 `categoryId`。接口不创建这些字典，不自动猜测笔记本/台式机分类。
 2. 旧库先备份并在测试库审核 `scripts/migrate-ad-deployment-descriptive-sn.sql`。该脚本仅移除 SN 单列唯一索引，不删改资产数据、资产编号/二维码索引。首次应用新实体映射不保证 Hibernate 会删除旧索引；禁止靠重启代替迁移。脚本尚未在真实 MySQL 执行验证。
-3. 在测试环境的后端进程/容器环境中设置 `AD_DEPLOYMENT_REGISTRATION_ENABLED=true`。缺省为 `false`，关闭时接收接口返回 `503 INTEGRATION_DISABLED`。本次未改 Compose；只在宿主机 `.env` 添加变量不会自动传入现有 Compose 的容器，需要测试部署时显式映射。凭据由数据库管理，不写入源码或此文档。
-4. 准备 AD 后端能验证证书的 HTTPS 入口并限制入口来源为 AD 服务器。接收接口和明文凭据签发均强制 HTTPS，不关闭证书验证。当前前端 Nginx 会重写 `X-Forwarded-Proto` 为自身协议；若外层 TLS、内层 HTTP，需由运维另行设计可信代理链，不能直接信任任意客户端提供的转发头。本次没有修改代理或生产配置。
+3. 超级管理员在「设置 → 装机平台接入 → 接入设置」启用，保存后立即生效，无需修改 `.env` 或重启。默认仅 HTTPS；受信内网可选择「受信内网 HTTP / HTTPS」，阅读并勾选明文风险确认后保存。HTTP 会明文传输凭据和资产资料，此选项不自动判断内网或限制来源，需由网络配置限制外部访问。关闭后返回 `503 INTEGRATION_DISABLED`。
+4. 在本页创建专用凭据，将接口地址、凭据和实际电脑分类 ID 填入 AD 装机平台网页的联动设置。凭据只交给 AD 后端，不交给 PE。HTTPS 仍验证证书，不接受伪造转发头；当前 Nginx 的 HTTPS 代理链需按部署环境核对。本次不修改生产代理配置。
 
 ## 网页管理入口
 
-超级管理员进入「设置 → 装机平台接入」，可查看后端启用状态、后端识别的 HTTPS 状态、服务凭据和登记记录。接口已启用不代表 AD 已连通；尚无登记记录时页面明确提示未验证发送端。启用开关仍由服务器环境变量控制，页面不修改部署配置。
+超级管理员进入「设置 → 装机平台接入」，可管理接入开关、传输方式、服务凭据和登记记录。接口已启用不代表 AD 已连通；尚无登记记录时页面明确提示未验证发送端。接入设置保存在现有 `system_settings` 表，随数据库保留；已有环境变量仅在从未通过网页保存时作为初始值，网页保存后优先使用数据库值。
 
 凭据可设置名称和1到366天有效期、创建或确认撤销；密钥仅在创建弹窗显示一次，不写入浏览器持久存储，关闭后不能取回。登记记录每页20条，显示声明操作人、服务凭据及配置差异，不提供覆盖更新。只列已持久化结果，认证或校验失败请按接口响应排查。
 
 新增只读管理接口（仅超级管理员会话；专用服务凭据不可访问）：
-- `GET /api/settings/ad-deployment/status`：返回 `enabled`、`secureRequest`、`endpoint`、`lastReceivedAt`。
+- `GET /api/settings/ad-deployment/status`：返回 `enabled`、`secureRequest`、`allowHttp`、`endpoint`、`lastReceivedAt`。
+- `PUT /api/settings/ad-deployment/settings`：管理员会话及 CSRF 保护，请求含布尔值 `enabled`、`allowHttp`、`acknowledgeHttpRisk`；启用 HTTP 必须同时确认风险，否则返回 `400 HTTP_RISK_CONFIRMATION_REQUIRED`。变更写入审计，停用不删除资产或凭据。
 - `GET /api/settings/ad-deployment/registrations?page=0`：返回 `items`、`page`、`totalPages`、`totalElements`；页码0到100000。记录含 `externalRegistrationId`、`assetTag`、`assetId`、`receivedAt`、`credentialId`、`declaredOperator`、`result`、`differences`、`warnings`，不返回完整硬件快照或密钥。
 
 ## 专用凭据
@@ -139,7 +140,7 @@ AD 使用受保护的服务配置/密钥存储保存 token。服务端仅存256�
 | HTTP / code | 发送端处理 |
 | --- | --- |
 | `401 AUTHENTICATION_FAILED` | 缺少/错误/过期/撤销凭据，停止并提示管理员，不反复重试 |
-| `403 HTTPS_REQUIRED` / `FORBIDDEN` | HTTPS/代理链或调用范围不正确，修复配置；不降级 HTTP |
+| `403 HTTPS_REQUIRED` / `FORBIDDEN` | HTTPS/代理链或调用范围不正确；仅管理员可在网页明确批准受信内网 HTTP，发送端不得自动降级 |
 | `400 MALFORMED_JSON` | JSON 错误或重复属性，修复请求 |
 | `413 PAYLOAD_TOO_LARGE` / `415 UNSUPPORTED_MEDIA_TYPE` | 缩减请求 / 使用 JSON |
 | `422 VALIDATION_FAILED` / `CATEGORY_INVALID` | 修复必填、长度、类型、硬件或分类信息 |
@@ -171,6 +172,6 @@ AD 使用受保护的服务配置/密钥存储保存 token。服务端仅存256�
 .\mvnw.cmd -o package
 ```
 
-当前验证：接入接口测试33项、后端完整测试306项全部通过，Maven package 成功；前端测试157项、TypeScript检查和Vite构建通过。模拟接口的浏览器测试覆盖设置入口、一次性密钥、撤销取消、配置差异及桌面/手机宽度；不代表真实发送端已连通。没有新增或升级依赖。真实 MySQL、HTTPS入口和 AD 发送端未联调，迁移脚本未执行。
+当前验证：接入接口测试36项、后端完整测试309项重跑全部通过，Maven package 成功；前端测试159项、TypeScript检查和Vite构建通过。原有二维码识别测试曾一次报 NotFound，未修改其代码，重跑通过。模拟接口的浏览器测试覆盖网页启用、HTTP风险确认、CSRF、凭据签发及暗色桌面/手机弹窗；不代表真实发送端已连通。没有新增或升级依赖。真实 MySQL、HTTPS入口和 AD 发送端未联调，迁移脚本未执行。
 
 参考 [Spring Security 独立认证链](https://github.com/spring-projects/spring-security)（Apache-2.0）和 [Stripe 幂等参数校验](https://github.com/stripe/stripe-java/blob/master/src/main/java/com/stripe/net/RequestOptions.java)（MIT），不引入 OAuth 服务/支付SDK，不照搬支付失败缓存或24小时删除幂等键的做法。真实 MySQL 迁移、TLS代理和 AD 发送端联调需要在测试环境另行验证；本次不部署生产。

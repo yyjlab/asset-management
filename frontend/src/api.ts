@@ -208,6 +208,9 @@ export const api = {
   deleteUser: (id: number) => mutate<void>(`/api/users/${id}`, { method: 'DELETE' }),
   getQrSetting: () => request<QrSetting>('/api/settings/qr'),
   getDeploymentStatus: () => request<DeploymentStatus>('/api/settings/ad-deployment/status'),
+  updateDeploymentSettings: (enabled: boolean, allowHttp: boolean, acknowledgeHttpRisk: boolean) =>
+    mutate<DeploymentStatus>('/api/settings/ad-deployment/settings', { method: 'PUT',
+      body: JSON.stringify({ enabled, allowHttp, acknowledgeHttpRisk }) }),
   listDeploymentCredentials: () => request<DeploymentCredential[]>('/api/settings/ad-deployment/credentials'),
   issueDeploymentCredential: (name: string, expiresAt: string) =>
     mutate<{ credential: DeploymentCredential; token: string }>('/api/settings/ad-deployment/credentials', {

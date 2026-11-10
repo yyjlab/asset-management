@@ -15,13 +15,16 @@ import java.util.List;
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 public class DeploymentCredentialController {
     private final DeploymentCredentialService credentials;
-    public DeploymentCredentialController(DeploymentCredentialService credentials) { this.credentials = credentials; }
+    private final DeploymentAccessService access;
+    public DeploymentCredentialController(DeploymentCredentialService credentials, DeploymentAccessService access) {
+        this.credentials = credentials; this.access = access;
+    }
     public record Create(@NotBlank @Size(max = 80) String name, @NotNull @Future Instant expiresAt) {}
     @GetMapping public List<DeploymentCredentialService.Info> list() { return credentials.list(); }
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public ResponseEntity<DeploymentCredentialService.Issued> create(@Valid @RequestBody Create request,
             jakarta.servlet.http.HttpServletRequest httpRequest) {
-        if (!httpRequest.isSecure()) throw new DeploymentApiException(HttpStatus.FORBIDDEN, "HTTPS_REQUIRED", "创建服务凭据需要可信 HTTPS 入口");
+        if (!access.allowsRequest(httpRequest.isSecure())) throw new DeploymentApiException(HttpStatus.FORBIDDEN, "HTTPS_REQUIRED", "请使用HTTPS，或先在接入设置中确认开启内网HTTP");
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(credentials.issue(request.name(), request.expiresAt()));
     }

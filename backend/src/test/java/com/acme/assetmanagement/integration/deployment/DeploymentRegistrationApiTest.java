@@ -39,6 +39,7 @@ class DeploymentRegistrationApiTest {
     @Autowired DeploymentRegistrationRepository registrations;
     @Autowired AuditLogRepository audits;
     @Autowired DeploymentProperties properties;
+    @Autowired com.acme.assetmanagement.setting.SystemSettingRepository settings;
     @Autowired JdbcTemplate jdbc;
     @Autowired UserRepository users;
     @Autowired PlatformTransactionManager manager;
@@ -51,6 +52,7 @@ class DeploymentRegistrationApiTest {
     String externalId;
     static final Instant CAPTURED = Instant.parse("2026-01-01T00:00:00Z");
     @BeforeEach void prepare() {
+        settings.deleteById(DeploymentAccessService.KEY);
         properties.setEnabled(true);
         companyId = option(LookupType.COMPANY, "微丰启").getId();
         locationId = option(LookupType.LOCATION, "公司").getId();
@@ -312,6 +314,61 @@ class DeploymentRegistrationApiTest {
                 .andExpect(jsonPath("$.endpoint").value(DeploymentSecurityConfig.PATH));
         mvc.perform(get("/api/settings/ad-deployment/status").secure(true).with(user(admin)))
                 .andExpect(jsonPath("$.secureRequest").value(true));
+    }
+
+    private ResultActions updateAccess(boolean enabled, boolean allowHttp, boolean confirmed) throws Exception {
+        var admin = AccountPrincipal.from(users.findByUsernameIgnoreCase("admin").orElseThrow());
+        return mvc.perform(put("/api/settings/ad-deployment/settings").with(user(admin)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(Map.of(
+                        "enabled", enabled, "allowHttp", allowHttp, "acknowledgeHttpRisk", confirmed))));
+    }
+
+    @Test void webpageCanEnableAndDisableWithoutEnvironmentChanges() throws Exception {
+        properties.setEnabled(false);
+        updateAccess(true, false, false).andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true)).andExpect(jsonPath("$.allowHttp").value(false));
+        var body = request(); created(body);
+        updateAccess(false, false, false).andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false));
+        properties.setEnabled(true);
+        send(body).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("INTEGRATION_DISABLED"));
+        assertTrue(registrations.existsById(externalId));
+        assertNotNull(credentials.findById(credentialId).orElseThrow());
+    }
+
+    @Test void internalHttpRequiresExplicitConfirmationAndStillRequiresDedicatedCredential() throws Exception {
+        updateAccess(true, true, false).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("HTTP_RISK_CONFIRMATION_REQUIRED"));
+        assertFalse(settings.existsById(DeploymentAccessService.KEY));
+        updateAccess(true, true, true).andExpect(status().isOk()).andExpect(jsonPath("$.allowHttp").value(true));
+        byte[] body = json.writeValueAsBytes(request());
+        mvc.perform(post(DeploymentSecurityConfig.PATH).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isCreated());
+        mvc.perform(post(DeploymentSecurityConfig.PATH).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        var admin = AccountPrincipal.from(users.findByUsernameIgnoreCase("admin").orElseThrow());
+        mvc.perform(post("/api/settings/ad-deployment/credentials").with(user(admin)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(Map.of("name", "internal-http",
+                        "expiresAt", Instant.now().plusSeconds(3600).toString())))).andExpect(status().isCreated());
+        updateAccess(true, false, false).andExpect(status().isOk());
+        mvc.perform(post(DeploymentSecurityConfig.PATH).header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        send(request()).andExpect(status().isCreated());
+    }
+
+    @Test void accessSettingRequiresSuperAdminAndCsrfAndWritesAudit() throws Exception {
+        var admin = AccountPrincipal.from(users.findByUsernameIgnoreCase("admin").orElseThrow());
+        String body = "{\"enabled\":true,\"allowHttp\":false,\"acknowledgeHttpRisk\":false}";
+        mvc.perform(put("/api/settings/ad-deployment/settings").with(user(admin))
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/settings/ad-deployment/settings").with(user("normal").roles("USER")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/settings/ad-deployment/settings").with(user(admin)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":true}"))
+                .andExpect(status().isBadRequest());
+        updateAccess(true, true, true).andExpect(status().isOk());
+        assertEquals("INTERNAL_HTTP", settings.findById(DeploymentAccessService.KEY).orElseThrow().getValue());
+        assertTrue(audits.findAll().stream().anyMatch(a -> "AD_DEPLOYMENT_ACCESS".equals(a.getTargetType())
+                && a.getAction() == AuditAction.SETTING_UPDATE));
     }
 
     @Test void managementRejectsNonAdminsAndServiceTokens() throws Exception {

@@ -26,7 +26,7 @@ public class DeploymentRegistrationService {
     private final AssetTagSequenceRepository sequences;
     private final DeploymentRegistrationRepository registrations;
     private final DeploymentCredentialService credentials;
-    private final DeploymentProperties properties;
+    private final DeploymentAccessService properties;
     private final AuditLogService audit;
     private final ObjectMapper json;
     private final JdbcTemplate jdbc;
@@ -34,7 +34,7 @@ public class DeploymentRegistrationService {
 
     public DeploymentRegistrationService(AssetRepository assets, AssetService assetService, LookupRepository lookups,
             AssetTagSequenceRepository sequences, DeploymentRegistrationRepository registrations,
-            DeploymentCredentialService credentials, DeploymentProperties properties, AuditLogService audit,
+            DeploymentCredentialService credentials, DeploymentAccessService properties, AuditLogService audit,
             ObjectMapper json, JdbcTemplate jdbc, PlatformTransactionManager manager) {
         this.assets = assets; this.assetService = assetService; this.lookups = lookups; this.sequences = sequences;
         this.registrations = registrations; this.credentials = credentials; this.properties = properties;
