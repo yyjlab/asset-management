@@ -24,8 +24,28 @@
 .deployment-difference { border-top: 1px solid #dce2e9; padding-top: 12px; }
 .deployment-settings .deployment-error { color: #b42318; }
 .deployment-check { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0; line-height: 1.6; }
-.deployment-check input { margin-top: 5px; flex: 0 0 auto; }
+.deployment-check input[type="checkbox"] { width: 18px; min-width: 18px; max-width: 18px; height: 18px; margin: 3px 0 0; padding: 0; flex: 0 0 18px; box-shadow: none; border-radius: 3px; }
+.deployment-check > span { min-width: 0; flex: 1; }
+.deployment-check input[type="checkbox"] { accent-color: var(--blue); cursor: pointer; }
 .deployment-mode { display: grid; gap: 8px; margin: 16px 0; }
 .deployment-mode select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
+.deployment-access-dialog { width: min(520px, calc(100vw - 32px)); padding: 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 64px #0003; border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); font-size: 14px; }
+.deployment-dialog-head { padding: 22px 24px 18px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+.deployment-dialog-head h3 { margin: 0; font-size: 18px; line-height: 1.4; }
+.deployment-dialog-head p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.deployment-dialog-close { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.deployment-dialog-close:hover { background: var(--blue-soft); color: var(--ink); }
+.deployment-dialog-close svg { width: 18px; height: 18px; }
+.deployment-dialog-body { padding: 20px 24px; overflow-y: auto; min-height: 0; }
+.deployment-enable { margin: 0 0 22px; font-weight: 600; }
+.deployment-access-dialog .deployment-mode { margin: 0; gap: 10px; }
+.deployment-access-dialog .deployment-mode select { height: 42px; box-sizing: border-box; color: var(--ink); background: var(--surface); border-color: color-mix(in srgb, var(--ink) 20%, transparent); }
+.deployment-http-warning { margin-top: 20px; padding: 12px 14px; border-left: 3px solid #d77a32; background: color-mix(in srgb, #d77a32 9%, var(--surface)); color: var(--ink); }
+.deployment-http-warning > strong { display: block; margin-bottom: 8px; font-size: 13px; }
+.deployment-http-warning .deployment-check { margin: 0; font-size: 13px; }
+.deployment-access-note { margin: 18px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.deployment-dialog-footer { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+.deployment-dialog-footer .button { min-height: 38px; min-width: 88px; font-size: 13px; }
+:root[data-theme="dark"] .deployment-access-dialog .deployment-mode select { background: var(--surface); color: var(--ink); }
 :root[data-theme="dark"] .deployment-error { color: #ff9f9f; }
 @media (max-width: 700px) { .deployment-status { grid-template-columns: repeat(2, minmax(0, 1fr)); } .deployment-header { flex-wrap: wrap; } }

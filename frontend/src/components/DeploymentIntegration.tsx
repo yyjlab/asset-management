@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { CloseIcon } from './Icons'
 import type { DeploymentCredential, DeploymentEntry, DeploymentHistory, DeploymentStatus } from '../types/deployment'
 import './DeploymentIntegration.css'
 
@@ -114,13 +115,15 @@ export function DeploymentIntegration({ onNotify }: Props) {
         <div className="deployment-pagination"><span>共 {history?.totalElements || 0} 条 · 第 {page + 1} 页</span><button className="button ghost" disabled={page === 0} onClick={() => setPage(value => value - 1)}>上一页</button><button className="button ghost" disabled={!history || page + 1 >= history.totalPages} onClick={() => setPage(value => value + 1)}>下一页</button></div>
       </section>
     </>}
-    {accessDraft && <div className="modal-backdrop"><section className="deployment-dialog" role="dialog" aria-modal="true" aria-labelledby="deployment-access-title">
-      <h3 id="deployment-access-title">接入设置</h3>
-      <label className="deployment-check"><input type="checkbox" checked={accessDraft.enabled} disabled={busy} onChange={event => setAccessDraft({ ...accessDraft, enabled: event.target.checked })} />启用装机平台接入</label>
-      <label className="deployment-mode">连接方式<select disabled={busy || !accessDraft.enabled} value={accessDraft.allowHttp ? 'http' : 'https'} onChange={event => setAccessDraft({ ...accessDraft, allowHttp: event.target.value === 'http', confirmed: false })}><option value="https">HTTPS（推荐）</option><option value="http">受信内网 HTTP / HTTPS</option></select></label>
-      {accessDraft.enabled && accessDraft.allowHttp && <label className="deployment-check deployment-error"><input type="checkbox" checked={accessDraft.confirmed} disabled={busy} onChange={event => setAccessDraft({ ...accessDraft, confirmed: event.target.checked })} />我确认仅在受信内网使用，并接受凭据和资产资料明文传输的风险；本开关不会自动限制网络来源。</label>}
-      <p>设置保存在数据库，保存后立即生效。停用不会删除资产、凭据或登记记录。</p>
-      <div className="modal-actions"><button className="button ghost" disabled={busy} onClick={() => setAccessDraft(null)}>取消</button><button className="button primary" disabled={busy || (accessDraft.enabled && accessDraft.allowHttp && !accessDraft.confirmed)} onClick={() => void saveAccess()}>保存设置</button></div>
+    {accessDraft && <div className="modal-backdrop"><section className="deployment-dialog deployment-access-dialog" role="dialog" aria-modal="true" aria-labelledby="deployment-access-title">
+      <header className="deployment-dialog-head"><div><h3 id="deployment-access-title">接入设置</h3><p>保存后立即生效，无需重启</p></div><button className="deployment-dialog-close" type="button" aria-label="关闭接入设置" title="关闭" disabled={busy} onClick={() => setAccessDraft(null)}><CloseIcon /></button></header>
+      <div className="deployment-dialog-body">
+        <label className="deployment-check deployment-enable"><input type="checkbox" checked={accessDraft.enabled} disabled={busy} onChange={event => setAccessDraft({ ...accessDraft, enabled: event.target.checked })} /><span>启用装机平台接入</span></label>
+        <div className="deployment-mode"><label htmlFor="deployment-transport">连接方式</label><select id="deployment-transport" disabled={busy || !accessDraft.enabled} value={accessDraft.allowHttp ? 'http' : 'https'} onChange={event => setAccessDraft({ ...accessDraft, allowHttp: event.target.value === 'http', confirmed: false })}><option value="https">HTTPS（推荐）</option><option value="http">受信内网 HTTP / HTTPS</option></select></div>
+        {accessDraft.enabled && accessDraft.allowHttp && <div className="deployment-http-warning"><strong>仅限受信内网</strong><label className="deployment-check"><input type="checkbox" checked={accessDraft.confirmed} disabled={busy} onChange={event => setAccessDraft({ ...accessDraft, confirmed: event.target.checked })} /><span>我接受凭据和资产资料明文传输的风险，并确认已通过网络配置限制外部访问。</span></label></div>}
+        <p className="deployment-access-note">停用接入不会删除已有资产、凭据或登记记录。</p>
+      </div>
+      <footer className="deployment-dialog-footer"><button className="button ghost" disabled={busy} onClick={() => setAccessDraft(null)}>取消</button><button className="button primary" disabled={busy || (accessDraft.enabled && accessDraft.allowHttp && !accessDraft.confirmed)} onClick={() => void saveAccess()}>{busy ? '保存中…' : '保存设置'}</button></footer>
     </section></div>}
     {issued && <div className="modal-backdrop"><section className="deployment-dialog" role="dialog" aria-modal="true" aria-labelledby="deployment-token-title">
       <h3 id="deployment-token-title">凭据已创建，仅显示本次</h3><p>仅供 AD 后端保存。关闭后无法再次查看；不要发给 PE 或员工。</p>

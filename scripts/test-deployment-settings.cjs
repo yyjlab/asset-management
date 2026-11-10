@@ -34,6 +34,7 @@ function harness(api = {}, overrides = {}) {
   vm.runInNewContext(code, { module, exports: module.exports, Date, Error, navigator: {}, require(id) {
     if (id === 'react') return react;
     if (id === '../api') return { api };
+    if (id === './Icons') return { CloseIcon: () => null };
     if (id.endsWith('.css')) return {};
     return localRequire(id);
   } });
