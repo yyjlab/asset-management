@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { CloseIcon } from './Icons'
-import { DeploymentIntakes } from './DeploymentIntakes'
 import type { DeploymentCredential, DeploymentEntry, DeploymentHistory, DeploymentStatus } from '../types/deployment'
 import './DeploymentIntegration.css'
 
@@ -80,7 +79,6 @@ export function DeploymentIntegration({ onNotify }: Props) {
   return <div className="deployment-settings">
     <header className="deployment-header"><div><h2>装机平台接入</h2><p>电脑配置自动送审；核对批准后入库，不自动领用或覆盖已有资产。</p></div>
       <button className="button ghost" disabled={loading || busy} onClick={() => setRefresh(value => value + 1)}>刷新</button></header>
-    <DeploymentIntakes onNotify={onNotify} />
     {loading && <p role="status">正在读取接入信息…</p>}
     {error && <p className="deployment-error" role="alert">{error}</p>}
     {!loading && !error && status && <>

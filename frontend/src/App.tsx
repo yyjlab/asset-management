@@ -16,6 +16,7 @@ import type { AppSection } from './components/Sidebar'
 import { LoginPage } from './components/LoginPage'
 import { UserManagement } from './components/UserManagement'
 import { SystemSettings } from './components/SystemSettings'
+import { DeploymentIntakes } from './components/DeploymentIntakes'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { AuditLogPage } from './components/AuditLogPage'
 import { AvatarEditor } from './components/AvatarEditor'
@@ -115,7 +116,14 @@ export default function App() {
       page: nextPage,
       depth: mode === 'push' ? (current?.assetManagement ? current.depth + 1 : 1) : (current?.depth ?? 0),
     }
-    window.history[mode === 'push' ? 'pushState' : 'replaceState'](state, '', window.location.href)
+    const params = new URLSearchParams(window.location.search)
+    let url = window.location.href
+    if (nextSection === 'deploymentReview' || params.get('view') === 'deployment-review') {
+      if (nextSection === 'deploymentReview') params.set('view', 'deployment-review')
+      else params.delete('view')
+      url = `${window.location.pathname}${params.size ? `?${params.toString()}` : ''}${window.location.hash || ''}`
+    }
+    window.history[mode === 'push' ? 'pushState' : 'replaceState'](state, '', url)
   }
 
   const returnToPreviousView = () => {
@@ -234,7 +242,12 @@ export default function App() {
       }
     }
     const current = window.history.state as AppHistoryState | null
-    if (current?.assetManagement) {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('view') === 'deployment-review' && !params.has('qr') && !params.has('asset')) {
+      const state: AppHistoryState = { assetManagement: true, section: 'deploymentReview', page: { name: 'list' }, depth: current?.assetManagement ? current.depth : 0 }
+      window.history.replaceState(state, '', window.location.href)
+      void restoreView(state)
+    } else if (current?.assetManagement) {
       void restoreView(current)
     } else {
       window.history.replaceState({ assetManagement: true, section: 'dashboard', page: { name: 'list' }, depth: 0 } satisfies AppHistoryState, '', window.location.href)
@@ -414,7 +427,7 @@ export default function App() {
     showView('assets', { name: 'list', assetGroup: key })
     if (search.trim() || assetLoadError) void load('')
   }
-  const assetNavigation = { assetGroup: activeGroup.key, onAssetGroup: openAssetGroup }
+  const assetNavigation = { assetGroup: activeGroup.key, onAssetGroup: openAssetGroup, canReviewDeployment: authUser.role === 'SUPER_ADMIN' }
   const createInGroup = async () => {
     if (categoryCreationRef.current || loading || !hasPermission('ASSET_CREATE')) return
     if (activeGroup.key === 'all') { showView('assets', { name: 'form', asset: null }); return }
@@ -445,7 +458,8 @@ export default function App() {
     {avatarEditorOpen && <AvatarEditor user={authUser} revision={avatarRevision} busy={avatarSaving} onClose={() => !avatarSaving && setAvatarEditorOpen(false)} onUpload={uploadAvatar} onDelete={deleteMyAvatar} onError={(message) => notify(message, 'error')} />}
   </>
 
-  const restrictedSection = (section === 'users' || section === 'logs' || section === 'settings' || section === 'foundation') && !authUser.canManageUsers
+  const restrictedSection = section === 'deploymentReview' && authUser.role !== 'SUPER_ADMIN' ? '装机电脑审核'
+    : (section === 'users' || section === 'logs' || section === 'settings' || section === 'foundation') && !authUser.canManageUsers
     ? { users: '用户', logs: '日志', settings: '设置', foundation: '基础资料' }[section]
     : section === 'transfer' && !(hasPermission('ASSET_EXPORT') || (hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'))
       ? '数据'
@@ -499,6 +513,12 @@ export default function App() {
   if (section === 'users' && authUser.canManageUsers) return <div className="app-shell">
     <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><UserManagement currentUserId={authUser.id} avatarRevision={avatarRevision} onNotify={notify} onPasswordChanged={() => void logout()} /></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
+
+  if (section === 'deploymentReview' && authUser.role === 'SUPER_ADMIN') return <div className="app-shell">
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><div className="deployment-settings"><DeploymentIntakes key={accessKey} onNotify={notify} /></div></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

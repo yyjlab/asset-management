@@ -20,18 +20,18 @@ async function main() {
       declaredOperator: { id: 'agent', displayName: 'PE 自动采集' }, credentialId: 'service-1', state: 'pending_review', revision: 0,
       model: null, cpu: 'Intel Core i5', memory: '16 GiB', storage: 'NVMe 512 GiB', graphicsCard: null,
       manufacturerSerialNumber: 'SN-TEST', categoryId: null, asset: null, reviewedAt: null, reviewedBy: null, reviewNote: null };
-    let failApproval = false;
+    let failApproval = false, administrator = true, intakeReads = 0;
     await page.route('**/api/**', async route => {
       const request = route.request(), url = new URL(request.url()), endpoint = url.pathname;
       let data;
-      if (endpoint === '/api/auth/me') data = { id: 1, username: 'admin', displayName: 'Test Admin', role: 'SUPER_ADMIN', permissions: ['ASSET_VIEW'], canManageUsers: true, dataScope: 'ALL', departments: [], hasAvatar: false, dingtalkLogin: false };
+      if (endpoint === '/api/auth/me') data = { id: 1, username: 'admin', displayName: 'Test Admin', role: administrator ? 'SUPER_ADMIN' : 'USER', permissions: ['ASSET_VIEW'], canManageUsers: administrator, dataScope: 'ALL', departments: [], hasAvatar: false, dingtalkLogin: false };
       else if (endpoint === '/api/auth/csrf') data = { headerName: 'X-CSRF-TOKEN', token: 'isolated-test-csrf' };
       else if (endpoint.endsWith('/qr')) data = { qrBaseUrl: 'https://example.test' };
       else if (endpoint.endsWith('/ad-deployment/status')) data = { enabled: true, allowHttp: true, secureRequest: false, endpoint: '/api/integrations/ad-deployment/v1/intakes', lastReceivedAt: row.receivedAt };
       else if (endpoint.endsWith('/ad-deployment/credentials')) data = [];
       else if (endpoint.endsWith('/ad-deployment/registrations')) data = { items: [], page: 0, totalPages: 0, totalElements: 0 };
       else if (endpoint.endsWith('/ad-deployment/intake-options')) data = { categories: [{ id: 12, name: '笔记本电脑' }] };
-      else if (endpoint.endsWith('/ad-deployment/intakes')) data = { items: url.searchParams.get('state') === row.state ? [row] : [], page: 0, totalPages: 1, totalElements: url.searchParams.get('state') === row.state ? 1 : 0 };
+      else if (endpoint.endsWith('/ad-deployment/intakes')) { intakeReads++; data = { items: url.searchParams.get('state') === row.state ? [row] : [], page: 0, totalPages: 1, totalElements: url.searchParams.get('state') === row.state ? 1 : 0 }; }
       else if (endpoint.endsWith('/approve') || endpoint.endsWith('/reject')) {
         assert.equal(request.headers()['x-csrf-token'], 'isolated-test-csrf');
         const body = request.postDataJSON();
@@ -49,9 +49,21 @@ async function main() {
       await route.fulfill({ json: data });
     });
     await page.goto(server.resolvedUrls.local[0]);
-    await page.getByRole('button', { name: '设置', exact: true }).click();
-    await page.getByRole('button', { name: '装机平台接入', exact: true }).click();
+    await page.getByRole('button', { name: '装机电脑审核', exact: true }).click();
     const queue = page.getByRole('region', { name: '装机电脑审核' });
+    assert.equal(new URL(page.url()).searchParams.get('view'), 'deployment-review');
+    await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
+    await page.reload();
+    await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
+    await page.evaluate(() => history.replaceState(null, '', location.href));
+    await page.reload();
+    await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    assert.equal(new URL(page.url()).searchParams.has('view'), false);
+    await page.getByRole('button', { name: '装机平台接入', exact: true }).click();
+    assert.equal(await queue.count(), 0, 'integration settings must not duplicate the review list');
+    await page.goBack();
+    await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
     await queue.getByRole('button', { name: '核对 / 审核' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('资产名称', { exact: true }).fill('测试笔记本');
@@ -93,8 +105,14 @@ async function main() {
     assert.equal(decisions.at(-1).body.note, '重复送审，保留现有资产');
     assert.ok(decisions.at(-1).endpoint.endsWith('/reject'));
     assert.equal(row.asset, null);
+    administrator = false;
+    const before = intakeReads;
+    await page.reload();
+    await page.getByText('当前账号尚未获得此功能的访问权限，请联系管理员授权。', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '装机电脑审核', exact: true }).count(), 0);
+    assert.equal(intakeReads, before, 'unauthorized deep links must not mount review API requests');
     assert.deepEqual(errors, []);
-    console.log('PASS intake review: corrections, auto tag, failure retains draft, rejection, CSRF, light/dark desktop/mobile layout');
+    console.log('PASS intake review: standalone menu, reload, direct URL, back navigation, access guard, corrections, auto tag, rejection, CSRF and desktop/mobile layout');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.httpServer.close(resolve));

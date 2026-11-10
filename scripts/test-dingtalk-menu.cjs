@@ -126,7 +126,7 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, opti
   const visibility = load('featureVisibility.ts'); visibility.featureVisibility.businessWorkflows = options.businessWorkflows ?? true;
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons, '../featureVisibility': visibility });
   const rendered = [];
-  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
+  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'DeploymentIntakes', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
   const mocks = { react, './featureVisibility': visibility, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
@@ -153,16 +153,40 @@ function findNativeElement(tree, predicate) {
 }
 
 const hiddenBusinessSections = ['workbench', 'selfService', 'handover', 'operations', 'inventory', 'repair', 'consumables', 'procurement', 'kits', 'support', 'reports', 'registrations'];
-test('release visibility defaults closed for business modules while all seven core sections remain visible', () => {
+test('release visibility defaults closed for business modules while core sections remain visible', () => {
   const visibility = load('featureVisibility.ts');
   assert.equal(visibility.featureVisibility.businessWorkflows, false);
   for (const section of hiddenBusinessSections) {
     assert.equal(visibility.isSectionVisible(section), false); assert.equal(visibility.visibleSection(section), 'dashboard');
   }
-  for (const section of ['dashboard', 'assets', 'users', 'logs', 'foundation', 'settings', 'transfer']) {
+  for (const section of ['dashboard', 'assets', 'users', 'logs', 'foundation', 'settings', 'transfer', 'deploymentReview']) {
     assert.equal(visibility.isSectionVisible(section), true); assert.equal(visibility.visibleSection(section), section);
   }
   assert.equal(visibility.visibleSection('unknown-section'), 'dashboard');
+});
+test('deployment review is a standalone administrator menu with collapsed label and no permission elevation', () => {
+  for (const collapsed of [false, true]) {
+    assert.ok(menuLabels(sidebarMarkup({ canReviewDeployment: true, section: 'deploymentReview' }, collapsed)).includes('装机电脑审核'));
+    assert.ok(sidebarMarkup({ canReviewDeployment: true, section: 'deploymentReview' }, collapsed).includes('aria-current="page"'));
+    assert.ok(!menuLabels(sidebarMarkup({ canManageUsers: true }, collapsed)).includes('装机电脑审核'));
+  }
+  assert.deepEqual(appMarkup('deploymentReview', { role: 'SUPER_ADMIN', canManageUsers: true }).rendered, ['DeploymentIntakes']);
+  const denied = appMarkup('deploymentReview', { role: 'USER', canManageUsers: true });
+  assert.deepEqual(denied.rendered, []);
+  assert.match(denied.markup, /尚未获得此功能的访问权限/);
+});
+test('deployment review deep link restores the independent list without reading assets', async () => {
+  const effects = [], writes = [], listeners = {}, reads = [];
+  const browser = { location: { pathname: '/', href: 'http://asset.test/?view=deployment-review', search: '?view=deployment-review' },
+    history: { state: null, replaceState(next) { this.state = next; writes.push(next); } },
+    addEventListener(name, listener) { listeners[name] = listener; }, removeEventListener(name) { delete listeners[name]; } };
+  const result = appMarkup('dashboard', { role: 'SUPER_ADMIN', canManageUsers: true }, { name: 'list' }, { effects, window: browser, api: { getAsset: async id => reads.push(id) } });
+  const restore = effects.find(effect => effect.toString().includes('popstate'));
+  const cleanup = restore(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(writes.at(-1).section, 'deploymentReview');
+  assert.equal(result.changes.findLast(change => change.index === 5).value, 'deploymentReview');
+  assert.equal(reads.length, 0);
+  cleanup();
 });
 test('release guard never mounts hidden workflows or OA, even for an administrator with full permissions', () => {
   for (const canManageUsers of [false, true]) for (const section of hiddenBusinessSections) {

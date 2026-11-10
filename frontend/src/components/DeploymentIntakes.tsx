@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { CloseIcon } from './Icons'
+import './DeploymentIntegration.css'
 import type { DeploymentApproval, DeploymentIntake, DeploymentIntakePage, DeploymentIntakeState } from '../types/deployment'
 
 interface Props { onNotify: (text: string, kind?: 'ok' | 'error') => void }

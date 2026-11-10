@@ -4,7 +4,7 @@ import type { AppSection } from './components/Sidebar'
 // Restore this group after acceptance, without deleting its code or historical records.
 export const featureVisibility = { businessWorkflows: false }
 
-const coreSections = new Set<AppSection>(['dashboard', 'assets', 'users', 'logs', 'foundation', 'settings', 'transfer'])
+const coreSections = new Set<AppSection>(['dashboard', 'assets', 'users', 'logs', 'foundation', 'settings', 'transfer', 'deploymentReview'])
 const workflowSections = new Set<AppSection>([
   'workbench', 'selfService', 'handover', 'operations', 'inventory', 'repair', 'consumables',
   'procurement', 'kits', 'support', 'reports', 'registrations',

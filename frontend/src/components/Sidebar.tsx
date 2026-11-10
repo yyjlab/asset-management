@@ -6,11 +6,12 @@ import { featureVisibility } from '../featureVisibility'
 const version = 'v26.915.1651'
 import { BoxesIcon, ChevronIcon, ClipboardIcon, DashboardIcon, SettingsIcon, SidebarPanelIcon, UploadIcon, UserIcon, UsersIcon } from './Icons'
 
-export type AppSection = 'dashboard' | 'workbench' | 'selfService' | 'assets' | 'handover' | 'operations' | 'inventory' | 'repair' | 'consumables' | 'procurement' | 'kits' | 'support' | 'reports' | 'registrations' | 'transfer' | 'users' | 'logs' | 'foundation' | 'settings'
+export type AppSection = 'dashboard' | 'workbench' | 'selfService' | 'assets' | 'handover' | 'operations' | 'inventory' | 'repair' | 'consumables' | 'procurement' | 'kits' | 'support' | 'reports' | 'registrations' | 'transfer' | 'users' | 'logs' | 'foundation' | 'settings' | 'deploymentReview'
 
 interface Props {
   section: AppSection
   canManageUsers: boolean
+  canReviewDeployment?: boolean
   dingtalkLogin: boolean
   permissions: Permission[]
   onFilter: (filter: AssetFilter) => void
@@ -26,7 +27,7 @@ const initiallyCollapsed = () => {
   catch { return false }
 }
 
-export function Sidebar({ section, canManageUsers, dingtalkLogin, permissions, onFilter, onSection, assetGroup = 'all', onAssetGroup }: Props) {
+export function Sidebar({ section, canManageUsers, canReviewDeployment = false, dingtalkLogin, permissions, onFilter, onSection, assetGroup = 'all', onAssetGroup }: Props) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed)
   const [assetsOpen, setAssetsOpen] = useState(section === 'assets')
   useEffect(() => { if (section === 'assets') setAssetsOpen(true) }, [section])
@@ -74,6 +75,7 @@ export function Sidebar({ section, canManageUsers, dingtalkLogin, permissions, o
         <button aria-label="采购补货" title={collapsed ? '采购补货' : undefined} className={`nav-item ${section === 'procurement' ? 'active' : ''}`} onClick={() => onSection('procurement')}><BoxesIcon /><span>采购补货</span></button>
         {(dingtalkLogin || canManageUsers || permissions.includes('ASSET_EDIT') && permissions.includes('ASSET_CHECKOUT') && permissions.includes('ASSET_RETURN')) && <>{([['kits', '岗位配发模板'], ['support', '保修与供应商'], ['reports', '管理统计']] as const).map(([key, label]) => <button key={key} aria-label={label} title={collapsed ? label : undefined} className={`nav-item ${section === key ? 'active' : ''}`} onClick={() => onSection(key)}><ClipboardIcon /><span>{label}</span></button>)}</>}
         </>}
+        {canReviewDeployment && <button aria-label="装机电脑审核" aria-current={section === 'deploymentReview' ? 'page' : undefined} title={collapsed ? '装机电脑审核' : undefined} className={`nav-item ${section === 'deploymentReview' ? 'active' : ''}`} onClick={() => onSection('deploymentReview')}><ClipboardIcon /><span>装机电脑审核</span></button>}
         {(dingtalkLogin || canManageUsers) && <button aria-label="用户" title={collapsed ? '用户' : undefined} className={`nav-item ${section === 'users' ? 'active' : ''}`} onClick={() => onSection('users')}>
           <UsersIcon /><span>用户</span>
         </button>}
