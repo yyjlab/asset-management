@@ -204,6 +204,55 @@ class DeploymentRegistrationApiTest {
             assertTrue(assets.findByAssetTagIgnoreCase(tag).isEmpty()); assertFalse(registrations.existsById(externalId));
         } finally { company.setDisabled(false); lookups.saveAndFlush(company); }
     }
+    @Test void legacyAvailableStatusSupportsConnectionAndCreationWithoutRenaming() throws Exception {
+        var current = option(LookupType.STATUS, "当前可用");
+        var legacy = option(LookupType.STATUS, "可领用");
+        boolean disabled = legacy.isDisabled();
+        jdbc.update("update lookup_values set name = ? where id = ?", "__deployment_test_available", current.getId());
+        jdbc.update("update lookup_values set disabled = false where id = ?", legacy.getId());
+        try {
+            mvc.perform(get(DeploymentSecurityConfig.CONNECTION).secure(true).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk());
+            long id = created(request());
+            var asset = assets.findById(id).orElseThrow();
+            assertEquals(legacy.getId(), asset.getStatus().getId());
+            assertFalse(asset.isCheckedOut());
+            assertNull(asset.getAssignedUserId());
+            assertNull(asset.getAssignedTo());
+            assertEquals("可领用", lookups.findById(legacy.getId()).orElseThrow().getName());
+            var duplicate = lookups.saveAndFlush(new LookupValue(LookupType.STATUS, " 可领用 "));
+            try {
+                mvc.perform(get(DeploymentSecurityConfig.CONNECTION).secure(true).header("Authorization", "Bearer " + token))
+                        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
+            } finally {
+                lookups.deleteById(duplicate.getId());
+            }
+            jdbc.update("update lookup_values set disabled = true where id = ?", legacy.getId());
+            mvc.perform(get(DeploymentSecurityConfig.CONNECTION).secure(true).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
+            var another = request(); another.put("externalRegistrationId", UUID.randomUUID().toString());
+            another.put("assetTag", "02" + tag.substring(2));
+            send(another).andExpect(status().isConflict());
+        } finally {
+            jdbc.update("update lookup_values set name = ? where id = ?", "当前可用", current.getId());
+            jdbc.update("update lookup_values set disabled = ? where id = ?", disabled, legacy.getId());
+        }
+    }
+
+    @Test void canonicalAvailableStatusTakesPrecedenceButDisabledCanonicalCannotFallBack() throws Exception {
+        var current = option(LookupType.STATUS, "当前可用");
+        option(LookupType.STATUS, "可领用");
+        long id = created(request());
+        assertEquals(current.getId(), assets.findById(id).orElseThrow().getStatus().getId());
+        jdbc.update("update lookup_values set disabled = true where id = ?", current.getId());
+        try {
+            mvc.perform(get(DeploymentSecurityConfig.CONNECTION).secure(true).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
+        } finally {
+            jdbc.update("update lookup_values set disabled = false where id = ?", current.getId());
+        }
+    }
+
     @Test void ambiguousDefaultDictionaryIsRejectedRatherThanChoosingOne() throws Exception {
         var duplicate = lookups.saveAndFlush(new LookupValue(LookupType.LOCATION, " 公司 "));
         try { send(request()).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID")); }

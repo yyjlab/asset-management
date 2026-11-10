@@ -85,7 +85,7 @@ public class DeploymentRegistrationService {
         if (existing == null) {
             var company = dictionary(LookupType.COMPANY, "微丰启");
             var location = dictionary(LookupType.LOCATION, "公司");
-            var available = dictionary(LookupType.STATUS, "当前可用");
+            var available = dictionary(LookupType.STATUS, "当前可用", "可领用");
             var category = lookups.findById(request.categoryId()).filter(value -> value.getType() == LookupType.CATEGORY)
                     .orElseThrow(() -> error(HttpStatus.UNPROCESSABLE_ENTITY, "CATEGORY_INVALID", "categoryId 必须引用实际电脑分类"));
             if (category.isDisabled() || profile(category) != AssetProfile.COMPUTER)
@@ -139,7 +139,7 @@ public class DeploymentRegistrationService {
     public ConnectionInfo connectionInfo() {
         dictionary(LookupType.COMPANY, "微丰启");
         dictionary(LookupType.LOCATION, "公司");
-        dictionary(LookupType.STATUS, "当前可用");
+        dictionary(LookupType.STATUS, "当前可用", "可领用");
         var choices = lookups.findByTypeOrderByNameAsc(LookupType.CATEGORY).stream()
                 .filter(value -> !value.isDisabled() && profile(value) == AssetProfile.COMPUTER)
                 .map(value -> new CategoryChoice(value.getId(), value.getName())).toList();
@@ -147,8 +147,15 @@ public class DeploymentRegistrationService {
     }
 
     private LookupValue dictionary(LookupType type, String name) {
-        var values = lookups.findByTypeOrderByNameAsc(type).stream()
+        return dictionary(type, name, null);
+    }
+
+    private LookupValue dictionary(LookupType type, String name, String legacyName) {
+        var options = lookups.findByTypeOrderByNameAsc(type);
+        var values = options.stream()
                 .filter(value -> value.getName().trim().equalsIgnoreCase(name)).toList();
+        if (values.isEmpty() && legacyName != null)
+            values = options.stream().filter(value -> value.getName().trim().equalsIgnoreCase(legacyName)).toList();
         if (values.size() != 1 || values.getFirst().isDisabled())
             throw error(HttpStatus.CONFLICT, "DEFAULT_DICTIONARY_INVALID", type.getLabel() + "“" + name + "”须存在唯一且启用的字典记录；未自动新建");
         return values.getFirst();
