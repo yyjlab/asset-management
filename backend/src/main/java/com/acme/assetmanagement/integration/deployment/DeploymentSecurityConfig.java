@@ -19,6 +19,7 @@ import java.util.List;
 @Configuration
 public class DeploymentSecurityConfig {
     public static final String PATH = "/api/integrations/ad-deployment/v1/registrations";
+    public static final String INTAKES = "/api/integrations/ad-deployment/v1/intakes";
     public static final String CONNECTION = "/api/integrations/ad-deployment/v1/connection";
     static final String BODY = "adDeploymentRegistrationBody";
     static final int MAX_BYTES = 32768;
@@ -31,7 +32,8 @@ public class DeploymentSecurityConfig {
                 .requestCache(cache -> cache.disable()).csrf(csrf -> csrf.disable())
                 .formLogin(form -> form.disable()).httpBasic(basic -> basic.disable()).logout(logout -> logout.disable())
                 .addFilterBefore(new TokenFilter(credentials, properties), AnonymousAuthenticationFilter.class)
-                .authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.POST, PATH).hasAuthority(DeploymentPrincipal.AUTHORITY)
+                .authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.POST, PATH, INTAKES).hasAuthority(DeploymentPrincipal.AUTHORITY)
+                        .requestMatchers(HttpMethod.GET, INTAKES + "/*").hasAuthority(DeploymentPrincipal.AUTHORITY)
                         .requestMatchers(HttpMethod.GET, CONNECTION).hasAuthority(DeploymentPrincipal.AUTHORITY)
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
@@ -63,7 +65,8 @@ public class DeploymentSecurityConfig {
             context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal, null,
                     List.of(new SimpleGrantedAuthority(DeploymentPrincipal.AUTHORITY))));
             SecurityContextHolder.setContext(context);
-            if ("POST".equals(request.getMethod()) && PATH.equals(request.getRequestURI().substring(request.getContextPath().length()))) {
+            String path = request.getRequestURI().substring(request.getContextPath().length());
+            if ("POST".equals(request.getMethod()) && (PATH.equals(path) || INTAKES.equals(path))) {
                 if (request.getContentType() == null || !request.getContentType().split(";", 2)[0].trim().equalsIgnoreCase("application/json")) {
                     error(response, 415, "UNSUPPORTED_MEDIA_TYPE", "仅支持 application/json"); return;
                 }

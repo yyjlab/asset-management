@@ -1,15 +1,47 @@
 # AD 装机平台资产登记接口 v1
 
-仅由 AD 后端调用，不给 PE 或普通员工分发服务凭据。PE 完成采集、管理员确认资产编号后即可提交；不依赖装系统、改机名、加域或员工领用流程。默认关闭；本机隔离 HTTP 联调不代表已连接生产环境。
+仅由 AD 后端调用，不给 PE 或普通员工分发服务凭据。默认流程为 PE 自动采集、自动送审，在 asset 核对批准后才生成编号和创建资产；不等待装系统、改名或加域。默认关闭；本机隔离 HTTP 联调不代表已连接生产环境。
 
 ## 一次性接入准备
 
-1. 管理员核对现有字典中存在且唯一、启用的 `公司=微丰启`、`位置=公司`、`状态=当前可用`，并取得实际电脑分类的 `categoryId`。接口不创建这些字典，不自动猜测笔记本/台式机分类。
+1. 批准时需要唯一且启用的 `公司=微丰启`、`位置=公司`、`状态=当前可用`（仅缺失时兼容旧名“可领用”）及真实电脑分类。缺少资料不阻止先送审，不自动新建字典。
 2. 旧库先备份并在测试库审核 `scripts/migrate-ad-deployment-descriptive-sn.sql`。该脚本仅移除 SN 单列唯一索引，不删改资产数据、资产编号/二维码索引。首次应用新实体映射不保证 Hibernate 会删除旧索引；禁止靠重启代替迁移。脚本尚未在真实 MySQL 执行验证。
 
 接口登记表若出现 `Data too long for column 'request_json'`，备份后审核并执行 `scripts/migrate-ad-deployment-journal-text.sql`，只修正接口登记表的两个文本字段，不修改资产表。登记请求留档只保存操作人与采集时间，不重复保存硬件快照；完整内容指纹、首次响应及审计仍保留，旧记录可继续读取。该迁移尚未在真实 MySQL 验证。
 3. 超级管理员在「设置 → 装机平台接入 → 接入设置」启用，保存后立即生效，无需修改 `.env` 或重启。默认仅 HTTPS；受信内网可选择「受信内网 HTTP / HTTPS」，阅读并勾选明文风险确认后保存。HTTP 会明文传输凭据和资产资料，此选项不自动判断内网或限制来源，需由网络配置限制外部访问。关闭后返回 `503 INTEGRATION_DISABLED`。
-4. 在本页创建专用凭据，在 AD「电脑装机 → 资产登记 → asset 联动设置」填写 asset 地址和凭据，点「测试连接并读取分类」，选择实际分类后开启自动同步并保存。不需要手填分类 ID。凭据只交给 AD 后端，不交给 PE。HTTPS 仍验证证书，不接受伪造转发头；当前 Nginx 的 HTTPS 代理链需按部署环境核对。本次不修改生产代理配置。
+4. 在本页创建专用凭据，在 AD「电脑装机 → 资产登记 → asset 联动设置」填写 asset 地址和凭据，测试连接并开启自动上报。AD 无需分类或资产编号。凭据只交给 AD 后端，不交给 PE。HTTPS 仍验证证书；本次不修改生产代理配置。
+
+## 自动送审与审核
+
+日常只使用 asset「设置 → 装机平台接入 → 装机电脑审核」。核对配置、补充型号、选择分类后点“批准并创建资产”，或填写原因“不批准”。批准使用现有发号器，按上海日期加4位流水生成12位编号，不提前占号，不自动领用，不覆盖已有资产。未采集信息留空，基础显示驱动不作真实显卡。
+
+AD 服务凭据调用：
+- `POST /api/integrations/ad-deployment/v1/intakes`：请求与下方旧接口的 `externalRegistrationId`、`capturedAt`、`operator`、`snapshot` 相同，但禁止 `assetTag`、`name`，`categoryId` 可省略。`snapshot.model` 可为空，待审核时补齐，其余字段类型和长度沿用旧约定；上限32KiB。
+- `GET /api/integrations/ad-deployment/v1/intakes/{externalRegistrationId}`：专用凭据只能按已知标识查询处理状态，不返回整份硬件配置或待审列表。按管理员明确授权，同一 AD 接入的新有效专用凭据可继续查询或重试旧记录；不改变最初调用身份，已撤销凭据失效，仍无审批权限。
+
+收到首次送审或重复待审请求返回202：
+
+```json
+{"externalRegistrationId":"ad:instance:device:1","result":"pending_review","asset":null,"message":null}
+```
+
+批准后查询或重放返回200：
+
+```json
+{"externalRegistrationId":"ad:instance:device:1","result":"approved","asset":{"id":123,"assetTag":"202611100001","version":0},"message":"核对完成"}
+```
+
+拒绝后返回200，`result=rejected`、`asset=null`，`message` 为拒绝原因。相同标识带不同内容返回409 `IDEMPOTENCY_KEY_REUSED`，不替换原待审单。认证失败401，权限或HTTP限制403，字段失败422。AD 固定请求持久化重试，收到待审后定期只读查询；重复心跳、重进 PE 不新建待审单，终态不自动重开。
+
+超级管理员会话接口均位于 `/api/settings/ad-deployment`，写入需要现有 CSRF：
+- `GET /intakes?page=0&state=pending_review`：每页20条，状态另可选 `approved`、`rejected`。
+- `GET /intake-options`：返回启用的电脑分类。
+- `POST /intakes/{id}/approve`：`revision`、`categoryId`、`name`（1到160字）、`model`（1到120字）必填；`cpu`、`memory`、`storage`、`graphicsCard` 各最多200字，`manufacturerSerialNumber` 最多160字，`note` 最多500字，可为空。返回审核记录及最终编号。
+- `POST /intakes/{id}/reject`：`revision` 和1到500字 `note` 必填，不创建资产。
+
+审批使用记录锁与现有发号锁，重复提交相同审批结果返回原资产；修改已处理的审核内容返回409，不重复建资产。新表 `ad_deployment_intakes` 存放待审及审核结果，不修改原资产字段；生产创建由既有数据库结构管理方式处理。本次未执行生产迁移。
+
+下文 `/registrations` 是旧版“已确认编号后登记”的兼容接口。历史记录和队列不自动转换为新待审单，避免重复入库；新自动采集使用 `/intakes`。
 
 ## 网页管理入口
 
@@ -48,13 +80,13 @@ AD 使用受保护的服务配置/密钥存储保存 token。服务端仅存256�
 
 ## 连接检查
 
-`GET /api/integrations/ad-deployment/v1/connection` 使用同一专用 Bearer 凭据，执行与登记相同的启用、HTTP/HTTPS 和凭据校验。只读验证默认字典，返回 `{"receiver":"asset-management","protocolVersion":1,"categories":[{"id":12,"name":"笔记本电脑"}]}`，其中 ID 和名称来自实际启用的电脑分类。它不创建资产、不保存登记记录、不返回资产或人员列表；默认字典缺失或不唯一时返回 `409 DEFAULT_DICTIONARY_INVALID`。AD 通过其管理员及 CSRF 保护的 `POST /pc-deploy/api/asset-sync/probe` 代理调用，PE 不直接访问此接口。
+`GET /api/integrations/ad-deployment/v1/connection` 使用同一专用 Bearer 凭据，执行启用、HTTP/HTTPS 和凭据校验，返回 `{"receiver":"asset-management","protocolVersion":1,"categories":[{"id":12,"name":"笔记本电脑"}]}`。分类来自真实启用记录；默认字典和分类不足不阻止连接或送审，在批准时校验。它不创建资产、不保存登记记录、不返回资产或人员列表。AD 通过管理员及 CSRF 保护的 `POST /pc-deploy/api/asset-sync/probe` 代理调用，PE 不直接访问。
 
-## 登记请求
+## 旧版兼容登记请求
 
 `POST /api/integrations/ad-deployment/v1/registrations`
 
-请求头：`Authorization: Bearer <token>`、`Content-Type: application/json`。无须员工会话或 CSRF token，也不能用管理员会话替代专用凭据。该 token 只允许登记 POST 和上面的只读连接检查，不允许读取完整资产、编辑/删除资产、修改字典、管理用户或签发凭据。整个 UTF-8 JSON 请求最多32KiB。
+请求头：`Authorization: Bearer <token>`、`Content-Type: application/json`。无须员工会话或 CSRF token，也不能用管理员会话替代专用凭据。该 token 仅可提交登记或送审、查询本人送审结果及检查连接，不允许审批、读取完整资产、编辑/删除资产、修改字典、管理用户或签发凭据。整个 UTF-8 JSON 请求最多32KiB。
 
 ```json
 {
@@ -178,7 +210,7 @@ AD 使用受保护的服务配置/密钥存储保存 token。服务端仅存256�
 .\mvnw.cmd -o package
 ```
 
-当前验证：后端完整311项测试通过，Maven package 成功，包含实际 AD Python 发送端经本机 HTTP 调用 Java 接收端的新建、丢响应重放、查重和配置冲突验证。AD 装机平台147项相关 Python 测试、424项模拟浏览器检查通过。前端沿用已验证的159项测试及构建，没有新增或升级依赖。真实生产网络、MySQL及 HTTPS入口未联调，迁移脚本未执行。
+验证以本机隔离测试为准：包含真实 AD Python 经 HTTP 自动送审、丢响应重试、批准发号、拒绝与结果回传，以及浏览器审核与亮暗主题桌面/手机布局。无新增或升级依赖。未验证生产网络、真实 MySQL 或物理 PE，未执行生产迁移。
 
 可选跨仓库 HTTP 回归使用 `DeploymentHttpIntegrationTest`；提供 Maven 参数 `-Dad.sender.python=<具备AD装机依赖的Python路径>`、`-Dad.sender.repo=<ad-management路径>` 后运行。该测试仅启动本机随机端口和 H2 内存库；不提供参数时跳过跨仓库测试，不影响普通构建。
 

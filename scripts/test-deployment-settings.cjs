@@ -35,6 +35,7 @@ function harness(api = {}, overrides = {}) {
     if (id === 'react') return react;
     if (id === '../api') return { api };
     if (id === './Icons') return { CloseIcon: () => null };
+    if (id === './DeploymentIntakes') return { DeploymentIntakes: () => null };
     if (id.endsWith('.css')) return {};
     return localRequire(id);
   } });

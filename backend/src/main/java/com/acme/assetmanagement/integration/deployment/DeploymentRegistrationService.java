@@ -143,20 +143,17 @@ public class DeploymentRegistrationService {
 
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ConnectionInfo connectionInfo() {
-        dictionary(LookupType.COMPANY, "微丰启");
-        dictionary(LookupType.LOCATION, "公司");
-        dictionary(LookupType.STATUS, "当前可用", "可领用");
         var choices = lookups.findByTypeOrderByNameAsc(LookupType.CATEGORY).stream()
                 .filter(value -> !value.isDisabled() && profile(value) == AssetProfile.COMPUTER)
                 .map(value -> new CategoryChoice(value.getId(), value.getName())).toList();
         return new ConnectionInfo("asset-management", 1, choices);
     }
 
-    private LookupValue dictionary(LookupType type, String name) {
+    LookupValue dictionary(LookupType type, String name) {
         return dictionary(type, name, null);
     }
 
-    private LookupValue dictionary(LookupType type, String name, String legacyName) {
+    LookupValue dictionary(LookupType type, String name, String legacyName) {
         var options = lookups.findByTypeOrderByNameAsc(type);
         var values = options.stream()
                 .filter(value -> value.getName().trim().equalsIgnoreCase(name)).toList();
@@ -166,12 +163,15 @@ public class DeploymentRegistrationService {
             throw error(HttpStatus.CONFLICT, "DEFAULT_DICTIONARY_INVALID", type.getLabel() + "“" + name + "”须存在唯一且启用的字典记录；未自动新建");
         return values.getFirst();
     }
-    private AssetProfile profile(LookupValue category) {
+    AssetProfile profile(LookupValue category) {
         return category.getAssetProfile() == null ? AssetProfile.infer(category.getName()) : category.getAssetProfile();
     }
     private Map<String, String> projection(DeploymentRegistrationRequest.Snapshot snapshot, List<String> warnings) {
         if (Set.of("unknown", "system product name", "to be filled by o.e.m.", "default string", "未知").contains(compare(snapshot.model())))
             throw error(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "snapshot.model 未提供真实型号，不能编造设备型号");
+        return projection(snapshot, warnings, true);
+    }
+    Map<String, String> projection(DeploymentRegistrationRequest.Snapshot snapshot, List<String> warnings, boolean strict) {
         var values = new LinkedHashMap<String, String>();
         values.put("model", snapshot.model()); values.put("cpu", snapshot.cpu()); values.put("memory", snapshot.memory());
         String storage = snapshot.internalDisks().stream().map(disk ->
@@ -179,7 +179,7 @@ public class DeploymentRegistrationService {
                         BigDecimal.valueOf(disk.capacityBytes()).divide(BigDecimal.valueOf(1073741824L), 2, RoundingMode.HALF_UP)
                                 .stripTrailingZeros().toPlainString() + " GiB (" + disk.busType() + ")")
                 .sorted(String.CASE_INSENSITIVE_ORDER).collect(java.util.stream.Collectors.joining("; "));
-        values.put("storage", storage.isEmpty() ? null : bounded(storage, "snapshot.internalDisks"));
+        values.put("storage", storage.isEmpty() ? null : strict ? bounded(storage, "snapshot.internalDisks") : storage);
         var realGraphics = snapshot.graphicsCards().stream().filter(value -> {
             String name = value.toLowerCase(Locale.ROOT).replace(" ", "");
             boolean placeholder = name.contains("basicdisplay") || name.contains("basicrender") || name.contains("基本显示")
@@ -189,7 +189,7 @@ public class DeploymentRegistrationService {
             if (placeholder && !warnings.contains("BASIC_DISPLAY_DRIVER_IGNORED")) warnings.add("BASIC_DISPLAY_DRIVER_IGNORED");
             return !placeholder;
         }).distinct().sorted(String.CASE_INSENSITIVE_ORDER).toList();
-        values.put("graphicsCard", realGraphics.isEmpty() ? null : bounded(String.join(" + ", realGraphics), "snapshot.graphicsCards"));
+        values.put("graphicsCard", realGraphics.isEmpty() ? null : strict ? bounded(String.join(" + ", realGraphics), "snapshot.graphicsCards") : String.join(" + ", realGraphics));
         if (snapshot.internalDisks().isEmpty()) warnings.add("INTERNAL_DISKS_NOT_COLLECTED");
         return values;
     }
@@ -199,7 +199,7 @@ public class DeploymentRegistrationService {
         return value;
     }
     private String compare(String value) { return value == null || value.isBlank() ? null : value.trim().toLowerCase(Locale.ROOT); }
-    private void requireDescriptiveSerialSchema() {
+    void requireDescriptiveSerialSchema() {
         Boolean unique = jdbc.execute((ConnectionCallback<Boolean>) connection -> {
             var metadata = connection.getMetaData();
             String table = metadata.storesUpperCaseIdentifiers() ? "ASSETS" : "assets";

@@ -49,3 +49,20 @@
 :root[data-theme="dark"] .deployment-access-dialog .deployment-mode select { background: var(--surface); color: var(--ink); }
 :root[data-theme="dark"] .deployment-error { color: #ff9f9f; }
 @media (max-width: 700px) { .deployment-status { grid-template-columns: repeat(2, minmax(0, 1fr)); } .deployment-header { flex-wrap: wrap; } }
+.deployment-intake-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.deployment-intake-toolbar h3 { margin-bottom: 6px; }
+.deployment-intake-toolbar p { margin: 0; font-size: 13px; }
+.deployment-intakes small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.deployment-intake-state { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; background: var(--blue-soft); color: var(--blue); }
+.deployment-intake-state.state-approved { color: #16815b; background: color-mix(in srgb, #16815b 12%, var(--surface)); }
+.deployment-intake-state.state-rejected { color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, var(--surface)); }
+.deployment-review-dialog { padding: 0; width: min(760px, calc(100vw - 32px)); display: flex; flex-direction: column; overflow: hidden; }
+.deployment-review-dialog form { display: flex; flex-direction: column; min-height: 0; }
+.deployment-review-dialog .deployment-dialog-body { flex: 1; }
+.deployment-review-defaults { margin-bottom: 20px; padding: 10px 12px; border-radius: 6px; background: var(--blue-soft); color: var(--ink); font-size: 13px; line-height: 1.6; }
+.deployment-review-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.deployment-review-fields label, .deployment-review-note { display: grid; min-width: 0; gap: 8px; font-size: 13px; }
+.deployment-review-fields input, .deployment-review-fields select, .deployment-review-note textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ink); background: var(--surface); border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); border-radius: 6px; font: inherit; }
+.deployment-review-note { margin-top: 20px; }
+.deployment-review-result dt { color: var(--muted); font-size: 13px; }
+@media (max-width: 600px) { .deployment-review-fields { grid-template-columns: minmax(0, 1fr); } .deployment-intake-toolbar { flex-wrap: wrap; } .deployment-review-dialog .deployment-dialog-footer { flex-wrap: wrap; padding: 14px 16px; } }

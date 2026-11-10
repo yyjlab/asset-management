@@ -33,3 +33,43 @@ export interface DeploymentHistory {
   totalPages: number
   totalElements: number
 }
+
+export type DeploymentIntakeState = 'pending_review' | 'approved' | 'rejected'
+export interface DeploymentIntake {
+  externalRegistrationId: string
+  receivedAt: string
+  capturedAt: string
+  declaredOperator: { id: string; displayName: string }
+  credentialId: string
+  state: DeploymentIntakeState
+  revision: number
+  model: string | null
+  cpu: string | null
+  memory: string | null
+  storage: string | null
+  graphicsCard: string | null
+  manufacturerSerialNumber: string | null
+  categoryId: number | null
+  asset: { id: number; assetTag: string; version: number } | null
+  reviewedAt: string | null
+  reviewedBy: string | null
+  reviewNote: string | null
+}
+export interface DeploymentIntakePage {
+  items: DeploymentIntake[]
+  page: number
+  totalPages: number
+  totalElements: number
+}
+export interface DeploymentApproval {
+  revision: number
+  categoryId: number
+  name: string
+  model: string
+  cpu: string | null
+  memory: string | null
+  storage: string | null
+  graphicsCard: string | null
+  manufacturerSerialNumber: string | null
+  note: string | null
+}

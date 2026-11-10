@@ -79,8 +79,11 @@ public class AssetService {
 
     public AssetResponse createFromDeployment(AssetRequest request) {
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !(authentication.getPrincipal() instanceof
-                com.acme.assetmanagement.integration.deployment.DeploymentPrincipal))
+        boolean reviewer = authentication != null && authentication.getPrincipal() instanceof
+                com.acme.assetmanagement.security.AccountPrincipal && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+        if (authentication == null || (!(authentication.getPrincipal() instanceof
+                com.acme.assetmanagement.integration.deployment.DeploymentPrincipal) && !reviewer))
             throw new ApiException(HttpStatus.FORBIDDEN, "仅装机平台专用凭据可以执行此创建路径");
         access.permission(com.acme.assetmanagement.user.Permission.ASSET_CREATE);
         return create(request, null, true);

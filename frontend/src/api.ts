@@ -3,7 +3,7 @@ import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 import type { DingTalkQrAuthorization } from './types'
 import type { OaCandidate, OaCreate, OaItem, OaPage, OaStatus } from './types/dingtalkOa'
-import type { DeploymentCredential, DeploymentStatus, DeploymentHistory } from './types/deployment'
+import type { DeploymentCredential, DeploymentStatus, DeploymentHistory, DeploymentIntake, DeploymentIntakePage, DeploymentIntakeState, DeploymentApproval } from './types/deployment'
 import type { DomainJoinStatus, DomainStatusOption, ModelOption, AccessoryOption, AccessoryOptionWrite, ManagedLookupType } from './types'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
@@ -220,6 +220,18 @@ export const api = {
     mutate<DeploymentCredential>(`/api/settings/ad-deployment/credentials/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   listDeploymentRegistrations: (page = 0) =>
     request<DeploymentHistory>(`/api/settings/ad-deployment/registrations?page=${page}`),
+  listDeploymentIntakes: (page = 0, state: DeploymentIntakeState = 'pending_review') =>
+    request<DeploymentIntakePage>(`/api/settings/ad-deployment/intakes?page=${page}&state=${state}`),
+  deploymentIntakeOptions: () =>
+    request<{ categories: { id: number; name: string }[] }>('/api/settings/ad-deployment/intake-options'),
+  approveDeploymentIntake: (id: string, payload: DeploymentApproval) =>
+    mutate<DeploymentIntake>(`/api/settings/ad-deployment/intakes/${encodeURIComponent(id)}/approve`, {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  rejectDeploymentIntake: (id: string, revision: number, note: string) =>
+    mutate<DeploymentIntake>(`/api/settings/ad-deployment/intakes/${encodeURIComponent(id)}/reject`, {
+      method: 'POST', body: JSON.stringify({ revision, note }),
+    }),
   updateQrSetting: (qrBaseUrl: string) =>
     mutate<QrSetting>('/api/settings/qr', { method: 'PUT', body: JSON.stringify({ qrBaseUrl }) }),
   listAuditLogs: (filters: AuditFilters, page = 0, size = 50) => {

@@ -7,7 +7,8 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
-@RestControllerAdvice(assignableTypes = {DeploymentRegistrationController.class, DeploymentCredentialController.class, DeploymentManagementController.class})
+@RestControllerAdvice(assignableTypes = {DeploymentRegistrationController.class, DeploymentCredentialController.class, DeploymentManagementController.class,
+        DeploymentIntakeController.class, DeploymentIntakeManagementController.class})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DeploymentExceptionHandler {
     public record Error(int status, String code, String message, List<String> fields) {}

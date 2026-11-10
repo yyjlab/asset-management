@@ -18,12 +18,14 @@ import tools.jackson.databind.ObjectMapper;
 public class DeploymentManagementController {
     private final DeploymentAccessService access;
     private final DeploymentRegistrationRepository registrations;
+    private final DeploymentIntakeRepository intakes;
     private final ObjectMapper json;
 
     public DeploymentManagementController(DeploymentAccessService access,
-            DeploymentRegistrationRepository registrations, ObjectMapper json) {
+            DeploymentRegistrationRepository registrations, DeploymentIntakeRepository intakes, ObjectMapper json) {
         this.access = access;
         this.registrations = registrations;
+        this.intakes = intakes;
         this.json = json;
     }
 
@@ -39,9 +41,11 @@ public class DeploymentManagementController {
     @GetMapping("/status")
     public ResponseEntity<Status> status(jakarta.servlet.http.HttpServletRequest request) {
         var config = access.current();
+        Instant latest = registrations.findFirstByOrderByCreatedAtDescExternalIdDesc().map(row -> row.createdAt).orElse(null);
+        Instant intake = intakes.findFirstByOrderByReceivedAtDescExternalIdDesc().map(row -> row.receivedAt).orElse(null);
+        if (intake != null && (latest == null || intake.isAfter(latest))) latest = intake;
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Status(config.enabled(),
-                request.isSecure(), config.allowHttp(), DeploymentSecurityConfig.PATH,
-                registrations.findFirstByOrderByCreatedAtDescExternalIdDesc().map(row -> row.createdAt).orElse(null)));
+                request.isSecure(), config.allowHttp(), DeploymentSecurityConfig.INTAKES, latest));
     }
 
     @PutMapping("/settings")

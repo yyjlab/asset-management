@@ -246,13 +246,16 @@ class DeploymentRegistrationApiTest {
             var duplicate = lookups.saveAndFlush(new LookupValue(LookupType.STATUS, " 可领用 "));
             try {
                 mvc.perform(get(DeploymentSecurityConfig.CONNECTION).secure(true).header("Authorization", "Bearer " + token))
-                        .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
+                        .andExpect(status().isOk());
+                var another = request(); another.put("externalRegistrationId", UUID.randomUUID().toString());
+                another.put("assetTag", "03" + tag.substring(2));
+                send(another).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
             } finally {
                 lookups.deleteById(duplicate.getId());
             }
             jdbc.update("update lookup_values set disabled = true where id = ?", legacy.getId());
             mvc.perform(get(DeploymentSecurityConfig.CONNECTION).secure(true).header("Authorization", "Bearer " + token))
-                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
+                    .andExpect(status().isOk());
             var another = request(); another.put("externalRegistrationId", UUID.randomUUID().toString());
             another.put("assetTag", "02" + tag.substring(2));
             send(another).andExpect(status().isConflict());
@@ -270,7 +273,10 @@ class DeploymentRegistrationApiTest {
         jdbc.update("update lookup_values set disabled = true where id = ?", current.getId());
         try {
             mvc.perform(get(DeploymentSecurityConfig.CONNECTION).secure(true).header("Authorization", "Bearer " + token))
-                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
+                    .andExpect(status().isOk());
+            var another = request(); another.put("externalRegistrationId", UUID.randomUUID().toString());
+            another.put("assetTag", "04" + tag.substring(2));
+            send(another).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("DEFAULT_DICTIONARY_INVALID"));
         } finally {
             jdbc.update("update lookup_values set disabled = false where id = ?", current.getId());
         }
@@ -383,7 +389,7 @@ class DeploymentRegistrationApiTest {
         mvc.perform(get("/api/settings/ad-deployment/status").with(user(admin)))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.enabled").value(false)).andExpect(jsonPath("$.secureRequest").value(false))
-                .andExpect(jsonPath("$.endpoint").value(DeploymentSecurityConfig.PATH));
+                .andExpect(jsonPath("$.endpoint").value(DeploymentSecurityConfig.INTAKES));
         mvc.perform(get("/api/settings/ad-deployment/status").secure(true).with(user(admin)))
                 .andExpect(jsonPath("$.secureRequest").value(true));
     }

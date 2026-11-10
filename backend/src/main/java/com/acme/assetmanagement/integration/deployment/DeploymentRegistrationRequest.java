@@ -13,6 +13,12 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
                            List<String> graphicsCards, String manufacturerSerialNumber) {}
 
     public static DeploymentRegistrationRequest parse(byte[] body, ObjectMapper json) {
+        return parse(body, json, false);
+    }
+    static DeploymentRegistrationRequest parseIntake(byte[] body, ObjectMapper json) {
+        return parse(body, json, true);
+    }
+    private static DeploymentRegistrationRequest parse(byte[] body, ObjectMapper json, boolean intake) {
         final Map<?, ?> root;
         try { root = object(json.readerFor(Object.class).with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION)
                 .readValue(body), "request"); }
@@ -20,12 +26,13 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
         catch (RuntimeException exception) {
             throw new DeploymentApiException(HttpStatus.BAD_REQUEST, "MALFORMED_JSON", "请求必须是有效的 JSON 对象");
         }
-        keys(root, "request", "externalRegistrationId", "assetTag", "categoryId", "name", "capturedAt", "operator", "snapshot");
+        if (intake) keys(root, "request", "externalRegistrationId", "categoryId", "capturedAt", "operator", "snapshot");
+        else keys(root, "request", "externalRegistrationId", "assetTag", "categoryId", "name", "capturedAt", "operator", "snapshot");
         String externalId = text(root, "externalRegistrationId", 128, true);
         if (!externalId.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")) invalid("externalRegistrationId", "只允许字母、数字、点、横线、下划线和冒号");
         Object rawTag = root.get("assetTag");
-        if (!(rawTag instanceof String tag) || !tag.matches("[0-9]{12}")) invalid("assetTag", "必须是保留前导零的12位数字字符串");
-        long category = positive(root.get("categoryId"), "categoryId");
+        if (!intake && (!(rawTag instanceof String tag) || !tag.matches("[0-9]{12}"))) invalid("assetTag", "必须是保留前导零的12位数字字符串");
+        Long category = intake && root.get("categoryId") == null ? null : positive(root.get("categoryId"), "categoryId");
         String capture = text(root, "capturedAt", 40, true);
         Instant captured;
         try { captured = Instant.parse(capture); }
@@ -52,11 +59,11 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
         }
         return new DeploymentRegistrationRequest(externalId, (String)rawTag, category, text(root, "name", 160, false), captured,
                 new Operator(text(operator, "id", 120, true), text(operator, "displayName", 120, true)),
-                new Snapshot(text(snapshot, "model", 120, true), text(snapshot, "cpu", 200, false),
+                new Snapshot(text(snapshot, "model", 120, !intake), text(snapshot, "cpu", 200, false),
                         text(snapshot, "memory", 200, false), List.copyOf(disks), List.copyOf(graphics),
                         text(snapshot, "manufacturerSerialNumber", 160, false)));
     }
-    private static Map<?, ?> object(Object value, String field) {
+    static Map<?, ?> object(Object value, String field) {
         if (value instanceof Map<?, ?> map) return map;
         throw validation(field, "须为对象");
     }
@@ -64,7 +71,7 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
         if (value instanceof List<?> list && list.size() <= max) return list;
         throw validation(field, "须为数组，最多" + max + "项；未采集到时传空数组");
     }
-    private static String text(Map<?, ?> object, String field, int max, boolean required) {
+    static String text(Map<?, ?> object, String field, int max, boolean required) {
         Object raw = object.get(field);
         if (raw == null && !required) return null;
         if (!(raw instanceof String text)) throw validation(field, "须为字符串");
@@ -72,12 +79,12 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
             throw validation(field, "长度须为" + (required ? "1" : "0") + "到" + max + "字符，不能含控制字符");
         return text.isBlank() ? null : text.trim();
     }
-    private static long positive(Object value, String field) {
+    static long positive(Object value, String field) {
         if (!(value instanceof Integer || value instanceof Long) || ((Number)value).longValue() <= 0)
             throw validation(field, "须为正整数");
         return ((Number)value).longValue();
     }
-    private static void keys(Map<?, ?> value, String field, String... allowed) {
+    static void keys(Map<?, ?> value, String field, String... allowed) {
         var known = Set.of(allowed);
         if (value.keySet().stream().anyMatch(key -> !known.contains(key))) invalid(field, "包含不支持的字段");
     }
