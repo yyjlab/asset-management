@@ -1,13 +1,13 @@
 # AD 装机平台资产登记接口 v1
 
-仅由 AD 后端调用，不给 PE、浏览器页面或普通员工分发服务凭据。PE 完成采集、管理员确认资产编号后即可提交；不依赖装系统、改机名、加域或员工领用流程。当前实现默认关闭，本文不表示已部署或已与 AD 联调。
+仅由 AD 后端调用，不给 PE 或普通员工分发服务凭据。PE 完成采集、管理员确认资产编号后即可提交；不依赖装系统、改机名、加域或员工领用流程。默认关闭；本机隔离 HTTP 联调不代表已连接生产环境。
 
 ## 一次性接入准备
 
 1. 管理员核对现有字典中存在且唯一、启用的 `公司=微丰启`、`位置=公司`、`状态=当前可用`，并取得实际电脑分类的 `categoryId`。接口不创建这些字典，不自动猜测笔记本/台式机分类。
 2. 旧库先备份并在测试库审核 `scripts/migrate-ad-deployment-descriptive-sn.sql`。该脚本仅移除 SN 单列唯一索引，不删改资产数据、资产编号/二维码索引。首次应用新实体映射不保证 Hibernate 会删除旧索引；禁止靠重启代替迁移。脚本尚未在真实 MySQL 执行验证。
 3. 超级管理员在「设置 → 装机平台接入 → 接入设置」启用，保存后立即生效，无需修改 `.env` 或重启。默认仅 HTTPS；受信内网可选择「受信内网 HTTP / HTTPS」，阅读并勾选明文风险确认后保存。HTTP 会明文传输凭据和资产资料，此选项不自动判断内网或限制来源，需由网络配置限制外部访问。关闭后返回 `503 INTEGRATION_DISABLED`。
-4. 在本页创建专用凭据，将接口地址、凭据和实际电脑分类 ID 填入 AD 装机平台网页的联动设置。凭据只交给 AD 后端，不交给 PE。HTTPS 仍验证证书，不接受伪造转发头；当前 Nginx 的 HTTPS 代理链需按部署环境核对。本次不修改生产代理配置。
+4. 在本页创建专用凭据，在 AD「电脑装机 → 资产登记 → asset 联动设置」填写 asset 地址和凭据，点「测试连接并读取分类」，选择实际分类后开启自动同步并保存。不需要手填分类 ID。凭据只交给 AD 后端，不交给 PE。HTTPS 仍验证证书，不接受伪造转发头；当前 Nginx 的 HTTPS 代理链需按部署环境核对。本次不修改生产代理配置。
 
 ## 网页管理入口
 
@@ -44,11 +44,15 @@
 
 AD 使用受保护的服务配置/密钥存储保存 token。服务端仅存256位随机凭据的 SHA-256 摘要。可签发新凭据、切换 AD 配置、再撤销旧凭据，幂等记录不因轮换丢失。不得在 URL、日志、截图或异常回显中携带 token，不开启 Authorization/请求体调试日志。
 
+## 连接检查
+
+`GET /api/integrations/ad-deployment/v1/connection` 使用同一专用 Bearer 凭据，执行与登记相同的启用、HTTP/HTTPS 和凭据校验。只读验证默认字典，返回 `{"receiver":"asset-management","protocolVersion":1,"categories":[{"id":12,"name":"笔记本电脑"}]}`，其中 ID 和名称来自实际启用的电脑分类。它不创建资产、不保存登记记录、不返回资产或人员列表；默认字典缺失或不唯一时返回 `409 DEFAULT_DICTIONARY_INVALID`。AD 通过其管理员及 CSRF 保护的 `POST /pc-deploy/api/asset-sync/probe` 代理调用，PE 不直接访问此接口。
+
 ## 登记请求
 
 `POST /api/integrations/ad-deployment/v1/registrations`
 
-请求头：`Authorization: Bearer <token>`、`Content-Type: application/json`。无须员工会话或 CSRF token，也不能用管理员会话替代专用凭据。该 token 只允许此 POST，不允许读取完整资产、编辑/删除资产、修改字典、管理用户或签发凭据。整个 UTF-8 JSON 请求最多32KiB。
+请求头：`Authorization: Bearer <token>`、`Content-Type: application/json`。无须员工会话或 CSRF token，也不能用管理员会话替代专用凭据。该 token 只允许登记 POST 和上面的只读连接检查，不允许读取完整资产、编辑/删除资产、修改字典、管理用户或签发凭据。整个 UTF-8 JSON 请求最多32KiB。
 
 ```json
 {
@@ -172,6 +176,8 @@ AD 使用受保护的服务配置/密钥存储保存 token。服务端仅存256�
 .\mvnw.cmd -o package
 ```
 
-当前验证：接入接口测试36项、后端完整测试309项重跑全部通过，Maven package 成功；前端测试159项、TypeScript检查和Vite构建通过。原有二维码识别测试曾一次报 NotFound，未修改其代码，重跑通过。模拟接口的浏览器测试覆盖网页启用、HTTP风险确认、CSRF、凭据签发及暗色桌面/手机弹窗；不代表真实发送端已连通。没有新增或升级依赖。真实 MySQL、HTTPS入口和 AD 发送端未联调，迁移脚本未执行。
+当前验证：后端完整311项测试通过，Maven package 成功，包含实际 AD Python 发送端经本机 HTTP 调用 Java 接收端的新建、丢响应重放、查重和配置冲突验证。AD 装机平台147项相关 Python 测试、424项模拟浏览器检查通过。前端沿用已验证的159项测试及构建，没有新增或升级依赖。真实生产网络、MySQL及 HTTPS入口未联调，迁移脚本未执行。
+
+可选跨仓库 HTTP 回归使用 `DeploymentHttpIntegrationTest`；提供 Maven 参数 `-Dad.sender.python=<具备AD装机依赖的Python路径>`、`-Dad.sender.repo=<ad-management路径>` 后运行。该测试仅启动本机随机端口和 H2 内存库；不提供参数时跳过跨仓库测试，不影响普通构建。
 
 参考 [Spring Security 独立认证链](https://github.com/spring-projects/spring-security)（Apache-2.0）和 [Stripe 幂等参数校验](https://github.com/stripe/stripe-java/blob/master/src/main/java/com/stripe/net/RequestOptions.java)（MIT），不引入 OAuth 服务/支付SDK，不照搬支付失败缓存或24小时删除幂等键的做法。真实 MySQL 迁移、TLS代理和 AD 发送端联调需要在测试环境另行验证；本次不部署生产。

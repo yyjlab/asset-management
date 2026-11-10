@@ -379,6 +379,21 @@ class DeploymentRegistrationApiTest {
         }
     }
 
+    @Test void serviceConnectionProbeIsReadOnlyAndReturnsOnlyEnabledComputerCategories() throws Exception {
+        updateAccess(true, true, true).andExpect(status().isOk());
+        long before = assets.count();
+        var response = mvc.perform(get(DeploymentSecurityConfig.CONNECTION).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.receiver").value("asset-management"))
+                .andExpect(jsonPath("$.protocolVersion").value(1)).andReturn().getResponse();
+        var categories = json.readTree(response.getContentAsByteArray()).get("categories");
+        assertTrue(categories.values().stream().anyMatch(value -> value.get("id").asLong() == categoryId));
+        assertEquals(before, assets.count());
+        assertFalse(response.getContentAsString().contains(token));
+        mvc.perform(get(DeploymentSecurityConfig.CONNECTION)).andExpect(status().isUnauthorized());
+        mvc.perform(post(DeploymentSecurityConfig.CONNECTION).header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
     @Test void historyShowsStoredConflictsAndDeclaredOperatorWithoutSecretsOrHardwareSnapshot() throws Exception {
         var body = request(); created(body);
         String conflictKey = UUID.randomUUID().toString(); body.put("externalRegistrationId", conflictKey);

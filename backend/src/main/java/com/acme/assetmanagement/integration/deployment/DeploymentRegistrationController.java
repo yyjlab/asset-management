@@ -18,4 +18,10 @@ public class DeploymentRegistrationController {
         var result = registrations.register(DeploymentRegistrationRequest.parse(body, json));
         return ResponseEntity.status(result.httpStatus()).body(result);
     }
+    @GetMapping(DeploymentSecurityConfig.CONNECTION)
+    @PreAuthorize("hasAuthority('AD_DEPLOYMENT_REGISTER')")
+    public ResponseEntity<DeploymentRegistrationService.ConnectionInfo> connection() {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(registrations.connectionInfo());
+    }
 }

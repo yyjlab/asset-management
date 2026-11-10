@@ -132,6 +132,20 @@ public class DeploymentRegistrationService {
         return result;
     }
 
+    public record CategoryChoice(Long id, String name) {}
+    public record ConnectionInfo(String receiver, int protocolVersion, List<CategoryChoice> categories) {}
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public ConnectionInfo connectionInfo() {
+        dictionary(LookupType.COMPANY, "微丰启");
+        dictionary(LookupType.LOCATION, "公司");
+        dictionary(LookupType.STATUS, "当前可用");
+        var choices = lookups.findByTypeOrderByNameAsc(LookupType.CATEGORY).stream()
+                .filter(value -> !value.isDisabled() && profile(value) == AssetProfile.COMPUTER)
+                .map(value -> new CategoryChoice(value.getId(), value.getName())).toList();
+        return new ConnectionInfo("asset-management", 1, choices);
+    }
+
     private LookupValue dictionary(LookupType type, String name) {
         var values = lookups.findByTypeOrderByNameAsc(type).stream()
                 .filter(value -> value.getName().trim().equalsIgnoreCase(name)).toList();

@@ -19,6 +19,7 @@ import java.util.List;
 @Configuration
 public class DeploymentSecurityConfig {
     public static final String PATH = "/api/integrations/ad-deployment/v1/registrations";
+    public static final String CONNECTION = "/api/integrations/ad-deployment/v1/connection";
     static final String BODY = "adDeploymentRegistrationBody";
     static final int MAX_BYTES = 32768;
     @Bean @Order(1)
@@ -31,10 +32,11 @@ public class DeploymentSecurityConfig {
                 .formLogin(form -> form.disable()).httpBasic(basic -> basic.disable()).logout(logout -> logout.disable())
                 .addFilterBefore(new TokenFilter(credentials, properties), AnonymousAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.POST, PATH).hasAuthority(DeploymentPrincipal.AUTHORITY)
+                        .requestMatchers(HttpMethod.GET, CONNECTION).hasAuthority(DeploymentPrincipal.AUTHORITY)
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) -> error(response, 401, "AUTHENTICATION_FAILED", "需要有效的专用服务凭据"))
-                        .accessDeniedHandler((request, response, exception) -> error(response, 403, "FORBIDDEN", "专用凭据仅允许登记接口")));
+                        .accessDeniedHandler((request, response, exception) -> error(response, 403, "FORBIDDEN", "专用凭据仅允许登记和接入检查")));
         return http.build();
     }
     static void error(HttpServletResponse response, int status, String code, String message) throws IOException {
