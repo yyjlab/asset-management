@@ -108,6 +108,29 @@ class DeploymentRegistrationApiTest {
         assertNull(audit.getActorUserId()); assertTrue(audit.getChangesJson().contains("装机管理员"));
         assertTrue(audit.getChangesJson().contains("AD 装机平台")); assertFalse(audit.getChangesJson().contains(token));
     }
+    @Test void journalStoresOnlyMetadataAndKeepsFullReplayResult() throws Exception {
+        var body = request(); long id = created(body);
+        var journal = registrations.findById(externalId).orElseThrow();
+        var metadata = json.readTree(journal.requestJson);
+        assertEquals(2, metadata.size());
+        assertTrue(metadata.has("operator")); assertTrue(metadata.has("capturedAt"));
+        assertFalse(metadata.has("snapshot"));
+        assertFalse(journal.requestJson.contains("Shared-Firmware-SN"));
+        assertEquals("LONGTEXT", DeploymentRegistration.class.getDeclaredField("requestJson")
+                .getAnnotation(jakarta.persistence.Column.class).columnDefinition());
+        assertEquals("LONGTEXT", DeploymentRegistration.class.getDeclaredField("responseJson")
+                .getAnnotation(jakarta.persistence.Column.class).columnDefinition());
+        send(body).andExpect(status().isCreated()).andExpect(jsonPath("$.replayed").value(true))
+                .andExpect(jsonPath("$.asset.id").value(id));
+        var admin = AccountPrincipal.from(users.findByUsernameIgnoreCase("admin").orElseThrow());
+        mvc.perform(get("/api/settings/ad-deployment/registrations").with(user(admin)))
+                .andExpect(status().isOk());
+        journal.requestJson = json.writeValueAsString(body);
+        registrations.saveAndFlush(journal);
+        mvc.perform(get("/api/settings/ad-deployment/registrations").with(user(admin)))
+                .andExpect(status().isOk());
+    }
+
     @Test void samePayloadReplaysAndDoesNotDuplicateCreationOrAudit() throws Exception {
         var body = request(); long id = created(body);
         send(body).andExpect(status().isCreated()).andExpect(jsonPath("$.replayed").value(true)).andExpect(jsonPath("$.asset.id").value(id));

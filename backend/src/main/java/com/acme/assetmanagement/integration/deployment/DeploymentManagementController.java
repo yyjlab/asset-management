@@ -62,9 +62,9 @@ public class DeploymentManagementController {
         var result = registrations.findAllByOrderByCreatedAtDescExternalIdDesc(PageRequest.of(page, 20));
         var entries = result.getContent().stream().map(row -> {
             var response = json.readValue(row.responseJson, DeploymentRegistrationResult.class);
-            var request = json.readValue(row.requestJson, DeploymentRegistrationRequest.class);
+            var operator = json.treeToValue(json.readTree(row.requestJson).get("operator"), DeploymentRegistrationRequest.Operator.class);
             return new Entry(row.externalId, row.assetTag, row.assetId, row.createdAt, row.credentialId,
-                    request.operator(), response.result(), response.differences(), response.warnings());
+                    operator, response.result(), response.differences(), response.warnings());
         }).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new History(entries, page, result.getTotalPages(), result.getTotalElements()));

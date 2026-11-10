@@ -53,8 +53,13 @@ public class DeploymentRegistrationService {
         String requestJson = json.writeValueAsString(request);
         String fingerprint = DeploymentCredentialService.hash(requestJson);
         for (int attempt = 0; attempt < 3; attempt++) {
-            try { return transaction.execute(status -> receive(request, requestJson, fingerprint, principal)); }
+            try { return transaction.execute(status -> receive(request, fingerprint, principal)); }
             catch (DataIntegrityViolationException | ConcurrencyFailureException exception) {
+                for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+                    if (cause instanceof java.sql.SQLException sql && "22001".equals(sql.getSQLState()))
+                        throw error(HttpStatus.SERVICE_UNAVAILABLE, "REGISTRATION_NOT_READY",
+                                "接口登记表文本容量不足，请核对登记表迁移；资产字段无需修改");
+                }
                 // A concurrent normal create may win the unique asset-tag insert. Re-read only after rollback.
                 if (attempt == 2) throw error(HttpStatus.CONFLICT, "CONCURRENT_RETRY", "存在并发登记或字典变更，请保留原登记标识和内容后重试");
             }
@@ -62,7 +67,7 @@ public class DeploymentRegistrationService {
         throw new IllegalStateException("Unreachable");
     }
 
-    private DeploymentRegistrationResult receive(DeploymentRegistrationRequest request, String requestJson,
+    private DeploymentRegistrationResult receive(DeploymentRegistrationRequest request,
                                                   String fingerprint, DeploymentPrincipal principal) {
         if (!properties.isEnabled()) throw error(HttpStatus.SERVICE_UNAVAILABLE, "INTEGRATION_DISABLED", "登记接口未启用");
         credentials.requireActiveLocked(principal);
@@ -120,7 +125,8 @@ public class DeploymentRegistrationService {
         var journal = new DeploymentRegistration(); journal.externalId = request.externalRegistrationId();
         journal.fingerprint = fingerprint; journal.credentialId = principal.credentialId(); journal.assetTag = request.assetTag();
         journal.assetId = result.asset().id(); journal.createdAt = result.observedAt();
-        journal.requestJson = requestJson; journal.responseJson = json.writeValueAsString(result);
+        journal.requestJson = json.writeValueAsString(Map.of("operator", request.operator(), "capturedAt", request.capturedAt()));
+        journal.responseJson = json.writeValueAsString(result);
         registrations.saveAndFlush(journal);
         var changes = new LinkedHashMap<String, Object>();
         changes.put("source", SOURCE); changes.put("credentialId", principal.credentialId());

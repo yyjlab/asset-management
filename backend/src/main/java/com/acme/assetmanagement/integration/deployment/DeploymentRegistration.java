@@ -12,6 +12,6 @@ public class DeploymentRegistration {
     @Column(nullable = false, length = 12) String assetTag;
     @Column(nullable = false) Long assetId;
     @Column(nullable = false) Instant createdAt;
-    @Lob @Column(nullable = false) String requestJson;
-    @Lob @Column(nullable = false) String responseJson;
+    @Lob @Column(nullable = false, columnDefinition = "LONGTEXT") String requestJson;
+    @Lob @Column(nullable = false, columnDefinition = "LONGTEXT") String responseJson;
 }
