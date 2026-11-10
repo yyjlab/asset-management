@@ -3,6 +3,7 @@ import type { HandoverCreate, HandoverDetail, HandoverEmployee, HandoverPageData
 import type { RegistrationSubmit, RegistrationDetail, RegistrationPageData, TaskNotificationStatus } from './types'
 import type { DingTalkQrAuthorization } from './types'
 import type { OaCandidate, OaCreate, OaItem, OaPage, OaStatus } from './types/dingtalkOa'
+import type { DeploymentCredential, DeploymentStatus, DeploymentHistory } from './types/deployment'
 import type { DomainJoinStatus, DomainStatusOption, ModelOption, AccessoryOption, AccessoryOptionWrite, ManagedLookupType } from './types'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
@@ -206,6 +207,16 @@ export const api = {
     mutate<ManagedUser>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteUser: (id: number) => mutate<void>(`/api/users/${id}`, { method: 'DELETE' }),
   getQrSetting: () => request<QrSetting>('/api/settings/qr'),
+  getDeploymentStatus: () => request<DeploymentStatus>('/api/settings/ad-deployment/status'),
+  listDeploymentCredentials: () => request<DeploymentCredential[]>('/api/settings/ad-deployment/credentials'),
+  issueDeploymentCredential: (name: string, expiresAt: string) =>
+    mutate<{ credential: DeploymentCredential; token: string }>('/api/settings/ad-deployment/credentials', {
+      method: 'POST', body: JSON.stringify({ name, expiresAt }),
+    }),
+  revokeDeploymentCredential: (id: string) =>
+    mutate<DeploymentCredential>(`/api/settings/ad-deployment/credentials/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listDeploymentRegistrations: (page = 0) =>
+    request<DeploymentHistory>(`/api/settings/ad-deployment/registrations?page=${page}`),
   updateQrSetting: (qrBaseUrl: string) =>
     mutate<QrSetting>('/api/settings/qr', { method: 'PUT', body: JSON.stringify({ qrBaseUrl }) }),
   listAuditLogs: (filters: AuditFilters, page = 0, size = 50) => {

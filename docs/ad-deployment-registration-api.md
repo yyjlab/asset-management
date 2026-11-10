@@ -9,6 +9,16 @@
 3. 在测试环境的后端进程/容器环境中设置 `AD_DEPLOYMENT_REGISTRATION_ENABLED=true`。缺省为 `false`，关闭时接收接口返回 `503 INTEGRATION_DISABLED`。本次未改 Compose；只在宿主机 `.env` 添加变量不会自动传入现有 Compose 的容器，需要测试部署时显式映射。凭据由数据库管理，不写入源码或此文档。
 4. 准备 AD 后端能验证证书的 HTTPS 入口并限制入口来源为 AD 服务器。接收接口和明文凭据签发均强制 HTTPS，不关闭证书验证。当前前端 Nginx 会重写 `X-Forwarded-Proto` 为自身协议；若外层 TLS、内层 HTTP，需由运维另行设计可信代理链，不能直接信任任意客户端提供的转发头。本次没有修改代理或生产配置。
 
+## 网页管理入口
+
+超级管理员进入「设置 → 装机平台接入」，可查看后端启用状态、后端识别的 HTTPS 状态、服务凭据和登记记录。接口已启用不代表 AD 已连通；尚无登记记录时页面明确提示未验证发送端。启用开关仍由服务器环境变量控制，页面不修改部署配置。
+
+凭据可设置名称和1到366天有效期、创建或确认撤销；密钥仅在创建弹窗显示一次，不写入浏览器持久存储，关闭后不能取回。登记记录每页20条，显示声明操作人、服务凭据及配置差异，不提供覆盖更新。只列已持久化结果，认证或校验失败请按接口响应排查。
+
+新增只读管理接口（仅超级管理员会话；专用服务凭据不可访问）：
+- `GET /api/settings/ad-deployment/status`：返回 `enabled`、`secureRequest`、`endpoint`、`lastReceivedAt`。
+- `GET /api/settings/ad-deployment/registrations?page=0`：返回 `items`、`page`、`totalPages`、`totalElements`；页码0到100000。记录含 `externalRegistrationId`、`assetTag`、`assetId`、`receivedAt`、`credentialId`、`declaredOperator`、`result`、`differences`、`warnings`，不返回完整硬件快照或密钥。
+
 ## 专用凭据
 
 由已登录的 `SUPER_ADMIN` 使用现有管理员会话和 CSRF 防护管理，普通用户无权限。没有新增员工账号或自动领用账号。
@@ -161,6 +171,6 @@ AD 使用受保护的服务配置/密钥存储保存 token。服务端仅存256�
 .\mvnw.cmd -o package
 ```
 
-本次验证：新增接口测试29项、后端完整测试302项全部通过，Maven package 成功；没有新增或升级依赖。真实 MySQL、HTTPS入口和 AD 发送端未联调，迁移脚本未执行。
+当前验证：接入接口测试33项、后端完整测试306项全部通过，Maven package 成功；前端测试157项、TypeScript检查和Vite构建通过。模拟接口的浏览器测试覆盖设置入口、一次性密钥、撤销取消、配置差异及桌面/手机宽度；不代表真实发送端已连通。没有新增或升级依赖。真实 MySQL、HTTPS入口和 AD 发送端未联调，迁移脚本未执行。
 
 参考 [Spring Security 独立认证链](https://github.com/spring-projects/spring-security)（Apache-2.0）和 [Stripe 幂等参数校验](https://github.com/stripe/stripe-java/blob/master/src/main/java/com/stripe/net/RequestOptions.java)（MIT），不引入 OAuth 服务/支付SDK，不照搬支付失败缓存或24小时删除幂等键的做法。真实 MySQL 迁移、TLS代理和 AD 发送端联调需要在测试环境另行验证；本次不部署生产。

@@ -303,6 +303,53 @@ class DeploymentRegistrationApiTest {
         assertFalse(audits.findAll().stream().anyMatch(a -> a.getChangesJson() != null && a.getChangesJson().contains(rawToken)));
     }
 
+    @Test void managementShowsDisabledStatusWithoutClaimingConnectivity() throws Exception {
+        var admin = AccountPrincipal.from(users.findByUsernameIgnoreCase("admin").orElseThrow());
+        properties.setEnabled(false);
+        mvc.perform(get("/api/settings/ad-deployment/status").with(user(admin)))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.enabled").value(false)).andExpect(jsonPath("$.secureRequest").value(false))
+                .andExpect(jsonPath("$.endpoint").value(DeploymentSecurityConfig.PATH));
+        mvc.perform(get("/api/settings/ad-deployment/status").secure(true).with(user(admin)))
+                .andExpect(jsonPath("$.secureRequest").value(true));
+    }
+
+    @Test void managementRejectsNonAdminsAndServiceTokens() throws Exception {
+        for (String path : List.of("/api/settings/ad-deployment/status", "/api/settings/ad-deployment/registrations")) {
+            mvc.perform(get(path).with(user("normal").roles("USER"))).andExpect(status().isForbidden());
+            mvc.perform(get(path).secure(true).header("Authorization", "Bearer " + token))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Test void historyShowsStoredConflictsAndDeclaredOperatorWithoutSecretsOrHardwareSnapshot() throws Exception {
+        var body = request(); created(body);
+        String conflictKey = UUID.randomUUID().toString(); body.put("externalRegistrationId", conflictKey);
+        snapshot(body).put("cpu", "Different CPU"); send(body).andExpect(status().isConflict());
+        var admin = AccountPrincipal.from(users.findByUsernameIgnoreCase("admin").orElseThrow());
+        var response = mvc.perform(get("/api/settings/ad-deployment/registrations").with(user(admin)))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.page").value(0)).andReturn().getResponse();
+        var parsed = json.readTree(response.getContentAsByteArray());
+        var entry = parsed.get("items").values().stream().filter(item -> item.get("externalRegistrationId").asString().equals(conflictKey)).findFirst().orElseThrow();
+        assertEquals("configuration_conflict", entry.get("result").asString());
+        assertEquals("ad-admin-001", entry.get("declaredOperator").get("id").asString());
+        assertEquals(tag, entry.get("assetTag").asString());
+        assertFalse(response.getContentAsString().contains(token));
+        assertFalse(response.getContentAsString().contains("secretHash"));
+        assertFalse(response.getContentAsString().contains("Shared-Firmware-SN"));
+        assertEquals(1, entry.get("differences").size());
+    }
+
+    @Test void historyBoundsPagination() throws Exception {
+        var admin = AccountPrincipal.from(users.findByUsernameIgnoreCase("admin").orElseThrow());
+        for (int page : List.of(-1, 100001))
+            mvc.perform(get("/api/settings/ad-deployment/registrations").param("page", String.valueOf(page)).with(user(admin)))
+                    .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/settings/ad-deployment/registrations").param("page", "100000").with(user(admin)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
+    }
+
     @Test void differentCredentialsAndExternalIdsCannotCreateSameAssetTwice() throws Exception {
         String otherToken = credentialService.issue("second-server", Instant.now().plusSeconds(3600)).token();
         var bodies = new ArrayList<Map<String, Object>>();
