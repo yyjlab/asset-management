@@ -31,6 +31,8 @@ interface Props {
   onSaveBundle?: (payload: AssetBundlePayload) => Promise<AssetBundleResult>
   onContinueBundle?: (defaults: AssetEntryDefaults) => void
   onBundleRecovered?: () => void
+  categoryScope?: number[]
+  entryLabel?: string
 }
 
 const emptyPayload = (): AssetPayload => ({
@@ -152,12 +154,14 @@ export async function prepareImage(file: File) {
   throw new Error('照片压缩后仍然过大，请降低相机分辨率后重试')
 }
 
-export function AssetForm({ asset, clone = false, lookups, bindableAssets, assignees, canAssign, saving, createdLookup, onCancel, onSave, onNewLookup, onDeleteLookup, canCreateRelated = false, entryDefaults, onSaveBundle, onContinueBundle, onBundleRecovered }: Props) {
+export function AssetForm({ asset, clone = false, lookups, bindableAssets, assignees, canAssign, saving, createdLookup, onCancel, onSave, onNewLookup, onDeleteLookup, canCreateRelated = false, entryDefaults, onSaveBundle, onContinueBundle, onBundleRecovered, categoryScope, entryLabel }: Props) {
   const [form, setForm] = useState<AssetPayload>(() => {
     const initial = fromAsset(asset, clone)
     if (!asset && entryDefaults) {
       Object.assign(initial, entryDefaults)
       initial.name = lookups.find(item => item.id === entryDefaults.categoryId)?.name || ''
+      const category = lookups.find(item => item.id === entryDefaults.categoryId)
+      if (categoryProfile(category) === 'GENERAL') initial.customParameters = (category?.parameterTemplate || []).map(name => ({ name, value: '' }))
       initial.statusId = lookups.find(item => item.type === 'STATUS' && ['当前可用', '可领用'].includes(item.name))?.id ?? null
     }
     if (clone) initial.statusId = lookups.find((item) => item.type === 'STATUS' && ['当前可用', '可领用'].includes(item.name))?.id ?? null
@@ -314,7 +318,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
     <div className="invoice-form-outer"><form className="invoice-form-card symmetric-asset-form" onSubmit={async (event) => { event.preventDefault(); await submit() }}>
       <div className="invoice-form-scroll-body">
       <fieldset className="bundle-form-fields" disabled={saving || bundleWorking || uncertain} inert={saving || bundleWorking || uncertain}>
-      <div className="invoice-form-heading"><div><h2>{clone ? '克隆资产' : asset ? '编辑资产' : '新增资产'}</h2><p>资产编号：{form.assetTag || '保存后按日期与当日流水自动生成'} · {new Date().toLocaleDateString('zh-CN')}</p></div><span className="form-mode">{clone ? 'CLONE' : asset ? 'EDIT' : 'CREATE'}</span></div>
+      <div className="invoice-form-heading"><div><h2>{clone ? '克隆资产' : asset ? '编辑资产' : `新增${entryLabel || '资产'}`}</h2><p>资产编号：{form.assetTag || '保存后按日期与当日流水自动生成'} · {new Date().toLocaleDateString('zh-CN')}</p></div><span className="form-mode">{clone ? 'CLONE' : asset ? 'EDIT' : 'CREATE'}</span></div>
 
       <section className="form-section">
         <div className="form-section-head"><div><h3>基本信息</h3><p>编号、名称以及资产归属信息</p></div></div>
@@ -323,7 +327,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
           <label><span>资产名称 *</span><EditableCombobox editable required suggestOnly emptyText="未找到匹配资产名称" value={form.name} selectedId={selectedSuggestionId('ASSET_NAME', form.name)} placeholder="输入资产名称搜索" options={suggestionOptions('ASSET_NAME')} onChange={(value) => set('name', value.slice(0, 160))} /></label>
           <label><span>所属公司 *</span><LookupField type="COMPANY" required value={form.companyId} values={lookups} onChange={(v) => set('companyId', v)} onNew={() => onNewLookup('COMPANY')} onDelete={onDeleteLookup} /></label>
           <label><span>归属部门</span><EditableCombobox editable value={form.ownershipDepartment} selectedId={selectedSuggestionId('DEPARTMENT', form.ownershipDepartment)} placeholder="输入或选择资产归属部门" options={suggestionOptions('DEPARTMENT')} onChange={(value) => set('ownershipDepartment', value.slice(0, 120))} onDelete={deleteSuggestion} /></label>
-          <label><span>资产分类 *</span><LookupField type="CATEGORY" required value={form.categoryId} values={lookups} onChange={(v) => {
+          <label><span>资产分类 *</span><LookupField type="CATEGORY" required value={form.categoryId} values={categoryScope && !asset ? lookups.filter(item => item.type !== 'CATEGORY' || categoryScope.includes(item.id)) : lookups} onChange={(v) => {
             const category = lookups.find((item) => item.id === v)
             const nextProfile = categoryProfile(category)
             if (nextProfile !== 'COMPUTER' && newDisplays.length) {
@@ -336,7 +340,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
                 ? (category?.parameterTemplate || []).map((name) => ({ name, value: '' }))
                 : current.customParameters,
               boundDisplayIds: nextProfile === 'COMPUTER' ? current.boundDisplayIds : [], boundComputerId: nextProfile === 'DISPLAY' ? current.boundComputerId : null }))
-          }} onNew={() => onNewLookup('CATEGORY')} onDelete={onDeleteLookup} /></label>
+          }} onNew={categoryScope && !asset ? undefined : () => onNewLookup('CATEGORY')} onDelete={categoryScope && !asset ? undefined : onDeleteLookup} /></label>
           <label><span>存放位置 *</span><LookupField type="LOCATION" required value={form.locationId} values={lookups} onChange={(v) => set('locationId', v)} onNew={() => onNewLookup('LOCATION')} onDelete={onDeleteLookup} /></label>
           <label><span>资产状态 *</span><LookupField type="STATUS" required value={form.statusId} values={lookups} onChange={(v) => {
             const nextStatus = lookups.find((item) => item.id === v)

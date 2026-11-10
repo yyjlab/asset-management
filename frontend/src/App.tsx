@@ -3,6 +3,8 @@ import { ApiError, api } from './api'
 import type { Assignee, DashboardOverview, Asset, AssetBundlePayload, AssetEntryDefaults, AssetFilter, AssetPayload, AssetProfile, AuthUser, LookupType, LookupValue, Permission, Summary } from './types'
 import { newBundleKey } from './assetBundle'
 import { isSectionVisible, visibleSection } from './featureVisibility'
+import { assetGroupOf, groupAssets, groupCategories, groupProfile, groupSummary } from './assetGroups'
+import type { AssetGroupKey } from './assetGroups'
 import { AssetDetail } from './components/AssetDetail'
 import { AssetForm } from './components/AssetForm'
 import { AssetTable } from './components/AssetTable'
@@ -36,7 +38,7 @@ import { FoundationData } from './components/FoundationData'
 import { domainStatusOptions, matchesDomainStatus } from './domainJoin'
 import type { DomainJoinStatus } from './types'
 
-type Page = { name: 'list'; taskId?: number; review?: boolean; oa?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean; defaults?: AssetEntryDefaults; fresh?: string } | { name: 'detail'; asset: Asset }
+type Page = ({ name: 'list'; taskId?: number; review?: boolean; oa?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean; defaults?: AssetEntryDefaults; fresh?: string } | { name: 'detail'; asset: Asset }) & { assetGroup?: AssetGroupKey }
 type AppHistoryState = { assetManagement: true; section: AppSection; page: Page; depth: number }
 type LookupDeleteRequest = { lookup: LookupValue; resolve: (deleted: boolean) => void }
 
@@ -61,6 +63,7 @@ export default function App() {
   const [requestedSection, setSection] = useState<AppSection>('dashboard')
   const section = visibleSection(requestedSection)
   const [page, setPage] = useState<Page>({ name: 'list' })
+  const activeGroup = assetGroupOf(page.assetGroup)
   const [assets, setAssets] = useState<Asset[]>([])
   const [suggestionAssets, setSuggestionAssets] = useState<Asset[]>([])
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
@@ -88,6 +91,8 @@ export default function App() {
   const [avatarRevision, setAvatarRevision] = useState(() => Date.now())
   const [assetLoadError, setAssetLoadError] = useState('')
   const [domainFilter, setDomainFilter] = useState<DomainJoinStatus | ''>('')
+  const [creatingGroup, setCreatingGroup] = useState(false)
+  const categoryCreationRef = useRef(false)
   const navigationRevision = useRef(0)
   const dataRevision = useRef(0)
   const accessKey = authUser ? `${authUser.id}:${authUser.dataScope}:${[...authUser.permissions].sort().join(',')}:${[...authUser.departments].sort().join(',')}` : ''
@@ -98,6 +103,7 @@ export default function App() {
 
   const showView = (nextSection: AppSection, nextPage: Page, mode: 'push' | 'replace' = 'push') => {
     if (!isSectionVisible(nextSection)) { nextSection = 'dashboard'; nextPage = { name: 'list' } }
+    if (nextSection === 'assets' && section === 'assets' && nextPage.assetGroup === undefined) nextPage = { ...nextPage, assetGroup: page.assetGroup }
     navigationRevision.current++
     setCreatedLookup(null)
     setSection(nextSection)
@@ -286,25 +292,29 @@ export default function App() {
   const categoryOptions = useMemo(() => {
     const categories = new Map<number, LookupValue>()
     lookups.filter((lookup) => lookup.type === 'CATEGORY').forEach((lookup) => categories.set(lookup.id, lookup))
-    assets.forEach((asset) => categories.set(asset.category.id, asset.category))
+    suggestionAssets.concat(assets).forEach((asset) => categories.set(asset.category.id, asset.category))
     return Array.from(categories.values()).sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
-  }, [assets, lookups])
-  const tableParameterProfile: AssetProfile | null = computerOnly
+  }, [assets, suggestionAssets, lookups])
+  const activeCategories = groupCategories(activeGroup.key, categoryOptions)
+  const selectedCategoryFilter = activeGroup.key === 'all' || activeCategories.some(value => String(value.id) === categoryFilter) ? categoryFilter : ''
+  const scopedAssets = groupAssets(activeGroup.key, categoryOptions, assets)
+  const scopedSummary = activeGroup.key === 'all' ? summary : groupSummary(groupAssets(activeGroup.key, categoryOptions, suggestionAssets))
+  const tableParameterProfile: AssetProfile | null = activeGroup.key !== 'all' ? groupProfile(activeGroup.key) : computerOnly
     ? 'COMPUTER'
     : categoryFilter
       ? categoryOptions.find((category) => String(category.id) === categoryFilter)?.assetProfile || 'GENERAL'
       : null
 
-  const visibleAssets = useMemo(() => assets.filter((asset) => {
-    if (computerOnly && asset.category.assetProfile !== 'COMPUTER') return false
-    if (categoryFilter && String(asset.category.id) !== categoryFilter) return false
-    if (!matchesDomainStatus(asset, domainFilter)) return false
+  const visibleAssets = scopedAssets.filter((asset) => {
+    if (activeGroup.key === 'all' && computerOnly && asset.category.assetProfile !== 'COMPUTER') return false
+    if (selectedCategoryFilter && String(asset.category.id) !== selectedCategoryFilter) return false
+    if ((activeGroup.key === 'all' || activeGroup.profile === 'COMPUTER') && !matchesDomainStatus(asset, domainFilter)) return false
     if (filter === 'available') return !asset.checkedOut && !isMaintenance(asset) && !isScrapped(asset)
     if (filter === 'checkedOut') return asset.checkedOut && !isScrapped(asset)
     if (filter === 'maintenance') return isMaintenance(asset)
     if (filter === 'scrapped') return isScrapped(asset)
     return true
-  }), [assets, categoryFilter, filter, computerOnly, domainFilter])
+  })
   const saveAsset = async (payload: AssetPayload) => {
     setSaving(true)
     try {
@@ -392,12 +402,40 @@ export default function App() {
   if (isLabelPrintPage) return <AssetLabelPrintPreview />
 
   const metrics: Array<{ filter: AssetFilter; label: string; value: number; icon: typeof CheckIcon; tone: string }> = [
-    { filter: 'all', label: '全部资产', value: summary.total, icon: BoxesIcon, tone: 'indigo' },
-    { filter: 'available', label: '当前可用', value: summary.available, icon: CheckIcon, tone: 'mint' },
-    { filter: 'checkedOut', label: '已经领出', value: summary.checkedOut, icon: UserIcon, tone: 'peach' },
-    { filter: 'maintenance', label: '维护中', value: summary.maintenance, icon: WrenchIcon, tone: 'violet' },
-    { filter: 'scrapped', label: '已报废', value: summary.scrapped, icon: ArchiveIcon, tone: 'slate' },
+    { filter: 'all', label: activeGroup.label, value: scopedSummary.total, icon: BoxesIcon, tone: 'indigo' },
+    { filter: 'available', label: '当前可用', value: scopedSummary.available, icon: CheckIcon, tone: 'mint' },
+    { filter: 'checkedOut', label: '已经领出', value: scopedSummary.checkedOut, icon: UserIcon, tone: 'peach' },
+    { filter: 'maintenance', label: '维护中', value: scopedSummary.maintenance, icon: WrenchIcon, tone: 'violet' },
+    { filter: 'scrapped', label: '已报废', value: scopedSummary.scrapped, icon: ArchiveIcon, tone: 'slate' },
   ]
+
+  const openAssetGroup = (key: AssetGroupKey) => {
+    setFilter('all'); setCategoryFilter(''); setComputerOnly(false); setDomainFilter(''); setSearch('')
+    showView('assets', { name: 'list', assetGroup: key })
+    if (search.trim() || assetLoadError) void load('')
+  }
+  const assetNavigation = { assetGroup: activeGroup.key, onAssetGroup: openAssetGroup }
+  const createInGroup = async () => {
+    if (categoryCreationRef.current || loading || !hasPermission('ASSET_CREATE')) return
+    if (activeGroup.key === 'all') { showView('assets', { name: 'form', asset: null }); return }
+    categoryCreationRef.current = true; setCreatingGroup(true)
+    const revision = navigationRevision.current
+    try {
+      let category = activeCategories.find(value => String(value.id) === categoryFilter)
+        || activeCategories.find(value => value.name === activeGroup.label) || activeCategories[0]
+      if (!category) {
+        if (categoryOptions.some(value => value.name === activeGroup.label)) throw new Error(`“${activeGroup.label}”分类的参数模板不匹配，请先核对分类配置；不会自动修改已有分类。`)
+        if (!window.confirm(`尚未配置“${activeGroup.label}”资产分类。是否新建该分类并继续录入？不会修改已有资产或拆分旧配件。`)) return
+        category = await api.createLookup('CATEGORY', activeGroup.label, activeGroup.profile || 'GENERAL')
+        if (revision !== navigationRevision.current) return
+        setLookups(current => [...current, category!])
+      }
+      showView('assets', { name: 'form', asset: null, defaults: { companyId: null, locationId: null, ownershipDepartment: '', categoryId: category.id } })
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '无法准备设备分类', 'error')
+      if (error instanceof ApiError && error.status === 409) void api.listLookups().then(setLookups).catch(() => {})
+    } finally { categoryCreationRef.current = false; setCreatingGroup(false) }
+  }
 
   const accountName = authUser.displayName || authUser.username
   const topbar = <>
@@ -414,7 +452,7 @@ export default function App() {
       : section === 'assets' && !hasPermission('ASSET_VIEW') ? '资产' : null
 
   if (restrictedSection) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><section className="transfer-page"><div className="transfer-card"><div><h2>{restrictedSection}</h2><p>当前账号尚未获得此功能的访问权限，请联系管理员授权。</p></div></div></section></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
@@ -422,12 +460,12 @@ export default function App() {
   const taskId = page.name === 'list' && Number.isSafeInteger(page.taskId) && (page.taskId ?? 0) > 0 ? page.taskId : undefined
   const openOa = () => showView('handover', { name: 'list', oa: true })
   if (section === 'handover' && page.name === 'list' && page.oa) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><DingTalkOaPage key={accessKey} user={authUser} onBack={() => showView('handover', { name: 'list' })} onNotify={notify} onAssetsChanged={() => void load('')} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
   if (section === 'workbench' || section === 'kits' || section === 'support' || section === 'reports' || section === 'procurement' || section === 'registrations') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content">{section === 'workbench' ? <WorkbenchPage key={accessKey} onOpen={(next, id, state) => showView(next, { name: 'list', taskId: id || undefined, review: next === 'registrations' && state !== 'NEEDS_INFO' && authUser.dataScope === 'ALL' && ['ASSET_VIEW', 'ASSET_CREATE', 'ASSET_CHECKOUT'].every(value => authUser.permissions.includes(value as Permission)) })} />
       : section === 'kits' ? <EquipmentKitPage key={accessKey} user={authUser} onNotify={notify} />
         : section === 'support' ? <AssetSupportPage key={`${accessKey}:${taskId || ''}`} user={authUser} assets={suggestionAssets} initialId={taskId} onNotify={notify} />
@@ -438,19 +476,19 @@ export default function App() {
   </div>
 
   if (section === 'selfService') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><SelfServicePage key={accessKey} user={authUser} assets={suggestionAssets} lookups={lookups} loading={loading} error={assetLoadError} onRefresh={() => void load('')} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onNotify={notify} onOpenOa={openOa} onOpenHandover={id => showView('handover', { name: 'list', taskId: id })} onOpenOperation={id => showView('operations', { name: 'list', taskId: id })} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'handover') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><HandoverPage key={`${accessKey}:${taskId || ''}`} initialId={taskId} canUseKits={canManageWorkflows(authUser)} currentUserId={authUser.id} assets={suggestionAssets} onNotify={notify} onOpenOa={openOa} onAssetsChanged={() => void load('')} onOpenOperation={id => showView('operations', { name: 'list', taskId: id })} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'operations' || section === 'repair' || section === 'inventory' || section === 'consumables') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content">{section === 'inventory'
       ? <InventoryPage key={`${accessKey}:inventory:${taskId || ''}`} initialId={taskId} user={authUser} onNotify={notify} />
       : section === 'consumables' ? <ConsumablePage key={`${accessKey}:consumables:${taskId || ''}`} initialId={taskId} user={authUser} onNotify={notify} />
@@ -459,31 +497,31 @@ export default function App() {
   </div>
 
   if (section === 'users' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><UserManagement currentUserId={authUser.id} avatarRevision={avatarRevision} onNotify={notify} onPasswordChanged={() => void logout()} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if ((section === 'settings' || section === 'foundation') && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content">{section === 'foundation' ? <FoundationData key={accessKey} onNotify={notify} onLookupsChanged={() => void api.listLookups().then(setLookups).catch(() => notify('选项已保存，列表刷新失败，请刷新页面', 'error'))} /> : <SystemSettings onNotify={notify} />}</div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'transfer' && (hasPermission('ASSET_IMPORT') || hasPermission('ASSET_EXPORT'))) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><AssetTransfer canExport={hasPermission('ASSET_EXPORT')} canImport={hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'} onNotify={notify} onImported={() => load(search)} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'logs' && authUser.canManageUsers) return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><AuditLogPage onNotify={notify} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
   if (section === 'dashboard' || !hasPermission('ASSET_VIEW') || section !== 'assets') return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content cockpit-content"><ComputerDashboard
       assets={suggestionAssets}
       overview={overview}
@@ -500,6 +538,7 @@ export default function App() {
 
   const listPage = <section className="invoice-list-page">
     <div className="invoice-list-outer"><section className="invoice-list-card">
+      {activeGroup.key !== 'all' && <div className="asset-group-heading"><h2>{activeGroup.label}</h2></div>}
       <div className="invoice-metrics">{metrics.map((metric) => {
         const MetricIcon = metric.icon
         return <button key={metric.filter} className={`invoice-metric ${metric.tone} ${filter === metric.filter ? 'selected' : ''}`} onClick={() => setFilter(metric.filter)}><span><MetricIcon /></span><div><strong>{metric.label}</strong><small>{metric.value} 项资产</small></div></button>
@@ -507,19 +546,19 @@ export default function App() {
       <div className="invoice-toolbar">
         <div className="invoice-toolbar-filters">
           <label className="category-filter" title="按资产分类筛选">
-            <select aria-label="筛选资产分类" value={computerOnly ? '__computers' : categoryFilter} onChange={(event) => { setComputerOnly(event.target.value === '__computers'); setCategoryFilter(event.target.value === '__computers' ? '' : event.target.value) }}>
-              <option value="">全部分类</option>
-              <option value="__computers">全部电脑</option>
-              {categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            <select aria-label="筛选资产分类" value={activeGroup.key === 'all' && computerOnly ? '__computers' : selectedCategoryFilter} onChange={(event) => { setComputerOnly(event.target.value === '__computers'); setCategoryFilter(event.target.value === '__computers' ? '' : event.target.value) }}>
+              <option value="">{activeGroup.key === 'all' ? '全部分类' : `全部${activeGroup.label}`}</option>
+              {activeGroup.key === 'all' && <option value="__computers">全部电脑</option>}
+              {(activeGroup.key === 'all' ? categoryOptions : activeCategories).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
             </select>
             <span className="category-filter-chevron"><ChevronIcon /></span>
           </label>
-          <label className="category-filter domain-filter" title="按电脑入域状态筛选，非电脑不适用">
+          {(activeGroup.key === 'all' || activeGroup.profile === 'COMPUTER') && <label className="category-filter domain-filter" title="按电脑入域状态筛选，非电脑不适用">
             <select aria-label="筛选入域状态" value={domainFilter} onChange={event => setDomainFilter(event.target.value as DomainJoinStatus | '')}>
               <option value="">全部入域状态</option>
               {domainStatusOptions.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
             </select><span className="category-filter-chevron"><ChevronIcon /></span>
-          </label>
+          </label>}
           <form className="asset-search" role="search" aria-label="搜索资产" onSubmit={(event) => { event.preventDefault(); if (!loading) void load(search) }}>
             <div className="search-box">
               <input aria-label="搜索资产" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产" />
@@ -530,21 +569,21 @@ export default function App() {
             </button>
           </form>
         </div>
-        {hasPermission('ASSET_CREATE') && <button className="button primary" onClick={() => showView('assets', { name: 'form', asset: null })}><PlusIcon />新增资产</button>}
+        {hasPermission('ASSET_CREATE') && <button className="button primary" disabled={creatingGroup || loading} onClick={() => void createInGroup()}><PlusIcon />{creatingGroup ? '准备中…' : `新增${activeGroup.key === 'all' ? '资产' : activeGroup.label}`}</button>}
       </div>
-      <AssetTable assets={visibleAssets} loading={loading} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} parameterProfile={tableParameterProfile} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} />
-      <div className="panel-foot"><span>共 {visibleAssets.length} 条{categoryFilter ? categoryOptions.find((category) => String(category.id) === categoryFilter)?.name ?? '分类资产' : filter === 'all' ? '资产' : filterLabels[filter]}</span><span>点击资产行查看完整档案</span></div>
+      <AssetTable assets={visibleAssets} loading={loading} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} parameterProfile={tableParameterProfile} categoryView={activeGroup.key !== 'all'} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} />
+      <div className="panel-foot"><span>共 {visibleAssets.length} 条{selectedCategoryFilter ? categoryOptions.find((category) => String(category.id) === selectedCategoryFilter)?.name ?? '分类资产' : activeGroup.key !== 'all' ? activeGroup.label : filter === 'all' ? '资产' : filterLabels[filter]}</span><span>点击资产行查看完整档案</span></div>
     </section></div>
   </section>
 
   const assetPage = page.name === 'form' && (page.clone || !page.asset ? hasPermission('ASSET_CREATE') : hasPermission('ASSET_EDIT'))
-    ? <AssetForm key={`${page.clone ? 'clone' : 'form'}-${page.asset?.id ?? 'new'}-${page.fresh ?? ''}`} asset={page.asset} clone={page.clone} entryDefaults={page.defaults} lookups={lookups} assignees={assignees} canAssign={hasPermission('ASSET_CHECKOUT')} bindableAssets={suggestionAssets} saving={saving} createdLookup={createdLookup} onCancel={returnToPreviousView} onSave={saveAsset} canCreateRelated={hasPermission('ASSET_VIEW') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_EDIT')} onSaveBundle={saveAssetBundle} onContinueBundle={defaults => showView('assets', { name: 'form', asset: null, defaults, fresh: newBundleKey() }, 'replace')} onBundleRecovered={() => void load('')} onDeleteLookup={deleteLookup} onNewLookup={(type) => { setCreatedLookup(null); setLookupType(type) }} />
+    ? <AssetForm key={`${page.clone ? 'clone' : 'form'}-${page.asset?.id ?? 'new'}-${activeGroup.key}-${page.fresh ?? ''}`} asset={page.asset} clone={page.clone} entryDefaults={page.defaults} entryLabel={activeGroup.key === 'all' ? undefined : activeGroup.label} categoryScope={activeGroup.key === 'all' ? undefined : activeCategories.map(value => value.id)} lookups={lookups} assignees={assignees} canAssign={hasPermission('ASSET_CHECKOUT')} bindableAssets={suggestionAssets} saving={saving} createdLookup={createdLookup} onCancel={returnToPreviousView} onSave={saveAsset} canCreateRelated={hasPermission('ASSET_VIEW') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_EDIT')} onSaveBundle={saveAssetBundle} onContinueBundle={defaults => showView('assets', { name: 'form', asset: null, defaults, fresh: newBundleKey() }, 'replace')} onBundleRecovered={() => void load('')} onDeleteLookup={deleteLookup} onNewLookup={(type) => { setCreatedLookup(null); setLookupType(type) }} />
     : page.name === 'detail'
       ? <AssetDetail asset={page.asset} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} canReturn={hasPermission('ASSET_RETURN')} canDelete={hasPermission('ASSET_DELETE')} onClose={returnToPreviousView} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} onReturn={setReturnTarget} onDelete={(asset) => void deleteAsset(asset)} />
       : listPage
 
   return <div className="app-shell">
-    <Sidebar section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content modern-content">{assetPage}</div></main>
     <LookupModal type={lookupType} loading={lookupLoading} onClose={() => setLookupType(null)} onCreate={createLookup} />
     {returnTarget && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setReturnTarget(null)}><div className="return-card">

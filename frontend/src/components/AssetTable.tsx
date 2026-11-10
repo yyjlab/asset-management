@@ -11,6 +11,7 @@ interface Props {
   canEdit: boolean
   canCreate: boolean
   parameterProfile: AssetProfile | null
+  categoryView?: boolean
   onSelect: (asset: Asset) => void
   onEdit: (asset: Asset) => void
   onClone: (asset: Asset) => void
@@ -21,8 +22,8 @@ const isMaintenance = (asset: Asset) => asset.status.name.includes('维修') || 
 const isScrapped = (asset: Asset) => asset.status.name.includes('报废')
 type AssetParameter = { name: string; value: string }
 
-const firstThreeParameters = (asset: Asset): AssetParameter[] => {
-  const profile = asset.category.assetProfile || 'GENERAL'
+const firstThreeParameters = (asset: Asset, fallbackProfile: AssetProfile | null = null): AssetParameter[] => {
+  const profile = asset.category.assetProfile || fallbackProfile || 'GENERAL'
   const parameters: AssetParameter[] = profile === 'COMPUTER' ? [
     { name: 'CPU', value: asset.cpu || '' },
     { name: '内存', value: asset.memory || '' },
@@ -36,15 +37,18 @@ const firstThreeParameters = (asset: Asset): AssetParameter[] => {
   return [0, 1, 2].map((index) => parameters[index] || { name: `参数${index + 1}`, value: '' })
 }
 
-export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEdit, onClone }: Props) {
+export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEdit, onClone, parameterProfile, categoryView = false }: Props) {
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const showPurchasePrice = assets.some((asset) => asset.purchasePrice != null)
   const valueColumnCount = Number(showPurchasePrice)
-  const assetParameters = assets.map(firstThreeParameters)
+  const parametersOf = (asset: Asset) => firstThreeParameters(asset, categoryView ? parameterProfile : null)
+  const assetParameters = assets.map(parametersOf)
+  const showDomain = !categoryView || parameterProfile === 'COMPUTER'
+  const showCategory = !categoryView
   const visibleParameterIndexes = [0, 1, 2].filter((index) => assetParameters.some((parameters) => Boolean(parameters[index]?.value.trim())))
-  const columnCount = 10 + visibleParameterIndexes.length + valueColumnCount
-  const tableMinimumWidth = 1084 + visibleParameterIndexes.length * 128 + valueColumnCount * 110
+  const columnCount = 8 + Number(showCategory) + Number(showDomain) + visibleParameterIndexes.length + valueColumnCount
+  const tableMinimumWidth = 914 + Number(showCategory) * 80 + Number(showDomain) * 90 + visibleParameterIndexes.length * 128 + valueColumnCount * 110
 
   return (
     <><div className="table-wrap" ref={tableRef}>
@@ -55,17 +59,17 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
           <col className="asset-col-image" />
           <col className="asset-col-model" />
           {visibleParameterIndexes.map((index) => <col className={['asset-col-cpu', 'asset-col-memory', 'asset-col-storage'][index]} key={index} />)}
-          <col className="asset-col-category" />
+          {showCategory && <col className="asset-col-category" />}
           <col className="asset-col-status" />
-          <col className="asset-col-domain" />
+          {showDomain && <col className="asset-col-domain" />}
           <col className="asset-col-assignee" />
           <col className="asset-col-location" />
           {showPurchasePrice && <col className="asset-col-price" />}
           <col className="asset-col-actions" />
         </colgroup>
         <thead><tr>
-          <th>资产编号</th><th>资产名称</th><th>图片</th><th>设备型号</th>{visibleParameterIndexes.length > 0 && <th colSpan={visibleParameterIndexes.length} scope="colgroup">规格配置</th>}<th>分类</th><th>状态</th>
-          <th scope="col" className="asset-domain-cell">入域状态</th><th>领用人</th><th>位置</th>{showPurchasePrice && <th className="number">采购价格</th>}<th className="sticky-action">操作</th>
+          <th>资产编号</th><th>资产名称</th><th>图片</th><th>设备型号</th>{visibleParameterIndexes.length > 0 && <th colSpan={visibleParameterIndexes.length} scope="colgroup">规格配置</th>}{showCategory && <th>分类</th>}<th>状态</th>
+          {showDomain && <th scope="col" className="asset-domain-cell">入域状态</th>}<th>领用人</th><th>位置</th>{showPurchasePrice && <th className="number">采购价格</th>}<th className="sticky-action">操作</th>
         </tr></thead>
         <tbody>
           {loading ? <tr><td colSpan={columnCount}><div className="table-empty"><span className="spinner" />正在读取资产…</div></td></tr> :
@@ -75,7 +79,7 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
              const maintenance = isMaintenance(asset)
              const state = scrapped ? '已报废' : maintenance ? '维护中' : asset.checkedOut ? '已经领出' : '当前可用'
              const stateClass = scrapped ? 'scrapped' : maintenance ? 'maintenance' : asset.checkedOut ? 'checked-out' : 'available'
-             const parameters = firstThreeParameters(asset)
+             const parameters = parametersOf(asset)
              const primaryImage = asset.imageUrls?.[0] || asset.imageUrl
              const assignee = asset.assignedTo?.trim() || ''
              return <tr key={asset.id} onClick={() => onSelect(asset)}>
@@ -88,9 +92,9 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
                  const text = parameter.value.trim() ? `${parameter.name}：${parameter.value}` : ''
                  return <td key={`${parameter.name}-${index}`}>{text && <span className="configuration-value compact-text" title={text}>{text}</span>}</td>
                })}
-               <td><span className="compact-text" title={asset.category.name}>{asset.category.name}</span></td>
+               {showCategory && <td><span className="compact-text" title={asset.category.name}>{asset.category.name}</span></td>}
                <td><span className={`status-pill ${stateClass}`}>{state}</span></td>
-               <td className="asset-domain-cell"><DomainJoinBadge asset={asset} /></td>
+               {showDomain && <td className="asset-domain-cell"><DomainJoinBadge asset={asset} /></td>}
                <td>{assignee ? <span className="asset-assignee-tag" title={assignee}>{assignee}</span> : <span className="asset-assignee-empty">暂未领用</span>}</td>
                <td><span className="compact-text" title={asset.location.name}>{asset.location.name}</span></td>
                {showPurchasePrice && <td className="number value-cell">{money(asset.purchasePrice)}</td>}

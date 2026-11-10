@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  const bundleFiles = ['assetBundle.ts', 'featureVisibility.ts', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
+  const bundleFiles = ['assetBundle.ts', 'assetGroups.ts', 'featureVisibility.ts', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
   compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx', 'components/AccessoryOptions.tsx', 'components/AssetAccessories.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
@@ -94,7 +94,7 @@ test('every visible DingTalk menu navigates to its own section', () => {
   const filters = [];
   const icons = load('components/Icons.tsx');
   const { Sidebar } = load('components/Sidebar.tsx', {
-    './Icons': icons, react: { useState: () => [false, () => {}] },
+    './Icons': icons, react: { useState: () => [false, () => {}], useEffect() {} },
   });
   const tree = Sidebar({
     section: 'dashboard', canManageUsers: false, dingtalkLogin: true, permissions: [],
@@ -103,8 +103,8 @@ test('every visible DingTalk menu navigates to its own section', () => {
   const nav = tree.props.children.find(child => child.type === 'nav');
   const click = children => React.Children.forEach(children, child => { if (!child) return; if (child.type === 'button') child.props.onClick(); else if (child.props?.children) click(child.props.children); });
   click(nav.props.children);
-  assert.deepEqual(sections, ['dashboard', 'assets', 'users', 'logs', 'transfer']);
-  assert.deepEqual(filters, ['all']);
+  assert.deepEqual(sections, ['dashboard', 'users', 'logs', 'transfer']);
+  assert.deepEqual(filters, []); // The asset parent expands; only a child opens the list.
 });
 
 function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, options = {}) {
@@ -117,7 +117,7 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, opti
   const changes = [], componentProps = {};
   const react = { ...React, useEffect: options.effects ? effect => options.effects.push(effect) : React.useEffect, useState(initial) {
     const index = stateIndex++;
-    const [value] = React.useState(index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : index === 7 && options.assets ? options.assets : index === 16 && options.search !== undefined ? options.search : index === 17 && options.loading !== undefined ? options.loading : index === 33 && options.domainFilter !== undefined ? options.domainFilter : initial);
+    const [value] = React.useState(Object.hasOwn(options.state || {}, index) ? options.state[index] : index === 1 ? user : index === 2 ? false : index === 5 ? section : index === 6 ? initialPage : (index === 7 || index === 8) && options.assets ? options.assets : index === 11 && options.lookups ? options.lookups : index === 16 && options.search !== undefined ? options.search : index === 17 && options.loading !== undefined ? options.loading : index === 33 && options.domainFilter !== undefined ? options.domainFilter : initial);
     return [value, next => changes.push({ index, value: typeof next === 'function' ? next(value) : next })];
   } };
   const icons = load('components/Icons.tsx');
@@ -1022,11 +1022,11 @@ const domainAsset = overrides => selfAsset({ category: { id: 1, name: '笔记本
   boundDisplays: [], customParameters: [], relatedDevices: [], accessories: [], imageUrls: [],
   createdAt: '2026-10-23T10:00:00', updatedAt: '2026-10-23T10:00:00', ...overrides });
 
-function assetTableMarkup(assets, loading = false) {
+function assetTableMarkup(assets, loading = false, options = {}) {
   const { AssetTable } = load('components/AssetTable.tsx', {
     './Icons': load('components/Icons.tsx'), './AssetImageLightbox': { AssetImageLightbox: () => null }, './BackToTop': { BackToTop: () => null },
   });
-  return renderToStaticMarkup(React.createElement(AssetTable, { assets, loading, canEdit: true, canCreate: true, onSelect() {}, onEdit() {}, onClone() {} }));
+  return renderToStaticMarkup(React.createElement(AssetTable, { assets, loading, canEdit: true, canCreate: true, onSelect() {}, onEdit() {}, onClone() {}, ...options }));
 }
 
 test('table assignees use passive name tags without changing lifecycle, domain or stored names', () => {
@@ -1512,6 +1512,120 @@ function bundleFormHarness(options = {}) {
     onSaveBundle: async payload => { submissions.push(payload); if (options.save) return options.save(payload, ApiError); return { computer: domainAsset(), displays: [{ ...domainAsset(), id: 91, assetTag: '202610280091', name: '显示器' }], replayed: false }; }, ...options.props };
   return { states, submissions, ordinary, continued, props, ApiError, render() { stateIndex = 0; refIndex = 0; return AssetForm(props); } };
 }
+const categoryFixtures = [
+  { id: 1, type: 'CATEGORY', name: '笔记本电脑', assetProfile: 'COMPUTER' },
+  { id: 8, type: 'CATEGORY', name: '台式', assetProfile: 'COMPUTER' },
+  { id: 9, type: 'CATEGORY', name: '显示器', assetProfile: 'DISPLAY' },
+  { id: 10, type: 'CATEGORY', name: '鼠标', assetProfile: 'GENERAL', parameterTemplate: ['接口'] },
+];
+const categoryAssets = () => categoryFixtures.map(category => domainAsset({ id: category.id, category }));
+
+test('category groups use category IDs and compatible profiles, never employee or asset names', () => {
+  const { groupAssets, groupCategories, assetGroupOf } = load('assetGroups.ts');
+  const assets = categoryAssets();
+  assets.push(domainAsset({ id: 99, name: '显示器鼠标台式电脑', ownershipDepartment: '笔记本电脑', category: { id: 99, type: 'CATEGORY', name: '其他', assetProfile: 'GENERAL' }, accessories: [{ name: '鼠标', quantity: 1 }] }));
+  const before = JSON.stringify(assets);
+  for (const [group, id] of [['laptop', 1], ['desktop', 8], ['display', 9], ['mouse', 10]]) {
+    assert.deepEqual(Array.from(groupAssets(group, categoryFixtures, assets), value => value.id), [id]);
+  }
+  assert.equal(groupAssets('all', categoryFixtures, assets), assets);
+  assert.equal(assetGroupOf('invalid').key, 'all');
+  assert.equal(groupCategories('mouse', [{ ...categoryFixtures[3], assetProfile: 'COMPUTER' }]).length, 0);
+  assert.equal(groupCategories('display', [{ ...categoryFixtures[2], name: '办公屏幕' }]).length, 1);
+  assert.equal(JSON.stringify(assets), before);
+});
+
+test('category counters only count the selected ledger subset', () => {
+  const { groupSummary } = load('assetGroups.ts');
+  const result = groupSummary([domainAsset(), domainAsset({ checkedOut: true }), domainAsset({ status: { name: '维护中' } }), domainAsset({ status: { name: '已报废' } })]);
+  assert.equal(JSON.stringify(result), JSON.stringify({ total: 4, available: 1, checkedOut: 1, maintenance: 1, scrapped: 1 }));
+});
+
+test('asset submenu exposes five separate choices and closes after a mobile selection', () => {
+  let index = 0; const updates = [], selected = [];
+  const { Sidebar } = load('components/Sidebar.tsx', { react: { useEffect() {}, useState: () => { const i = index++; return [i === 1, value => updates.push({ i, value })]; } } }, false, { window: { matchMedia: () => ({ matches: true }) } });
+  const tree = Sidebar({ section: 'assets', canManageUsers: false, dingtalkLogin: false, permissions: ['ASSET_VIEW'], assetGroup: 'display', onAssetGroup: key => selected.push(key), onSection() {}, onFilter() {} });
+  const choices = treeElements(tree).filter(item => item.props.className?.includes('asset-subitem'));
+  assert.deepEqual(choices.map(item => item.props['aria-label']), ['全部资产', '笔记本电脑', '台式电脑', '显示器', '鼠标']);
+  assert.equal(choices[3].props['aria-current'], 'page');
+  choices[4].props.onClick(); assert.deepEqual(selected, ['mouse']);
+  assert.ok(updates.some(update => update.i === 1 && update.value === false));
+});
+
+test('category lists ignore stale category and domain filters from another device group', () => {
+  const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'display' }, { assets: categoryAssets(), lookups: categoryFixtures, state: { 14: '1', 15: true }, domainFilter: 'JOINED', businessWorkflows: false });
+  assert.deepEqual(page.componentProps.AssetTable.assets.map(value => value.id), [9]);
+  assert.equal(page.componentProps.AssetTable.parameterProfile, 'DISPLAY');
+  assert.equal(page.componentProps.AssetTable.categoryView, true);
+  assert.match(page.markup, /新增显示器/); assert.match(page.markup, /共 1 条显示器/);
+  assert.ok(!page.markup.includes('入离职交接'));
+});
+
+test('contextual creation reuses an existing category without writes and preserves the group', async () => {
+  const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'display' }, { assets: categoryAssets(), lookups: categoryFixtures, loading: false });
+  await findNativeElement(page.tree, item => item.type === 'button' && String(item.props.children).includes('新增显示器')).props.onClick();
+  const navigation = page.changes.find(change => change.index === 6);
+  assert.equal(navigation.value.name, 'form'); assert.equal(navigation.value.defaults.categoryId, 9);
+  assert.equal(navigation.value.assetGroup, 'display');
+  const form = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, navigation.value, { lookups: categoryFixtures });
+  assert.equal(form.componentProps.AssetForm.entryLabel, '显示器');
+  assert.deepEqual(Array.from(form.componentProps.AssetForm.categoryScope), [9]);
+  form.componentProps.AssetForm.onCancel();
+  assert.ok(form.changes.some(change => change.index === 6 && change.value.name === 'list' && change.value.assetGroup === 'display'));
+});
+
+test('missing category creation requires confirmation and never creates an asset', async () => {
+  for (const accepted of [false, true]) {
+    const writes = [];
+    const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'mouse' }, { lookups: [], loading: false, window: { location: { pathname: '/' }, localStorage: { getItem: () => 'false' }, history: { state: null, pushState() {}, replaceState() {} }, confirm: () => accepted }, api: { createLookup: async (...args) => { writes.push(args); return categoryFixtures[3]; }, createAsset: () => assert.fail('No asset may be created by opening a form') } });
+    const button = findNativeElement(page.tree, item => item.type === 'button' && String(item.props.children).includes('新增鼠标'));
+    button.props.onClick();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(writes.length, Number(accepted));
+    if (accepted) assert.deepEqual(writes[0], ['CATEGORY', '鼠标', 'GENERAL']);
+    assert.equal(page.changes.some(change => change.index === 6), accepted);
+  }
+});
+
+test('category creation rejects double clicks and does not redirect after navigation away', async () => {
+  let resolve, writes = 0;
+  const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'mouse' }, { loading: false,
+    window: { location: { pathname: '/' }, localStorage: { getItem: () => 'false' }, history: { state: null, pushState() {}, replaceState() {} }, confirm: () => true },
+    api: { createLookup: () => { writes++; return new Promise(done => { resolve = done; }); } } });
+  const button = findNativeElement(page.tree, item => item.type === 'button' && String(item.props.children).includes('新增鼠标'));
+  button.props.onClick(); button.props.onClick(); assert.equal(writes, 1);
+  findNativeElement(page.tree, item => item.type.name === 'Sidebar').props.onAssetGroup('display');
+  resolve(categoryFixtures[3]); await new Promise(done => setImmediate(done));
+  assert.ok(!page.changes.some(change => change.index === 6 && change.value.name === 'form'));
+  assert.ok(page.changes.some(change => change.index === 6 && change.value.assetGroup === 'display'));
+});
+
+test('category navigation retains existing view and create permissions', () => {
+  const denied = appMarkup('assets', { permissions: [] }, { name: 'list', assetGroup: 'mouse' }, { businessWorkflows: false });
+  assert.match(denied.markup, /尚未获得此功能的访问权限/); assert.ok(!denied.rendered.includes('AssetTable'));
+  const readonly = appMarkup('assets', { permissions: ['ASSET_VIEW'] }, { name: 'list', assetGroup: 'display' }, { loading: false });
+  assert.ok(!readonly.markup.includes('新增显示器')); assert.equal(readonly.componentProps.AssetTable.canCreate, false);
+});
+
+test('device category views omit redundant category and noncomputer domain columns', () => {
+  for (const profile of ['DISPLAY', 'GENERAL']) {
+    const markup = assetTableMarkup([], false, { categoryView: true, parameterProfile: profile });
+    assert.ok(!markup.includes('<th>分类</th>')); assert.ok(!markup.includes('入域状态'));
+    const cols = [...markup.matchAll(/<col(?:\s|\/|>)/g)].length;
+    assert.match(markup, new RegExp(`colSpan="${cols}"`, 'i'));
+  }
+  assert.match(assetTableMarkup([], false, { categoryView: true, parameterProfile: 'COMPUTER' }), /入域状态/);
+  assert.match(assetTableMarkup([]), /分类/);
+});
+
+test('contextual mouse form uses its template without changing existing assets', () => {
+  const form = bundleFormHarness({ props: { asset: null, lookups: [...categoryFixtures, { id: 22, type: 'STATUS', name: '当前可用' }], categoryScope: [10], entryLabel: '鼠标', entryDefaults: { companyId: null, locationId: null, ownershipDepartment: '', categoryId: 10 } } });
+  const tree = form.render();
+  assert.equal(form.states[0].categoryId, 10); assert.equal(form.states[0].name, '鼠标');
+  assert.equal(form.states[0].customParameters[0].name, '接口');
+  assert.ok(treeElements(tree).some(item => item.type === 'h2' && item.props.children === '新增鼠标'));
+});
+
 function bundlePayload() {
   const view = bundleFormHarness(); view.render();
   return { ...view.states[0], boundDisplayIds: [] };
