@@ -85,8 +85,8 @@ export function DeploymentIntakes({ onNotify }: Props) {
     } finally { setBusy(false) }
   }
 
-  return <section className="deployment-section deployment-intakes" aria-label="装机电脑审核">
-    <div className="deployment-intake-toolbar"><div><h3>装机电脑审核</h3><p>采集后自动送审，批准后生成资产编号并入库。</p></div>
+  return <section className="deployment-section deployment-intakes" aria-label="资产入库">
+    <div className="deployment-intake-toolbar"><div><h3>资产入库</h3><p>采集后自动送审，批准后生成资产编号并入库。</p></div>
       <button className="button ghost" disabled={loading || busy} onClick={() => setRefresh(value => value + 1)}>刷新待审核列表</button></div>
     <div className="deployment-tabs" role="group" aria-label="审核状态">
       {(Object.keys(labels) as DeploymentIntakeState[]).map(value => <button key={value} className={'button ' + (state === value ? 'primary' : 'ghost')}

@@ -49,10 +49,10 @@ async function main() {
       await route.fulfill({ json: data });
     });
     await page.goto(server.resolvedUrls.local[0]);
-    await page.getByRole('button', { name: '装机电脑审核', exact: true }).click();
-    const queue = page.getByRole('region', { name: '装机电脑审核' });
+    await page.getByRole('button', { name: '资产入库', exact: true }).click();
+    const queue = page.getByRole('region', { name: '资产入库' });
     assert.equal(new URL(page.url()).searchParams.get('view'), 'deployment-review');
-    assert.equal(await page.locator('.sidebar nav .nav-item').last().getAttribute('aria-label'), '装机电脑审核');
+    assert.equal(await page.locator('.sidebar nav .nav-item').last().getAttribute('aria-label'), '资产入库');
     assert.equal(await page.locator('.sidebar nav .nav-item').nth(-2).getAttribute('aria-label'), '基础资料');
     await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
     await page.reload();
@@ -121,7 +121,7 @@ async function main() {
     const before = intakeReads;
     await page.reload();
     await page.getByText('当前账号尚未获得此功能的访问权限，请联系管理员授权。', { exact: true }).waitFor();
-    assert.equal(await page.getByRole('button', { name: '装机电脑审核', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: '资产入库', exact: true }).count(), 0);
     assert.equal(intakeReads, before, 'unauthorized deep links must not mount review API requests');
     assert.deepEqual(errors, []);
     console.log('PASS intake review: standalone menu, reload, direct URL, back navigation, access guard, corrections, auto tag, rejection, CSRF and desktop/mobile layout');

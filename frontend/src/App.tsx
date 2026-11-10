@@ -458,7 +458,7 @@ export default function App() {
     {avatarEditorOpen && <AvatarEditor user={authUser} revision={avatarRevision} busy={avatarSaving} onClose={() => !avatarSaving && setAvatarEditorOpen(false)} onUpload={uploadAvatar} onDelete={deleteMyAvatar} onError={(message) => notify(message, 'error')} />}
   </>
 
-  const restrictedSection = section === 'deploymentReview' && authUser.role !== 'SUPER_ADMIN' ? '装机电脑审核'
+  const restrictedSection = section === 'deploymentReview' && authUser.role !== 'SUPER_ADMIN' ? '资产入库'
     : (section === 'users' || section === 'logs' || section === 'settings' || section === 'foundation') && !authUser.canManageUsers
     ? { users: '用户', logs: '日志', settings: '设置', foundation: '基础资料' }[section]
     : section === 'transfer' && !(hasPermission('ASSET_EXPORT') || (hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'))

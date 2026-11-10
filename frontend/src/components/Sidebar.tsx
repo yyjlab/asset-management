@@ -88,7 +88,7 @@ export function Sidebar({ section, canManageUsers, canReviewDeployment = false, 
           <UploadIcon /><span>数据</span>
         </button>}
         {canManageUsers && <button aria-label="基础资料" title={collapsed ? '基础资料' : undefined} className={`nav-item ${section === 'foundation' ? 'active' : ''}`} onClick={() => onSection('foundation')}><ClipboardIcon /><span>基础资料</span></button>}
-        {canReviewDeployment && <button aria-label="装机电脑审核" aria-current={section === 'deploymentReview' ? 'page' : undefined} title={collapsed ? '装机电脑审核' : undefined} className={`nav-item ${section === 'deploymentReview' ? 'active' : ''}`} onClick={() => onSection('deploymentReview')}><ClipboardIcon /><span>装机电脑审核</span></button>}
+        {canReviewDeployment && <button aria-label="资产入库" aria-current={section === 'deploymentReview' ? 'page' : undefined} title={collapsed ? '资产入库' : undefined} className={`nav-item ${section === 'deploymentReview' ? 'active' : ''}`} onClick={() => onSection('deploymentReview')}><ClipboardIcon /><span>资产入库</span></button>}
       </nav>
     </aside>
   )

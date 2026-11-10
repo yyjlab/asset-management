@@ -166,11 +166,11 @@ test('release visibility defaults closed for business modules while core section
 });
 test('deployment review is a standalone administrator menu with collapsed label and no permission elevation', () => {
   for (const collapsed of [false, true]) {
-    assert.ok(menuLabels(sidebarMarkup({ canReviewDeployment: true, section: 'deploymentReview' }, collapsed)).includes('装机电脑审核'));
-    assert.equal(menuLabels(sidebarMarkup({ canReviewDeployment: true, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'], canManageUsers: true }, collapsed)).at(-1), '装机电脑审核');
-    assert.deepEqual(menuLabels(sidebarMarkup({ canReviewDeployment: true, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'], canManageUsers: true }, collapsed)).slice(-2), ['基础资料', '装机电脑审核']);
+    assert.ok(menuLabels(sidebarMarkup({ canReviewDeployment: true, section: 'deploymentReview' }, collapsed)).includes('资产入库'));
+    assert.equal(menuLabels(sidebarMarkup({ canReviewDeployment: true, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'], canManageUsers: true }, collapsed)).at(-1), '资产入库');
+    assert.deepEqual(menuLabels(sidebarMarkup({ canReviewDeployment: true, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'], canManageUsers: true }, collapsed)).slice(-2), ['基础资料', '资产入库']);
     assert.ok(sidebarMarkup({ canReviewDeployment: true, section: 'deploymentReview' }, collapsed).includes('aria-current="page"'));
-    assert.ok(!menuLabels(sidebarMarkup({ canManageUsers: true }, collapsed)).includes('装机电脑审核'));
+    assert.ok(!menuLabels(sidebarMarkup({ canManageUsers: true }, collapsed)).includes('资产入库'));
   }
   assert.deepEqual(appMarkup('deploymentReview', { role: 'SUPER_ADMIN', canManageUsers: true }).rendered, ['DeploymentIntakes']);
   const denied = appMarkup('deploymentReview', { role: 'USER', canManageUsers: true });
