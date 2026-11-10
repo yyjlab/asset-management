@@ -93,3 +93,76 @@ test('Dockerfile isolates font cache from source and preserves CJK support', () 
   const result = spawnSync(shell, ['-n'], { input: run, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
 });
+
+function simulateFrontend(mode, scenario) {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'asset-frontend-build-test-'));
+  const log = path.join(folder, 'calls');
+  const frontendScript = path.resolve(__dirname, '../frontend/docker-install-deps.sh');
+  try {
+    const stub = `#!/bin/sh
+printf '%s|%s|CI=%s\\n' "$(basename "$0")" "$*" "\${CI:-}" >> "$TEST_LOG"
+case "$TEST_SCENARIO" in
+ primary) exit 0 ;;
+ fallback) case "$*" in *https://registry.npmjs.org*) exit 0 ;; *) exit 1 ;; esac ;;
+ fail) exit 7 ;;
+esac
+`;
+    for (const binary of ['npm', 'pnpm']) fs.writeFileSync(path.join(folder, binary), stub, 'utf8');
+    const result = spawnSync(shell, ['-c', 'PATH="$1:$PATH"; export PATH; chmod +x "$1/npm" "$1/pnpm"; exec sh "$2" "$3"',
+      'frontend-build-test', unix(folder), unix(frontendScript), mode], {
+      encoding: 'utf8', env: { ...process.env, TEST_SCENARIO: scenario, TEST_LOG: unix(log) }, timeout: 15000,
+    });
+    assert.ifError(result.error);
+    return { ...result, calls: fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : [] };
+  } finally {
+    assert.equal(path.dirname(path.resolve(folder)), path.resolve(os.tmpdir()));
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+}
+
+for (const mode of ['pnpm', 'dependencies']) {
+  test(`frontend ${mode} uses domestic registry with bounded retries`, () => {
+    const result = simulateFrontend(mode, 'primary');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.calls.length, 1);
+    assert.match(result.calls[0], /--registry https:\/\/registry\.npmmirror\.com/);
+    assert.match(result.calls[0], /--fetch-timeout=30000 --fetch-retries=1/);
+    if (mode === 'pnpm') assert.match(result.calls[0], /install --global pnpm@10\.34\.7/);
+    else {
+      assert.match(result.calls[0], /--frozen-lockfile --prefer-offline/);
+      assert.match(result.calls[0], /CI=true/);
+    }
+  });
+
+  test(`frontend ${mode} falls back to Huawei then official registry`, () => {
+    const result = simulateFrontend(mode, 'fallback');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.calls.length, 3);
+    assert.match(result.calls[0], /registry\.npmmirror\.com/);
+    assert.match(result.calls[1], /repo\.huaweicloud\.com\/repository\/npm/);
+    assert.match(result.calls[2], /registry\.npmjs\.org/);
+    assert.ok(result.calls.every(call => !call.includes('strict-ssl=false') && !call.includes('--no-frozen-lockfile')));
+  });
+
+  test(`frontend ${mode} does not swallow registry failures`, () => {
+    const result = simulateFrontend(mode, 'fail');
+    assert.equal(result.status, 1);
+    assert.equal(result.calls.length, 3);
+  });
+}
+
+test('frontend invalid mode fails without package downloads', () => {
+  const result = simulateFrontend('invalid', 'primary');
+  assert.equal(result.status, 2);
+  assert.equal(result.calls.length, 0);
+});
+
+test('frontend Dockerfile preserves dependency cache, lockfile and production checks', () => {
+  const docker = fs.readFileSync(path.resolve(__dirname, '../frontend/Dockerfile'), 'utf8');
+  assert.ok(docker.indexOf('docker-install-deps.sh pnpm') < docker.indexOf('COPY package.json'));
+  assert.ok(docker.indexOf('COPY package.json pnpm-lock.yaml .npmrc') < docker.indexOf('docker-install-deps.sh dependencies'));
+  assert.ok(docker.indexOf('docker-install-deps.sh dependencies') < docker.indexOf('COPY . .'));
+  assert.match(docker, /RUN pnpm build/);
+  const result = spawnSync(shell, ['-n', unix(path.resolve(__dirname, '../frontend/docker-install-deps.sh'))], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});

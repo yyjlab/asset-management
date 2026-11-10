@@ -1,9 +1,10 @@
 FROM node:24.19.0-bookworm-slim AS build
 WORKDIR /workspace
 
-RUN npm install --global pnpm@10.34.7
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY docker-install-deps.sh /build/docker-install-deps.sh
+RUN sh /build/docker-install-deps.sh pnpm
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN sh /build/docker-install-deps.sh dependencies
 
 COPY . .
 RUN pnpm build
