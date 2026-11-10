@@ -52,6 +52,7 @@ async function main() {
     await page.getByRole('button', { name: '装机电脑审核', exact: true }).click();
     const queue = page.getByRole('region', { name: '装机电脑审核' });
     assert.equal(new URL(page.url()).searchParams.get('view'), 'deployment-review');
+    assert.equal(await page.locator('.sidebar nav .nav-item').last().getAttribute('aria-label'), '装机电脑审核');
     await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
     await page.reload();
     await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
@@ -71,8 +72,16 @@ async function main() {
     await dialog.getByLabel('资产分类', { exact: true }).selectOption('12');
     for (const theme of ['light', 'dark']) {
       await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
-      for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      for (const size of [{ width: 1440, height: 900 }, { width: 2544, height: 963 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(size);
+        const layout = await queue.evaluate(element => {
+          const content = element.closest('.content');
+          return { right: element.getBoundingClientRect().right, edge: content.getBoundingClientRect().right - parseFloat(getComputedStyle(content).paddingRight),
+            width: element.getBoundingClientRect().width, scrollWidth: document.documentElement.scrollWidth, viewport: innerWidth };
+        });
+        assert.ok(Math.abs(layout.right - layout.edge) <= 2, 'review table must fill the available content width');
+        assert.ok(layout.scrollWidth <= layout.viewport, 'full width table must not overflow the page');
+        if (size.width === 2544) assert.ok(layout.width > 2000, 'ultrawide review must not inherit the settings 1200px cap');
         const geometry = await dialog.evaluate(element => ({ width: element.clientWidth, scrollWidth: element.scrollWidth, rect: element.getBoundingClientRect().toJSON() }));
         assert.ok(geometry.scrollWidth <= geometry.width, 'review content must not overflow horizontally');
         assert.ok(geometry.rect.height <= size.height, 'review dialog must stay in viewport');

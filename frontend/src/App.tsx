@@ -518,7 +518,7 @@ export default function App() {
 
   if (section === 'deploymentReview' && authUser.role === 'SUPER_ADMIN') return <div className="app-shell">
     <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
-    <main className="main-content">{topbar}<div className="content"><div className="deployment-settings"><DeploymentIntakes key={accessKey} onNotify={notify} /></div></div></main>
+    <main className="main-content">{topbar}<div className="content"><div className="deployment-settings deployment-review-page"><DeploymentIntakes key={accessKey} onNotify={notify} /></div></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

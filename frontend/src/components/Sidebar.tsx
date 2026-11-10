@@ -75,7 +75,6 @@ export function Sidebar({ section, canManageUsers, canReviewDeployment = false, 
         <button aria-label="采购补货" title={collapsed ? '采购补货' : undefined} className={`nav-item ${section === 'procurement' ? 'active' : ''}`} onClick={() => onSection('procurement')}><BoxesIcon /><span>采购补货</span></button>
         {(dingtalkLogin || canManageUsers || permissions.includes('ASSET_EDIT') && permissions.includes('ASSET_CHECKOUT') && permissions.includes('ASSET_RETURN')) && <>{([['kits', '岗位配发模板'], ['support', '保修与供应商'], ['reports', '管理统计']] as const).map(([key, label]) => <button key={key} aria-label={label} title={collapsed ? label : undefined} className={`nav-item ${section === key ? 'active' : ''}`} onClick={() => onSection(key)}><ClipboardIcon /><span>{label}</span></button>)}</>}
         </>}
-        {canReviewDeployment && <button aria-label="装机电脑审核" aria-current={section === 'deploymentReview' ? 'page' : undefined} title={collapsed ? '装机电脑审核' : undefined} className={`nav-item ${section === 'deploymentReview' ? 'active' : ''}`} onClick={() => onSection('deploymentReview')}><ClipboardIcon /><span>装机电脑审核</span></button>}
         {(dingtalkLogin || canManageUsers) && <button aria-label="用户" title={collapsed ? '用户' : undefined} className={`nav-item ${section === 'users' ? 'active' : ''}`} onClick={() => onSection('users')}>
           <UsersIcon /><span>用户</span>
         </button>}
@@ -89,6 +88,7 @@ export function Sidebar({ section, canManageUsers, canReviewDeployment = false, 
         {(dingtalkLogin || permissions.includes('ASSET_IMPORT') || permissions.includes('ASSET_EXPORT')) && <button aria-label="数据" title={collapsed ? '数据' : undefined} className={`nav-item ${section === 'transfer' ? 'active' : ''}`} onClick={() => onSection('transfer')}>
           <UploadIcon /><span>数据</span>
         </button>}
+        {canReviewDeployment && <button aria-label="装机电脑审核" aria-current={section === 'deploymentReview' ? 'page' : undefined} title={collapsed ? '装机电脑审核' : undefined} className={`nav-item ${section === 'deploymentReview' ? 'active' : ''}`} onClick={() => onSection('deploymentReview')}><ClipboardIcon /><span>装机电脑审核</span></button>}
       </nav>
     </aside>
   )

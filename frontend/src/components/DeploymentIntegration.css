@@ -1,5 +1,6 @@
 .deployment-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
 .deployment-settings { max-width: 1200px; }
+.deployment-settings.deployment-review-page { max-width: none; }
 .deployment-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .deployment-header h2 { margin: 0 0 8px; font-size: 22px; }
 .deployment-settings p { color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
