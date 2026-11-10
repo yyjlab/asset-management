@@ -85,7 +85,7 @@ test('password login retains existing permission-based menus', () => {
 
 test('administrator keeps the settings menu with either login method', () => {
   for (const dingtalkLogin of [true, false]) {
-    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '资产', '用户', '日志', '基础资料', '设置', '数据']);
+    assert.deepEqual(menuLabels(sidebarMarkup({ canManageUsers: true, dingtalkLogin, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'] })), ['驾驶舱', '资产', '用户', '日志', '设置', '数据', '基础资料']);
   }
 });
 
@@ -168,6 +168,7 @@ test('deployment review is a standalone administrator menu with collapsed label 
   for (const collapsed of [false, true]) {
     assert.ok(menuLabels(sidebarMarkup({ canReviewDeployment: true, section: 'deploymentReview' }, collapsed)).includes('装机电脑审核'));
     assert.equal(menuLabels(sidebarMarkup({ canReviewDeployment: true, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'], canManageUsers: true }, collapsed)).at(-1), '装机电脑审核');
+    assert.deepEqual(menuLabels(sidebarMarkup({ canReviewDeployment: true, permissions: ['ASSET_VIEW', 'ASSET_EXPORT'], canManageUsers: true }, collapsed)).slice(-2), ['基础资料', '装机电脑审核']);
     assert.ok(sidebarMarkup({ canReviewDeployment: true, section: 'deploymentReview' }, collapsed).includes('aria-current="page"'));
     assert.ok(!menuLabels(sidebarMarkup({ canManageUsers: true }, collapsed)).includes('装机电脑审核'));
   }

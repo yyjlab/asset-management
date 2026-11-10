@@ -86,6 +86,21 @@ class DeploymentIntakeApiTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.endpoint").value(DeploymentSecurityConfig.INTAKES))
                 .andExpect(jsonPath("$.lastReceivedAt").isNotEmpty());
     }
+    @Test void readableAssetNameIsIndependentOfModelAndUsedAfterReview() throws Exception {
+        var body = request(); body.put("name", "LENOVO ThinkPad L13");
+        @SuppressWarnings("unchecked") var snapshot = (Map<String, Object>)body.get("snapshot");
+        snapshot.put("model", "20R4S4E200");
+        receive(body).andExpect(status().isAccepted());
+        mvc.perform(get("/api/settings/ad-deployment/intakes").with(user(admin)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].name").value("LENOVO ThinkPad L13"))
+                .andExpect(jsonPath("$.items[0].model").value("20R4S4E200"));
+        var approval = review(); approval.put("name", "LENOVO ThinkPad L13"); approval.put("model", "20R4S4E200");
+        decide(approval, "approve").andExpect(status().isOk()).andExpect(jsonPath("$.name").value("LENOVO ThinkPad L13"));
+        var asset = assets.findById(intakes.findById(externalId).orElseThrow().assetId).orElseThrow();
+        assertEquals("LENOVO ThinkPad L13", asset.getName());
+        assertEquals("20R4S4E200", asset.getModel().getName());
+    }
+
     @Test void repeatIntakeDoesNotDuplicateAndChangedContentIsRejected() throws Exception {
         var body = request(); receive(body).andExpect(status().isAccepted());
         long count = intakes.count(); receive(body).andExpect(status().isAccepted()); assertEquals(count, intakes.count());

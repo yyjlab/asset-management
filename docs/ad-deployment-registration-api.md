@@ -16,7 +16,7 @@
 日常打开 asset 左侧「装机电脑审核」，刷新不会跳回设置，也可收藏 `/?view=deployment-review`。接入开关和凭据仍在「设置 → 装机平台接入」。核对配置、补充型号、选择分类后点“批准并创建资产”，或填写原因“不批准”。批准使用现有发号器，按上海日期加4位流水生成12位编号，不提前占号，不自动领用，不覆盖已有资产。未采集信息留空，基础显示驱动不作真实显卡。
 
 AD 服务凭据调用：
-- `POST /api/integrations/ad-deployment/v1/intakes`：请求与下方旧接口的 `externalRegistrationId`、`capturedAt`、`operator`、`snapshot` 相同，但禁止 `assetTag`、`name`，`categoryId` 可省略。`snapshot.model` 可为空，待审核时补齐，其余字段类型和长度沿用旧约定；上限32KiB。
+- `POST /api/integrations/ad-deployment/v1/intakes`：请求与下方旧接口的 `externalRegistrationId`、`capturedAt`、`operator`、`snapshot` 相同，但禁止 `assetTag`；`name` 为可选的真实可读名称，最多160字，例如 `LENOVO ThinkPad L13`，不替换 `snapshot.model` 中的固件型号代码。`categoryId` 可省略，`snapshot.model` 可为空，待审核时补齐；其余字段类型和长度沿用旧约定，上限32KiB。旧请求未带名称时仍兼容，不自动改写已保存的请求或已有资产名称。
 - `GET /api/integrations/ad-deployment/v1/intakes/{externalRegistrationId}`：专用凭据只能按已知标识查询处理状态，不返回整份硬件配置或待审列表。按管理员明确授权，同一 AD 接入的新有效专用凭据可继续查询或重试旧记录；不改变最初调用身份，已撤销凭据失效，仍无审批权限。
 
 收到首次送审或重复待审请求返回202：

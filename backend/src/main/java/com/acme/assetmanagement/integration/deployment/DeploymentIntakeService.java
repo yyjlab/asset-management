@@ -47,7 +47,7 @@ public class DeploymentIntakeService {
     public record AssetRef(Long id, String assetTag, Long version) {}
     public record Result(String externalRegistrationId, String result, AssetRef asset, String message) {}
     public record Entry(String externalRegistrationId, Instant receivedAt, Instant capturedAt, Operator declaredOperator,
-            String credentialId, String state, int revision, String model, String cpu, String memory, String storage,
+            String credentialId, String state, int revision, String name, String model, String cpu, String memory, String storage,
             String graphicsCard, String manufacturerSerialNumber, Long categoryId, AssetRef asset,
             Instant reviewedAt, String reviewedBy, String reviewNote) {}
     public record History(List<Entry> items, int page, int totalPages, long totalElements) {}
@@ -192,7 +192,8 @@ public class DeploymentIntakeService {
         var projection = legacy.projection(request.snapshot(), new ArrayList<>(), false);
         Review r = row.reviewJson == null ? null : json.readValue(row.reviewJson, Review.class);
         return new Entry(row.externalId, row.receivedAt, request.capturedAt(), request.operator(), row.credentialId, row.state,
-                row.revision, r == null ? request.snapshot().model() : r.model(), r == null ? request.snapshot().cpu() : r.cpu(),
+                row.revision, r == null ? (request.name() == null ? request.snapshot().model() : request.name()) : r.name(),
+                r == null ? request.snapshot().model() : r.model(), r == null ? request.snapshot().cpu() : r.cpu(),
                 r == null ? request.snapshot().memory() : r.memory(), r == null ? projection.get("storage") : r.storage(),
                 r == null ? projection.get("graphicsCard") : r.graphicsCard(),
                 r == null ? request.snapshot().manufacturerSerialNumber() : r.manufacturerSerialNumber(),

@@ -26,7 +26,7 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
         catch (RuntimeException exception) {
             throw new DeploymentApiException(HttpStatus.BAD_REQUEST, "MALFORMED_JSON", "请求必须是有效的 JSON 对象");
         }
-        if (intake) keys(root, "request", "externalRegistrationId", "categoryId", "capturedAt", "operator", "snapshot");
+        if (intake) keys(root, "request", "externalRegistrationId", "categoryId", "name", "capturedAt", "operator", "snapshot");
         else keys(root, "request", "externalRegistrationId", "assetTag", "categoryId", "name", "capturedAt", "operator", "snapshot");
         String externalId = text(root, "externalRegistrationId", 128, true);
         if (!externalId.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")) invalid("externalRegistrationId", "只允许字母、数字、点、横线、下划线和冒号");

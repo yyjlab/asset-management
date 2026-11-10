@@ -43,6 +43,7 @@ export interface DeploymentIntake {
   credentialId: string
   state: DeploymentIntakeState
   revision: number
+  name?: string | null
   model: string | null
   cpu: string | null
   memory: string | null

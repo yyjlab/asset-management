@@ -81,13 +81,13 @@ export function Sidebar({ section, canManageUsers, canReviewDeployment = false, 
         {(dingtalkLogin || canManageUsers) && <button aria-label="日志" title={collapsed ? '日志' : undefined} className={`nav-item ${section === 'logs' ? 'active' : ''}`} onClick={() => onSection('logs')}>
           <ClipboardIcon /><span>日志</span>
         </button>}
-        {canManageUsers && <button aria-label="基础资料" title={collapsed ? '基础资料' : undefined} className={`nav-item ${section === 'foundation' ? 'active' : ''}`} onClick={() => onSection('foundation')}><ClipboardIcon /><span>基础资料</span></button>}
         {canManageUsers && <button aria-label="设置" title={collapsed ? '设置' : undefined} className={`nav-item ${section === 'settings' ? 'active' : ''}`} onClick={() => onSection('settings')}>
           <SettingsIcon /><span>设置</span>
         </button>}
         {(dingtalkLogin || permissions.includes('ASSET_IMPORT') || permissions.includes('ASSET_EXPORT')) && <button aria-label="数据" title={collapsed ? '数据' : undefined} className={`nav-item ${section === 'transfer' ? 'active' : ''}`} onClick={() => onSection('transfer')}>
           <UploadIcon /><span>数据</span>
         </button>}
+        {canManageUsers && <button aria-label="基础资料" title={collapsed ? '基础资料' : undefined} className={`nav-item ${section === 'foundation' ? 'active' : ''}`} onClick={() => onSection('foundation')}><ClipboardIcon /><span>基础资料</span></button>}
         {canReviewDeployment && <button aria-label="装机电脑审核" aria-current={section === 'deploymentReview' ? 'page' : undefined} title={collapsed ? '装机电脑审核' : undefined} className={`nav-item ${section === 'deploymentReview' ? 'active' : ''}`} onClick={() => onSection('deploymentReview')}><ClipboardIcon /><span>装机电脑审核</span></button>}
       </nav>
     </aside>

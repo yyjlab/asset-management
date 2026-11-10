@@ -18,7 +18,7 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     const row = { externalRegistrationId: 'ad:test:device:1', receivedAt: '2026-11-10T08:00:00Z', capturedAt: '2026-11-10T07:50:00Z',
       declaredOperator: { id: 'agent', displayName: 'PE 自动采集' }, credentialId: 'service-1', state: 'pending_review', revision: 0,
-      model: null, cpu: 'Intel Core i5', memory: '16 GiB', storage: 'NVMe 512 GiB', graphicsCard: null,
+      name: 'LENOVO ThinkPad L13', model: '20R4S4E200', cpu: 'Intel Core i5', memory: '16 GiB', storage: 'NVMe 512 GiB', graphicsCard: null,
       manufacturerSerialNumber: 'SN-TEST', categoryId: null, asset: null, reviewedAt: null, reviewedBy: null, reviewNote: null };
     let failApproval = false, administrator = true, intakeReads = 0;
     await page.route('**/api/**', async route => {
@@ -53,6 +53,7 @@ async function main() {
     const queue = page.getByRole('region', { name: '装机电脑审核' });
     assert.equal(new URL(page.url()).searchParams.get('view'), 'deployment-review');
     assert.equal(await page.locator('.sidebar nav .nav-item').last().getAttribute('aria-label'), '装机电脑审核');
+    assert.equal(await page.locator('.sidebar nav .nav-item').nth(-2).getAttribute('aria-label'), '基础资料');
     await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
     await page.reload();
     await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
@@ -67,6 +68,8 @@ async function main() {
     await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
     await queue.getByRole('button', { name: '核对 / 审核' }).click();
     const dialog = page.getByRole('dialog');
+    assert.equal(await dialog.getByLabel('资产名称', { exact: true }).inputValue(), 'LENOVO ThinkPad L13');
+    assert.equal(await dialog.getByLabel('设备型号 *', { exact: true }).inputValue(), '20R4S4E200');
     await dialog.getByLabel('资产名称', { exact: true }).fill('测试笔记本');
     await dialog.getByLabel('设备型号 *', { exact: true }).fill('ThinkPad T14');
     await dialog.getByLabel('资产分类', { exact: true }).selectOption('12');

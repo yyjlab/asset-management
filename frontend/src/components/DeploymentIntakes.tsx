@@ -13,7 +13,7 @@ const fields = [
 ] as const
 type Draft = Record<(typeof fields)[number][0], string> & { name: string; categoryId: string; note: string }
 const draftOf = (row: DeploymentIntake): Draft => ({
-  name: row.model || '', model: row.model || '', cpu: row.cpu || '', memory: row.memory || '',
+  name: row.name ?? row.model ?? '', model: row.model || '', cpu: row.cpu || '', memory: row.memory || '',
   storage: row.storage || '', graphicsCard: row.graphicsCard || '', manufacturerSerialNumber: row.manufacturerSerialNumber || '',
   categoryId: row.categoryId ? String(row.categoryId) : '', note: '',
 })
@@ -97,7 +97,7 @@ export function DeploymentIntakes({ onNotify }: Props) {
     {!error && !loading && <>
       <div className="deployment-table"><table><thead><tr><th>电脑 / SN</th><th>CPU / 内存</th><th>硬盘 / 显卡</th><th>收到时间</th><th>结果</th><th>操作</th></tr></thead><tbody>
         {data?.items.map(row => <tr key={row.externalRegistrationId}>
-          <td><strong>{row.model || '型号待补充'}</strong><small>{row.manufacturerSerialNumber || 'SN 未采集'}</small></td>
+          <td><strong>{row.name || row.model || '名称待补充'}</strong>{row.name && row.model && row.name !== row.model && <small>{row.model}</small>}<small>{row.manufacturerSerialNumber || 'SN 未采集'}</small></td>
           <td>{row.cpu || 'CPU 未采集'}<small>{row.memory || '内存未采集'}</small></td>
           <td>{row.storage || '硬盘未采集'}<small>{row.graphicsCard || '显卡未采集'}</small></td>
           <td>{date(row.receivedAt)}</td><td><span className={'deployment-intake-state state-' + row.state}>{labels[row.state]}</span>{row.asset && <small>{row.asset.assetTag}</small>}</td>
@@ -124,7 +124,7 @@ export function DeploymentIntakes({ onNotify }: Props) {
               </div></>}
             <label className="deployment-review-note">{rejecting ? '不批准原因 *' : '审核备注'}<textarea autoFocus={rejecting} required={rejecting} maxLength={500} rows={3} value={draft.note} disabled={busy} onChange={event => update('note', event.target.value)} /></label>
           </> : <>
-            <dl className="deployment-review-result"><dt>资产编号</dt><dd>{selected.asset?.assetTag || '未创建资产'}</dd>
+            <dl className="deployment-review-result"><dt>资产编号</dt><dd>{selected.asset?.assetTag || '未创建资产'}</dd><dt>资产名称</dt><dd>{selected.name || selected.model || '未记录'}</dd>
               {fields.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{selected[key] || '未记录'}</dd></div>)}
               <dt>审核人 / 时间</dt><dd>{selected.reviewedBy || '未记录'} / {date(selected.reviewedAt)}</dd><dt>审核备注</dt><dd>{selected.reviewNote || '无'}</dd></dl>
           </>}
