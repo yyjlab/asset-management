@@ -22,4 +22,5 @@ public class DeploymentIntake {
     Instant reviewedAt;
     @Column(length = 120) String reviewedBy;
     @Column(length = 500) String reviewNote;
+    @Column(length = 32) String source;
 }

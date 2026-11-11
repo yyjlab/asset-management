@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { CheckIcon, SaveIcon, SettingsIcon } from './Icons'
 import { DeploymentIntegration } from './DeploymentIntegration'
+import { WindowsCollection } from './WindowsCollection'
 
 interface Props {
   onNotify: (text: string, kind?: 'ok' | 'error') => void
 }
 
 export function SystemSettings({ onNotify }: Props) {
-  const [tab, setTab] = useState<'qr' | 'deployment'>('qr')
+  const [tab, setTab] = useState<'qr' | 'deployment' | 'windows'>('qr')
   const [value, setValue] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -37,8 +38,9 @@ export function SystemSettings({ onNotify }: Props) {
     <nav className="deployment-tabs" aria-label="系统设置分类">
       <button className={`button ${tab === 'qr' ? 'primary' : 'ghost'}`} onClick={() => setTab('qr')}>二维码设置</button>
       <button className={`button ${tab === 'deployment' ? 'primary' : 'ghost'}`} onClick={() => setTab('deployment')}>装机平台接入</button>
+      <button className={`button ${tab === 'windows' ? 'primary' : 'ghost'}`} onClick={() => setTab('windows')}>Windows 采集</button>
     </nav>
-    {tab === 'deployment' ? <DeploymentIntegration onNotify={onNotify} /> : loading
+    {tab === 'windows' ? <WindowsCollection onNotify={onNotify} /> : tab === 'deployment' ? <DeploymentIntegration onNotify={onNotify} /> : loading
       ? <div className="settings-loading"><span className="spinner" />正在读取设置…</div>
       : <div className="settings-shell"><article className="settings-card">
       <header className="settings-head"><div className="settings-icon"><SettingsIcon /></div><div><h2>系统设置</h2><p>管理二维码访问地址</p></div></header>

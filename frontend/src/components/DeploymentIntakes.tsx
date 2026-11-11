@@ -4,21 +4,22 @@ import { CloseIcon } from './Icons'
 import './DeploymentIntegration.css'
 import type { DeploymentApproval, DeploymentIntake, DeploymentIntakePage, DeploymentIntakeState } from '../types/deployment'
 
-interface Props { onNotify: (text: string, kind?: 'ok' | 'error') => void }
+interface Props { onNotify: (text: string, kind?: 'ok' | 'error') => void; onAssetsChanged?: () => Promise<void> | void }
 const date = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '未记录'
 const labels: Record<DeploymentIntakeState, string> = { pending_review: '待审核', approved: '已批准', rejected: '未批准' }
 const fields = [
   ['model', '设备型号', 120], ['cpu', 'CPU', 200], ['memory', '内存', 200],
   ['storage', '硬盘', 200], ['graphicsCard', '显卡', 200], ['manufacturerSerialNumber', 'SN', 160],
 ] as const
-type Draft = Record<(typeof fields)[number][0], string> & { name: string; categoryId: string; note: string }
+type Draft = Record<(typeof fields)[number][0], string> & { name: string; categoryId: string; note: string; assignedTo: string; ownershipDepartment: string; domainJoinStatus: 'JOINED' | 'NOT_JOINED' | 'UNKNOWN' }
 const draftOf = (row: DeploymentIntake): Draft => ({
   name: row.name ?? row.model ?? '', model: row.model || '', cpu: row.cpu || '', memory: row.memory || '',
   storage: row.storage || '', graphicsCard: row.graphicsCard || '集成显卡', manufacturerSerialNumber: row.manufacturerSerialNumber || '',
   categoryId: row.categoryId ? String(row.categoryId) : '', note: '',
+  assignedTo: row.assignedTo || '', ownershipDepartment: row.ownershipDepartment || '', domainJoinStatus: row.domainJoinStatus || 'UNKNOWN',
 })
 
-export function DeploymentIntakes({ onNotify }: Props) {
+export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
   const [state, setState] = useState<DeploymentIntakeState>('pending_review')
   const [page, setPage] = useState(0)
   const [data, setData] = useState<DeploymentIntakePage | null>(null)
@@ -75,12 +76,15 @@ export function DeploymentIntakes({ onNotify }: Props) {
           cpu: draft.cpu.trim() || null, memory: draft.memory.trim() || null, storage: draft.storage.trim() || null,
           graphicsCard: draft.graphicsCard.trim() || null, manufacturerSerialNumber: draft.manufacturerSerialNumber.trim() || null,
           note: draft.note.trim() || null,
+          assignedTo: draft.assignedTo.trim() || null, ownershipDepartment: draft.ownershipDepartment.trim() || null,
+          domainJoinStatus: draft.domainJoinStatus,
         }
         if (resubmitting) {
           await api.resubmitDeploymentIntake(selected.externalRegistrationId, payload)
           onNotify('已重新送审，尚未创建资产'); setState('pending_review'); setPage(0)
         } else {
           const result = await api.approveDeploymentIntake(selected.externalRegistrationId, payload)
+          await onAssetsChanged?.()
           onNotify('已批准并创建资产：' + (result.asset?.assetTag || ''))
         }
       }
@@ -117,22 +121,26 @@ export function DeploymentIntakes({ onNotify }: Props) {
     </>}
     {selected && draft && <div className="modal-backdrop"><section className="deployment-dialog deployment-review-dialog" role="dialog" aria-modal="true" aria-labelledby="deployment-review-title"
       onKeyDown={event => { if (event.key === 'Escape') close() }}>
-      <header className="deployment-dialog-head"><div><h3 id="deployment-review-title">{resubmitting ? '修改并重新送审' : selected.state === 'pending_review' ? '核对装机电脑' : labels[selected.state]}</h3><p>来源：AD 装机平台 · 采集于 {date(selected.capturedAt)}</p></div>
+      <header className="deployment-dialog-head"><div><h3 id="deployment-review-title">{resubmitting ? '修改并重新送审' : selected.state === 'pending_review' ? '核对装机电脑' : labels[selected.state]}</h3><p>来源：{selected.source || 'AD 装机平台'} · 采集于 {date(selected.capturedAt)}</p></div>
         <button className="deployment-dialog-close" title="关闭" aria-label="关闭审核" disabled={busy} onClick={close}><CloseIcon /></button></header>
       <form onSubmit={event => void decide(event)}>
         <div className="deployment-dialog-body">
           {selected.state === 'pending_review' || resubmitting ? <>
             {selected.reviewedAt && selected.reviewNote && <p>上次不批准：{selected.reviewNote} · {selected.reviewedBy} / {date(selected.reviewedAt)}</p>}
-            {!rejecting && <><div className="deployment-review-defaults">编号批准后生成 · 微丰启 / 公司 · 当前可用 · 无领用人</div>
+            {!rejecting && <><div className="deployment-review-defaults">编号批准后生成 · 微丰启 / 公司 · {draft.assignedTo.trim() ? '已经领出' : '当前可用'}</div>
               <div className="deployment-review-fields">
                 <label>资产名称<input autoFocus required maxLength={160} value={draft.name} disabled={busy} onChange={event => update('name', event.target.value)} /></label>
                 <label>资产分类<select aria-label="资产分类" required value={draft.categoryId} disabled={busy} onChange={event => update('categoryId', event.target.value)}><option value="">选择电脑分类</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
                 {fields.map(([key, label, max]) => <label key={key}>{label}{key === 'model' ? ' *' : ''}<input required={key === 'model'} maxLength={max} value={draft[key]} disabled={busy} onChange={event => update(key, event.target.value)} />{key === 'graphicsCard' && !selected.graphicsCard && <small>未采集，默认填写集成显卡</small>}</label>)}
+                <label>领用人<input maxLength={120} value={draft.assignedTo} disabled={busy} onChange={event => update('assignedTo', event.target.value)} placeholder="选填" /></label>
+                <label>部门<input maxLength={120} value={draft.ownershipDepartment} disabled={busy} onChange={event => update('ownershipDepartment', event.target.value)} placeholder="选填" /></label>
+                <label>入域状态<select value={draft.domainJoinStatus} disabled={busy} onChange={event => update('domainJoinStatus', event.target.value as Draft['domainJoinStatus'])}><option value="UNKNOWN">待确认</option><option value="JOINED">已入域</option><option value="NOT_JOINED">未入域</option></select></label>
               </div></>}
             <label className="deployment-review-note">{rejecting ? '不批准原因 *' : '审核备注'}<textarea autoFocus={rejecting} required={rejecting} maxLength={500} rows={3} value={draft.note} disabled={busy} onChange={event => update('note', event.target.value)} /></label>
           </> : <>
             <dl className="deployment-review-result"><dt>资产编号</dt><dd>{selected.asset?.assetTag || '未创建资产'}</dd><dt>资产名称</dt><dd>{selected.name || selected.model || '未记录'}</dd>
               {fields.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{selected[key] || '未记录'}</dd></div>)}
+              <dt>领用人 / 部门</dt><dd>{selected.assignedTo || '未领用'} / {selected.ownershipDepartment || '未指定'}</dd><dt>入域状态</dt><dd>{({JOINED:'已入域',NOT_JOINED:'未入域',UNKNOWN:'待确认'})[selected.domainJoinStatus || 'UNKNOWN']}</dd>
               <dt>审核人 / 时间</dt><dd>{selected.reviewedBy || '未记录'} / {date(selected.reviewedAt)}</dd><dt>审核备注</dt><dd>{selected.reviewNote || '无'}</dd></dl>
           </>}
           {formError && <p role="alert" className="deployment-error">{formError}</p>}

@@ -36,6 +36,10 @@ export interface DeploymentHistory {
 
 export type DeploymentIntakeState = 'pending_review' | 'approved' | 'rejected'
 export interface DeploymentIntake {
+  source?: string
+  assignedTo?: string | null
+  ownershipDepartment?: string | null
+  domainJoinStatus?: 'JOINED' | 'NOT_JOINED' | 'UNKNOWN' | null
   externalRegistrationId: string
   receivedAt: string
   capturedAt: string
@@ -63,6 +67,9 @@ export interface DeploymentIntakePage {
   totalElements: number
 }
 export interface DeploymentApproval {
+  assignedTo?: string | null
+  ownershipDepartment?: string | null
+  domainJoinStatus?: 'JOINED' | 'NOT_JOINED' | 'UNKNOWN' | null
   revision: number
   categoryId: number
   name: string

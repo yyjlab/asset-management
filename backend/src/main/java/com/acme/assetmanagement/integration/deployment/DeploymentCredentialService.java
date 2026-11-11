@@ -16,8 +16,9 @@ import java.util.*;
 public class DeploymentCredentialService {
     private final DeploymentCredentialRepository credentials;
     private final AuditLogService audit;
-    public DeploymentCredentialService(DeploymentCredentialRepository credentials, AuditLogService audit) {
-        this.credentials = credentials; this.audit = audit;
+    private final WindowsCollectionPackageRepository windows;
+    public DeploymentCredentialService(DeploymentCredentialRepository credentials, AuditLogService audit, WindowsCollectionPackageRepository windows) {
+        this.credentials = credentials; this.audit = audit; this.windows = windows;
     }
     public record Info(String id, String name, Instant createdAt, Instant expiresAt, Instant revokedAt, boolean active) {}
     public record Issued(Info credential, String token) {
@@ -36,7 +37,12 @@ public class DeploymentCredentialService {
         return new Issued(info(row), token);
     }
     @Transactional(readOnly = true)
-    public List<Info> list() { return credentials.findAllByOrderByCreatedAtDesc().stream().map(this::info).toList(); }
+    public List<Info> list() { return list(false); }
+    @Transactional(readOnly = true)
+    public List<Info> list(boolean windowsOnly) {
+        var ids = windows.findAll().stream().map(v -> v.id).collect(java.util.stream.Collectors.toSet());
+        return credentials.findAllByOrderByCreatedAtDesc().stream().filter(v -> ids.contains(v.id) == windowsOnly).map(this::info).toList();
+    }
     public Info revoke(String id) {
         var row = credentials.locked(id).orElseThrow(() -> new DeploymentApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "凭据不存在"));
         if (row.revokedAt == null) {

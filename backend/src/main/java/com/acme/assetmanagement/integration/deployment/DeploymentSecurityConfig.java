@@ -21,18 +21,19 @@ public class DeploymentSecurityConfig {
     public static final String PATH = "/api/integrations/ad-deployment/v1/registrations";
     public static final String INTAKES = "/api/integrations/ad-deployment/v1/intakes";
     public static final String CONNECTION = "/api/integrations/ad-deployment/v1/connection";
+    public static final String WINDOWS = "/api/integrations/ad-deployment/v1/windows-intakes";
     static final String BODY = "adDeploymentRegistrationBody";
     static final int MAX_BYTES = 32768;
     @Bean @Order(1)
     SecurityFilterChain deploymentSecurity(HttpSecurity http, DeploymentCredentialService credentials,
-                                          DeploymentAccessService properties) throws Exception {
+                                          DeploymentAccessService properties, WindowsCollectionPackageRepository windows) throws Exception {
         http.securityMatcher("/api/integrations/ad-deployment/**")
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .securityContext(context -> context.securityContextRepository(new org.springframework.security.web.context.NullSecurityContextRepository()))
                 .requestCache(cache -> cache.disable()).csrf(csrf -> csrf.disable())
                 .formLogin(form -> form.disable()).httpBasic(basic -> basic.disable()).logout(logout -> logout.disable())
-                .addFilterBefore(new TokenFilter(credentials, properties), AnonymousAuthenticationFilter.class)
-                .authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.POST, PATH, INTAKES).hasAuthority(DeploymentPrincipal.AUTHORITY)
+                .addFilterBefore(new TokenFilter(credentials, properties, windows), AnonymousAuthenticationFilter.class)
+                .authorizeHttpRequests(auth -> auth.requestMatchers(HttpMethod.POST, PATH, INTAKES, WINDOWS).hasAuthority(DeploymentPrincipal.AUTHORITY)
                         .requestMatchers(HttpMethod.GET, INTAKES + "/*").hasAuthority(DeploymentPrincipal.AUTHORITY)
                         .requestMatchers(HttpMethod.GET, CONNECTION).hasAuthority(DeploymentPrincipal.AUTHORITY)
                         .anyRequest().denyAll())
@@ -49,8 +50,9 @@ public class DeploymentSecurityConfig {
     static final class TokenFilter extends OncePerRequestFilter {
         private final DeploymentCredentialService credentials;
         private final DeploymentAccessService properties;
-        TokenFilter(DeploymentCredentialService credentials, DeploymentAccessService properties) {
-            this.credentials = credentials; this.properties = properties;
+        private final WindowsCollectionPackageRepository windows;
+        TokenFilter(DeploymentCredentialService credentials, DeploymentAccessService properties, WindowsCollectionPackageRepository windows) {
+            this.credentials = credentials; this.properties = properties; this.windows = windows;
         }
         @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
@@ -66,7 +68,11 @@ public class DeploymentSecurityConfig {
                     List.of(new SimpleGrantedAuthority(DeploymentPrincipal.AUTHORITY))));
             SecurityContextHolder.setContext(context);
             String path = request.getRequestURI().substring(request.getContextPath().length());
-            if ("POST".equals(request.getMethod()) && (PATH.equals(path) || INTAKES.equals(path))) {
+            boolean collection = windows.existsById(principal.credentialId());
+            if (collection != WINDOWS.equals(path) || collection && !"POST".equals(request.getMethod())) {
+                error(response, 403, "FORBIDDEN", "采集包凭据仅允许提交 Windows 采集资料"); return;
+            }
+            if ("POST".equals(request.getMethod()) && (PATH.equals(path) || INTAKES.equals(path) || WINDOWS.equals(path))) {
                 if (request.getContentType() == null || !request.getContentType().split(";", 2)[0].trim().equalsIgnoreCase("application/json")) {
                     error(response, 415, "UNSUPPORTED_MEDIA_TYPE", "仅支持 application/json"); return;
                 }

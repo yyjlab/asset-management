@@ -58,8 +58,8 @@ async function mutateForm<T>(path: string, form: FormData, method: 'POST' | 'PUT
   return response.json()
 }
 
-async function download(path: string, fallbackFilename: string) {
-  const response = await fetch(path, { credentials: 'include' })
+async function download(path: string, fallbackFilename: string, options?: RequestInit) {
+  const response = await fetch(path, { ...options, credentials: 'include' })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     throw new ApiError(body?.message || `下载失败（${response.status}）`, response.status)
@@ -83,6 +83,14 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  listWindowsCollectionPackages: () => request<DeploymentCredential[]>('/api/settings/windows-collection/packages'),
+  revokeWindowsCollectionPackage: (id: string) => mutate<DeploymentCredential>(`/api/settings/windows-collection/packages/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
+  downloadWindowsCollection: async (payload: { name: string; baseUrl: string; days: number }) => {
+    const token = await csrfToken()
+    await download('/api/settings/windows-collection/packages', 'windows-collection.zip', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', [token.headerName]: token.token }, body: JSON.stringify(payload),
+    })
+  },
   saveAssetBundle: (payload: AssetBundlePayload) => mutate<AssetBundleResult>('/api/assets/bundles', { method: 'POST', body: JSON.stringify(payload) }),
   getAssetBundle: (requestKey: string) => request<AssetBundleResult>(`/api/assets/bundles/${encodeURIComponent(requestKey)}`),
   textOptions: (type: Exclude<ManagedLookupType, 'MODEL'>) => request<ModelOption[]>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}`),

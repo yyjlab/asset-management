@@ -37,6 +37,8 @@ class DeploymentIntakeApiTest {
     @Autowired UserRepository users;
     @Autowired JdbcTemplate jdbc;
     @Autowired com.acme.assetmanagement.audit.AuditLogRepository auditLogs;
+    @Autowired WindowsCollectionPackageRepository windowsPackages;
+    @Autowired DeploymentCredentialRepository credentialRows;
     String token, externalId;
     Long categoryId;
     AccountPrincipal admin;
@@ -261,5 +263,84 @@ class DeploymentIntakeApiTest {
             for (var task : tasks) assertEquals(200, task.get(30, TimeUnit.SECONDS));
         }
         assertEquals(before + 1, assets.count());
+    }
+    @Test void adApprovalAcceptsOptionalCustodianDepartmentAndDomainWithoutChangingDefaultsWhenOmitted() throws Exception {
+        receive(request()).andExpect(status().isAccepted());
+        option(LookupType.STATUS, "已经领出");
+        var approval=review(); approval.put("assignedTo","张三"); approval.put("ownershipDepartment","运营部"); approval.put("domainJoinStatus","JOINED");
+        decide(approval,"approve").andExpect(status().isOk()).andExpect(jsonPath("$.assignedTo").value("张三"))
+                .andExpect(jsonPath("$.ownershipDepartment").value("运营部")).andExpect(jsonPath("$.domainJoinStatus").value("JOINED"));
+        var asset=assets.findById(intakes.findById(externalId).orElseThrow().assetId).orElseThrow();
+        assertTrue(asset.isCheckedOut()); assertEquals("张三",asset.getAssignedTo()); assertNull(asset.getAssignedUserId());
+        assertEquals("运营部",asset.getOwnershipDepartment()); assertEquals("已经领出",asset.getStatus().getName());
+        assertEquals(DomainJoinStatus.JOINED,asset.getDomainJoinStatus());
+    }
+    @Test void optionalApprovalFieldsHaveIndependentValidation() throws Exception {
+        receive(request()).andExpect(status().isAccepted());
+        for(var field:List.of("assignedTo","ownershipDepartment")){
+            var approval=review(); approval.put(field,"x".repeat(121)); decide(approval,"approve").andExpect(status().isUnprocessableEntity());
+        }
+        var approval=review(); approval.put("domainJoinStatus","WRONG"); decide(approval,"approve").andExpect(status().isUnprocessableEntity());
+        approval=review(); approval.put("assignedTo","  "); approval.put("ownershipDepartment",""); approval.put("domainJoinStatus","NOT_JOINED");
+        decide(approval,"approve").andExpect(status().isOk());
+        var asset=assets.findById(intakes.findById(externalId).orElseThrow().assetId).orElseThrow();
+        assertFalse(asset.isCheckedOut()); assertNull(asset.getAssignedTo()); assertEquals("当前可用",asset.getStatus().getName());
+        assertEquals(DomainJoinStatus.NOT_JOINED,asset.getDomainJoinStatus());
+    }
+    Map<String,Object> windowsPackage() throws Exception {
+        byte[] bytes=mvc.perform(post("/api/settings/windows-collection/packages").secure(true).with(user(admin)).with(csrf())
+            .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(Map.of("name","仓库采集","days",7,"baseUrl","https://asset.test"))))
+            .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store")).andReturn().getResponse().getContentAsByteArray();
+        var files=new HashMap<String,byte[]>();
+        try(var zip=new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(bytes),java.nio.charset.StandardCharsets.UTF_8)){
+            java.util.zip.ZipEntry entry; while((entry=zip.getNextEntry())!=null)files.put(entry.getName(),zip.readAllBytes());
+        }
+        assertEquals(Set.of("Collect.ps1","一键采集.cmd","config.json"),files.keySet());
+        assertEquals((byte)0xef,files.get("Collect.ps1")[0]);
+        var config=json.readValue(files.get("config.json"),Map.class);
+        assertEquals("https://asset.test"+DeploymentSecurityConfig.WINDOWS,config.get("endpoint"));
+        return new LinkedHashMap<>(config);
+    }
+    Map<String,Object> windowsBody(String hardware) {
+        return Map.of("hardwareUuid",hardware,"name","LENOVO ThinkPad L13","capturedAt","2026-01-01T00:00:00Z","snapshot",request().get("snapshot"));
+    }
+    ResultActions collect(String credential, Map<String,Object> value) throws Exception {
+        return mvc.perform(post(DeploymentSecurityConfig.WINDOWS).secure(true).header("Authorization","Bearer "+credential)
+            .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(value)));
+    }
+    @Test void windowsPackagesSubmitOnlyAndRepeatHardwareDoesNotCreateDuplicateOrOverwrite() throws Exception {
+        var config=windowsPackage(); String collector=(String)config.get("token");
+        String hardware=UUID.randomUUID().toString(); long before=assets.count();
+        var response=collect(collector,windowsBody(hardware)).andExpect(status().isAccepted()).andReturn().getResponse();
+        externalId=json.readTree(response.getContentAsByteArray()).get("externalRegistrationId").asText();
+        String original=intakes.findById(externalId).orElseThrow().requestJson;
+        var changed=new LinkedHashMap<>(windowsBody(hardware)); changed.put("name","Changed later");
+        collect(collector,changed).andExpect(status().isAccepted());
+        assertEquals(original,intakes.findById(externalId).orElseThrow().requestJson); assertEquals(before,assets.count());
+        assertEquals("Windows一键采集",intakes.findById(externalId).orElseThrow().source);
+        mvc.perform(get(DeploymentSecurityConfig.INTAKES+"/"+externalId).secure(true).header("Authorization","Bearer "+collector)).andExpect(status().isForbidden());
+        mvc.perform(post(DeploymentSecurityConfig.INTAKES).secure(true).header("Authorization","Bearer "+collector)
+            .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(request()))).andExpect(status().isForbidden());
+        collect(token,windowsBody(UUID.randomUUID().toString())).andExpect(status().isForbidden());
+        decide(review(),"approve").andExpect(status().isOk());
+        collect(collector,changed).andExpect(status().isOk()).andExpect(jsonPath("$.result").value("approved"));
+        assertEquals(before+1,assets.count());
+        String id=collector.substring(4,40);
+        mvc.perform(post("/api/settings/windows-collection/packages/"+id+"/revoke").with(user(admin)).with(csrf())).andExpect(status().isOk());
+        collect(collector,windowsBody(hardware)).andExpect(status().isUnauthorized());
+        assertEquals(before+1,assets.count());
+    }
+    @Test void collectionPackagePermissionsExpiryAndBodyLimitsAreEnforced() throws Exception {
+        mvc.perform(get("/api/settings/windows-collection/packages").with(user("viewer").roles("USER"))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/windows-collection/packages").with(user(admin)).contentType(MediaType.APPLICATION_JSON).content("{}"))
+            .andExpect(status().isForbidden());
+        var config=windowsPackage(); String collector=(String)config.get("token");
+        collect(collector,windowsBody("00000000-0000-0000-0000-000000000000")).andExpect(status().isUnprocessableEntity());
+        mvc.perform(post(DeploymentSecurityConfig.WINDOWS).secure(true).header("Authorization","Bearer "+collector)
+            .contentType(MediaType.APPLICATION_JSON).content("x".repeat(32769))).andExpect(status().isPayloadTooLarge());
+        var row=credentialRows.findById(collector.substring(4,40)).orElseThrow(); row.expiresAt=Instant.now().minusSeconds(1); credentialRows.saveAndFlush(row);
+        collect(collector,windowsBody(UUID.randomUUID().toString())).andExpect(status().isUnauthorized());
+        assertFalse(credentials.list().stream().anyMatch(v->v.id().equals(row.id)));
+        assertTrue(credentials.list(true).stream().anyMatch(v->v.id().equals(row.id)));
     }
 }
