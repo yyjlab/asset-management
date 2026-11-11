@@ -98,6 +98,12 @@ async function main() {
         assert.ok(geometry.scrollWidth <= geometry.width, 'review content must not overflow horizontally');
         assert.ok(geometry.rect.height <= size.height, 'review dialog must stay in viewport');
         assert.ok(geometry.rect.left >= 0 && geometry.rect.right <= size.width, 'review dialog must fit viewport width');
+        if (size.width > 600) {
+          const graphics = await dialog.getByLabel(/显卡/).boundingBox();
+          const serial = await dialog.getByLabel('SN', { exact: true }).boundingBox();
+          assert.ok(Math.abs(graphics.y - serial.y) <= 1, 'SN and graphics inputs must align despite the graphics helper text');
+          assert.ok(Math.abs(graphics.height - serial.height) <= 1, 'SN and graphics inputs must have equal height');
+        }
       }
     }
     failApproval = true;
