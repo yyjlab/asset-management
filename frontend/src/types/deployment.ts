@@ -36,6 +36,8 @@ export interface DeploymentHistory {
 
 export type DeploymentIntakeState = 'pending_review' | 'approved' | 'rejected'
 export interface DeploymentIntake {
+  reportedUserName?: string | null
+  reportedDepartment?: string | null
   source?: string
   assignedTo?: string | null
   ownershipDepartment?: string | null

@@ -52,7 +52,7 @@ public class DeploymentIntakeService {
             String credentialId, String state, int revision, String name, String model, String cpu, String memory, String storage,
             String graphicsCard, String manufacturerSerialNumber, Long categoryId, AssetRef asset,
             Instant reviewedAt, String reviewedBy, String reviewNote, String assignedTo, String ownershipDepartment,
-            String domainJoinStatus, String source) {}
+            String domainJoinStatus, String source, String reportedUserName, String reportedDepartment) {}
     public record History(List<Entry> items, int page, int totalPages, long totalElements) {}
     public record Options(List<DeploymentRegistrationService.CategoryChoice> categories) {}
     public record Review(int revision, Long categoryId, String name, String model, String cpu, String memory,
@@ -60,12 +60,12 @@ public class DeploymentIntakeService {
             String assignedTo, String ownershipDepartment, String domainJoinStatus) {}
 
     public Result receive(byte[] body) {
-        return receive(body, false);
+        return receive(body, false, null, null);
     }
-    public Result receiveWindows(byte[] body) {
-        return receive(body, true);
+    public Result receiveWindows(byte[] body, String reportedUserName, String reportedDepartment) {
+        return receive(body, true, reportedUserName, reportedDepartment);
     }
-    private Result receive(byte[] body, boolean collection) {
+    private Result receive(byte[] body, boolean collection, String reportedUserName, String reportedDepartment) {
         var request = parseIntake(body, json);
         var principal = principal();
         if (windows.existsById(principal.credentialId()) != collection)
@@ -82,12 +82,22 @@ public class DeploymentIntakeService {
                             throw error(HttpStatus.CONFLICT, "SOURCE_CONFLICT", "该登记标识已由其他来源使用");
                         if (!collection && !previous.fingerprint.equals(fingerprint))
                             throw error(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "相同标识不能携带不同内容");
+                        if (collection && "pending_review".equals(previous.state) && reportedUserName != null
+                                && (!java.util.Objects.equals(previous.reportedUserName, reportedUserName)
+                                || !java.util.Objects.equals(previous.reportedDepartment, reportedDepartment))) {
+                            previous.reportedUserName = reportedUserName;
+                            previous.reportedDepartment = reportedDepartment;
+                            previous.revision++;
+                            intakes.saveAndFlush(previous);
+                            audit(previous, "collector_details_updated", request);
+                        }
                         return result(previous);
                     }
                     var row = new DeploymentIntake(); row.externalId = request.externalRegistrationId();
                     row.credentialId = principal.credentialId(); row.fingerprint = fingerprint; row.receivedAt = Instant.now();
                     row.requestJson = new String(body, StandardCharsets.UTF_8);
                     row.source = collection ? "Windows一键采集" : "AD装机平台";
+                    row.reportedUserName = reportedUserName; row.reportedDepartment = reportedDepartment;
                     intakes.saveAndFlush(row);
                     audit(row, "pending_review", request);
                     return result(row);
@@ -248,13 +258,14 @@ public class DeploymentIntakeService {
                 r == null ? request.snapshot().manufacturerSerialNumber() : r.manufacturerSerialNumber(),
                 r == null ? request.categoryId() : r.categoryId(), asset(row), row.reviewedAt, row.reviewedBy, row.reviewNote,
                 r == null ? null : r.assignedTo(), r == null ? null : r.ownershipDepartment(), r == null ? null : r.domainJoinStatus(),
-                row.source == null ? "AD装机平台" : row.source);
+                row.source == null ? "AD装机平台" : row.source, row.reportedUserName, row.reportedDepartment);
     }
     private void audit(DeploymentIntake row, String state, DeploymentRegistrationRequest request) {
         var changes = new LinkedHashMap<String, Object>();
         String source = row.source == null ? "AD装机平台" : row.source;
         changes.put("source", source); changes.put("credentialId", row.credentialId);
         changes.put("externalRegistrationId", row.externalId); changes.put("declaredOperator", request.operator());
+        changes.put("reportedUserName", row.reportedUserName); changes.put("reportedDepartment", row.reportedDepartment);
         changes.put("result", state); changes.put("reviewedBy", row.reviewedBy); changes.put("reviewNote", row.reviewNote);
         if (state.equals("resubmitted")) {
             changes.put("previousReviewedAt", row.reviewedAt);

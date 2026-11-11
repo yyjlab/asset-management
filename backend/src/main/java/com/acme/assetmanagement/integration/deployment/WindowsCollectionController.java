@@ -52,7 +52,7 @@ public class WindowsCollectionController {
             try (var script = new ClassPathResource("windows-collection/Collect.ps1").getInputStream()) { zip.write(script.readAllBytes()); }
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("一键采集.cmd"));
-            zip.write("@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%~dp0Collect.ps1\"\r\npause\r\n".getBytes(StandardCharsets.US_ASCII)); zip.closeEntry();
+            zip.write("@echo off\r\npowershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File \"%~dp0Collect.ps1\"\r\npause\r\n".getBytes(StandardCharsets.US_ASCII)); zip.closeEntry();
             zip.putNextEntry(new ZipEntry("config.json"));
             zip.write(json.writeValueAsBytes(Map.of("endpoint", url.toString().replaceAll("/$", "")+DeploymentSecurityConfig.WINDOWS,
                     "token", issued.token()))); zip.closeEntry();
@@ -72,7 +72,9 @@ public class WindowsCollectionController {
         Map<?,?> input;
         try { input=object(json.readerFor(Object.class).with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).readValue(body),"request"); }
         catch (RuntimeException e) { throw failure("采集资料须为有效 JSON 对象"); }
-        keys(input,"request","hardwareUuid","name","capturedAt","snapshot");
+        keys(input,"request","hardwareUuid","name","capturedAt","snapshot","reportedUserName","reportedDepartment");
+        String reportedUserName=text(input,"reportedUserName",120,false);
+        String reportedDepartment=text(input,"reportedDepartment",120,false);
         String hardware=text(input,"hardwareUuid",36,true);
         UUID uuid;
         try { uuid=UUID.fromString(hardware); } catch (RuntimeException e) { throw failure("硬件 UUID 无效"); }
@@ -82,7 +84,7 @@ public class WindowsCollectionController {
         value.put("externalRegistrationId","windows:"+uuid); value.put("name",input.get("name"));
         value.put("capturedAt",input.get("capturedAt")); value.put("snapshot",input.get("snapshot"));
         value.put("operator",Map.of("id","windows-collector","displayName","Windows一键采集"));
-        var result=intakes.receiveWindows(json.writeValueAsBytes(value));
+        var result=intakes.receiveWindows(json.writeValueAsBytes(value), reportedUserName, reportedDepartment);
         return ResponseEntity.status("pending_review".equals(result.result())?202:200).cacheControl(CacheControl.noStore()).body(result);
     }
     private DeploymentApiException failure(String message) {

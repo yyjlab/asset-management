@@ -1,3 +1,4 @@
+param([switch]$TestDialog)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../backend/src/main/resources/windows-collection/Collect.ps1" -LibraryOnly
 function Get-CimInstance {
@@ -31,3 +32,34 @@ function Invoke-RestMethod {
 $null=Send-CollectionInventory @{endpoint='http://asset.example/api/integrations/ad-deployment/v1/windows-intakes';token='test-only'} ($inventory|ConvertTo-Json -Depth 8)
 if($script:sent -ne 1){throw 'Request count incorrect'}
 Write-Host 'PASS Windows collector: readable name, physical disks, GPU filtering, UTF-8 submission and no redirects (mocked).'
+if($TestDialog){
+    Add-Type -AssemblyName System.Windows.Forms
+    $timer=New-Object System.Windows.Forms.Timer
+    $timer.Interval=150
+    $timer.Add_Tick({
+        $form=[Windows.Forms.Application]::OpenForms | Where-Object Text -eq '电脑资产登记' | Select-Object -First 1
+        if(!$form){return}
+        $layout=$form.Controls[0]
+        $inputs=@($layout.Controls | Where-Object {$_ -is [Windows.Forms.TextBox]})
+        $inputs[0].Text='测试使用人'; $inputs[1].Text='测试部门'
+        $buttons=$layout.Controls | Where-Object {$_ -is [Windows.Forms.FlowLayoutPanel]}
+        ($buttons.Controls | Where-Object Text -eq '确认并提交').PerformClick()
+        $timer.Stop()
+    })
+    try {
+        $timer.Start()
+        $person=Show-CollectionUserForm
+        if($person.reportedUserName -ne '测试使用人' -or $person.reportedDepartment -ne '测试部门'){throw 'Dialog values lost'}
+    } finally {$timer.Stop(); $timer.Dispose()}
+    $timer=New-Object System.Windows.Forms.Timer
+    $timer.Interval=150
+    $timer.Add_Tick({
+        $form=[Windows.Forms.Application]::OpenForms | Where-Object Text -eq '电脑资产登记' | Select-Object -First 1
+        if($form){$form.Close(); $timer.Stop()}
+    })
+    try {
+        $timer.Start()
+        if($null -ne (Show-CollectionUserForm)){throw 'Cancel must not return submitted data'}
+    } finally {$timer.Stop(); $timer.Dispose()}
+    Write-Host 'PASS native dialog: editable name/department, submit and close-to-cancel.'
+}

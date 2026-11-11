@@ -18,6 +18,7 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     const row = { externalRegistrationId: 'ad:test:device:1', receivedAt: '2026-11-10T08:00:00Z', capturedAt: '2026-11-10T07:50:00Z',
       declaredOperator: { id: 'agent', displayName: 'PE 自动采集' }, credentialId: 'service-1', state: 'pending_review', revision: 0,
+      reportedUserName: '张三', reportedDepartment: '运营部',
       name: 'LENOVO ThinkPad L13', model: '20R4S4E200', cpu: 'Intel Core i5', memory: '16 GiB', storage: 'NVMe 512 GiB', graphicsCard: null,
       manufacturerSerialNumber: 'SN-TEST', categoryId: null, asset: null, reviewedAt: null, reviewedBy: null, reviewNote: null };
     let failApproval = false, failResubmit = false, administrator = true, intakeReads = 0;
@@ -75,6 +76,9 @@ async function main() {
     await queue.getByRole('button', { name: '核对 / 审核' }).waitFor();
     await queue.getByRole('button', { name: '核对 / 审核' }).click();
     const dialog = page.getByRole('dialog');
+    await queue.getByText('填报使用人：张三 / 运营部', { exact: true }).waitFor();
+    await dialog.getByText('采集填报：张三 / 运营部（未经核实；确认领用时请填写下方领用人和部门）', { exact: true }).waitFor();
+    assert.equal(await dialog.getByLabel('领用人', { exact: true }).inputValue(), '', 'reported user must not silently become assignee');
     assert.equal(await dialog.getByLabel('资产名称', { exact: true }).inputValue(), 'LENOVO ThinkPad L13');
     assert.equal(await dialog.getByLabel('设备型号 *', { exact: true }).inputValue(), '20R4S4E200');
     assert.equal(await dialog.getByLabel(/显卡/).inputValue(), '集成显卡');

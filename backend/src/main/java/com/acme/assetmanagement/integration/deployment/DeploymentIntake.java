@@ -23,4 +23,6 @@ public class DeploymentIntake {
     @Column(length = 120) String reviewedBy;
     @Column(length = 500) String reviewNote;
     @Column(length = 32) String source;
+    @Column(length = 120) String reportedUserName;
+    @Column(length = 120) String reportedDepartment;
 }

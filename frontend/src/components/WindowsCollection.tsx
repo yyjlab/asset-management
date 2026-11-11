@@ -4,7 +4,7 @@ import type { DeploymentCredential } from '../types/deployment'
 import './DeploymentIntegration.css'
 
 export function WindowsCollection({ onNotify }: { onNotify: (text: string, kind?: 'ok' | 'error') => void }) {
-  const [name, setName] = useState('U盘资产登记')
+  const [name, setName] = useState('Windows 资产采集')
   const [baseUrl, setBaseUrl] = useState(location.origin)
   const [days, setDays] = useState('7')
   const [items, setItems] = useState<DeploymentCredential[]>([])
@@ -28,7 +28,7 @@ export function WindowsCollection({ onNotify }: { onNotify: (text: string, kind?
     lock.current = true; setBusy(true); setError('')
     try {
       await api.downloadWindowsCollection({ name: name.trim(), baseUrl: baseUrl.trim(), days: Number(days) })
-      onNotify('采集包已下载，解压到 U 盘后双击“一键采集”')
+      onNotify('采集包已下载，完整解压后双击“一键采集”，填写使用人和部门后提交')
       setRevision(v => v + 1)
     } catch (e) { setError(e instanceof Error ? e.message : '下载失败，请刷新后检查采集包列表') }
     finally { lock.current = false; setBusy(false) }
@@ -42,7 +42,7 @@ export function WindowsCollection({ onNotify }: { onNotify: (text: string, kind?
   }
   const date = (value: string) => new Date(value).toLocaleString('zh-CN')
   return <section className="deployment-settings" aria-label="Windows 采集">
-    <header className="deployment-header"><div><h2>Windows 采集</h2><p>电脑进入 Windows 后，插入 U 盘并双击采集程序。显示提交成功后可拔盘，结果进入资产入库审核。</p></div>
+    <header className="deployment-header"><div><h2>Windows 采集</h2><p>采集包可放在电脑或 U 盘。双击运行，填写实际使用人姓名和部门并确认提交，结果进入资产入库审核。</p></div>
       <button className="button ghost" disabled={busy || loading} onClick={() => setRevision(v => v + 1)}>刷新</button></header>
     <form className="deployment-section" onSubmit={event => void download(event)}>
       <div className="deployment-review-fields">
@@ -50,7 +50,7 @@ export function WindowsCollection({ onNotify }: { onNotify: (text: string, kind?
         <label>有效期（天）<input type="number" required min={1} max={90} value={days} disabled={busy} onChange={e => setDays(e.target.value)} /></label>
         <label>资产系统地址<input type="url" required value={baseUrl} disabled={busy} onChange={e => setBaseUrl(e.target.value)} /></label>
       </div>
-      <p>只采集配置，不安装常驻程序、不修改系统。采集包包含专用凭据，请保管 U 盘；HTTP 仅用于已确认的受信内网。</p>
+      <p>只采集配置，不安装常驻程序、不修改系统。采集包包含专用凭据，请勿公开传播；HTTP 仅用于已确认的受信内网。</p>
       <button className="button primary" disabled={busy}>{busy ? '处理中…' : '生成并下载采集包'}</button>
     </form>
     {error && <p role="alert" className="deployment-error">{error}</p>}

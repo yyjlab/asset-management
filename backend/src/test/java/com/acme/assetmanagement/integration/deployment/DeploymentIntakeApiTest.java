@@ -343,4 +343,28 @@ class DeploymentIntakeApiTest {
         assertFalse(credentials.list().stream().anyMatch(v->v.id().equals(row.id)));
         assertTrue(credentials.list(true).stream().anyMatch(v->v.id().equals(row.id)));
     }
+    @Test void windowsReportedUserIsReviewReferenceAndCanBeCorrectedOnlyWhilePending() throws Exception {
+        String collector=(String)windowsPackage().get("token");
+        var body=new LinkedHashMap<>(windowsBody(UUID.randomUUID().toString()));
+        body.put("reportedUserName","张三"); body.put("reportedDepartment","运营部");
+        var response=collect(collector,body).andExpect(status().isAccepted()).andReturn().getResponse();
+        externalId=json.readTree(response.getContentAsByteArray()).get("externalRegistrationId").asText();
+        var row=intakes.findById(externalId).orElseThrow();
+        assertEquals("张三",row.reportedUserName); assertEquals("运营部",row.reportedDepartment);
+        mvc.perform(get("/api/settings/ad-deployment/intakes").with(user(admin)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].reportedUserName").value("张三"))
+                .andExpect(jsonPath("$.items[0].assignedTo").isEmpty());
+        collect(collector,body).andExpect(status().isAccepted());
+        assertEquals(0,intakes.findById(externalId).orElseThrow().revision);
+        body.put("reportedUserName","李四");
+        collect(collector,body).andExpect(status().isAccepted());
+        assertEquals(1,intakes.findById(externalId).orElseThrow().revision);
+        var approval=review(); approval.put("revision",1);
+        decide(approval,"approve").andExpect(status().isOk());
+        var asset=assets.findById(intakes.findById(externalId).orElseThrow().assetId).orElseThrow();
+        assertFalse(asset.isCheckedOut()); assertNull(asset.getAssignedTo());
+        body.put("reportedUserName","王五"); collect(collector,body).andExpect(status().isOk());
+        assertEquals("李四",intakes.findById(externalId).orElseThrow().reportedUserName);
+        body.put("reportedUserName","x".repeat(121)); collect(collector,body).andExpect(status().isUnprocessableEntity());
+    }
 }

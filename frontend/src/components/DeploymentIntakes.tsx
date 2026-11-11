@@ -107,7 +107,7 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
     {!error && !loading && <>
       <div className="deployment-table"><table><thead><tr><th>电脑 / SN</th><th>CPU / 内存</th><th>硬盘 / 显卡</th><th>收到时间</th><th>结果</th><th>操作</th></tr></thead><tbody>
         {data?.items.map(row => <tr key={row.externalRegistrationId}>
-          <td><strong>{row.name || row.model || '名称待补充'}</strong>{row.name && row.model && row.name !== row.model && <small>{row.model}</small>}<small>{row.manufacturerSerialNumber || 'SN 未采集'}</small></td>
+          <td><strong>{row.name || row.model || '名称待补充'}</strong>{row.name && row.model && row.name !== row.model && <small>{row.model}</small>}<small>{row.manufacturerSerialNumber || 'SN 未采集'}</small>{row.reportedUserName && <small>填报使用人：{row.reportedUserName} / {row.reportedDepartment || '部门未填写'}</small>}</td>
           <td>{row.cpu || 'CPU 未采集'}<small>{row.memory || '内存未采集'}</small></td>
           <td>{row.storage || '硬盘未采集'}<small>{row.graphicsCard || (row.state === 'approved' ? '显卡未采集' : '集成显卡（默认）')}</small></td>
           <td>{date(row.receivedAt)}</td><td><span className={'deployment-intake-state state-' + row.state}>{labels[row.state]}</span>{row.asset && <small>{row.asset.assetTag}</small>}</td>
@@ -125,6 +125,7 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
         <button className="deployment-dialog-close" title="关闭" aria-label="关闭审核" disabled={busy} onClick={close}><CloseIcon /></button></header>
       <form onSubmit={event => void decide(event)}>
         <div className="deployment-dialog-body">
+          {selected.reportedUserName && <p>采集填报：{selected.reportedUserName} / {selected.reportedDepartment || '部门未填写'}（未经核实；确认领用时请填写下方领用人和部门）</p>}
           {selected.state === 'pending_review' || resubmitting ? <>
             {selected.reviewedAt && selected.reviewNote && <p>上次不批准：{selected.reviewNote} · {selected.reviewedBy} / {date(selected.reviewedAt)}</p>}
             {!rejecting && <><div className="deployment-review-defaults">编号批准后生成 · 微丰启 / 公司 · {draft.assignedTo.trim() ? '已经领出' : '当前可用'}</div>
