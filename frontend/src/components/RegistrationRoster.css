@@ -1,0 +1,16 @@
+.registration-roster .deployment-header { gap: 16px; align-items: center; margin-bottom: 20px; }
+.registration-roster .deployment-header h2 { font-size: 22px; margin: 0 0 6px; }
+.registration-roster .deployment-header p { margin: 0; }
+.registration-roster .deployment-header > div:last-child { display: flex; gap: 8px; }
+.roster-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 18px; }
+.roster-filters label { display: grid; flex: 0 1 160px; min-width: 0; gap: 6px; color: var(--muted); font-size: 12px; }
+.roster-filters label:nth-child(2) { flex-basis: 210px; }
+.roster-filters label:last-child { flex-basis: 280px; }
+.roster-filters input, .roster-filters select { width: 100%; height: 38px; min-width: 0; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; box-sizing: border-box; }
+.registration-roster .deployment-table th { font-size: 12px; }
+.registration-roster .deployment-table td { vertical-align: top; font-size: 13px; }
+@media (max-width: 600px) {
+  .registration-roster .deployment-header { align-items: flex-start; flex-wrap: wrap; }
+  .roster-filters label, .roster-filters label:nth-child(2) { flex: 1 1 calc(50% - 6px); }
+  .roster-filters label:last-child { flex: 1 1 100%; }
+}

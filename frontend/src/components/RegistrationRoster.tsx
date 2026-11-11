@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import type { RosterEntry, RosterImportResult, RosterPerson } from '../types/roster'
 import './DeploymentIntegration.css'
+import './RegistrationRoster.css'
 
 const labels = { registered: '已登记', missing: '未登记', pending: '待审核', confirm: '待确认' }
 export function parseRoster(text: string) {
@@ -51,12 +52,12 @@ export function RegistrationRoster({ onNotify, onOpenAsset }: { onNotify: (text:
     } catch (e) { setFormError(e instanceof Error ? e.message : '导入失败，请刷新后核对') }
     finally { lock.current = false; setBusy(false) }
   }
-  return <section className="deployment-settings deployment-review-page" aria-label="登记核对">
+  return <section className="deployment-settings deployment-review-page registration-roster" aria-label="登记核对">
     <header className="deployment-header"><div><h2>登记核对</h2><p>按名单姓名精确核对电脑领用记录；不修改资产，不创建登录账号。</p></div><div><button className="button ghost" onClick={() => { setManaging(true); setFormError('') }}>名单管理</button><button className="button ghost" disabled={loading} onClick={() => setRevision(v => v + 1)}>刷新</button></div></header>
     {error && <p role="alert" className="deployment-error">{error}</p>}
     {loading && !rows.length ? <p role="status">正在核对…</p> : !error && <>
       <p>全部 {rows.length} 人 · 已登记 {counts.registered} 人 · 未登记 {counts.missing} 人 · 待审核 {counts.pending} 人 · 待确认 {counts.confirm} 人</p>
-      <div className="deployment-review-fields"><label>登记情况<select aria-label="登记情况" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部</option>{Object.entries(labels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <div className="roster-filters"><label>登记情况<select aria-label="登记情况" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">全部</option>{Object.entries(labels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
         <label>部门<select aria-label="部门" value={department} onChange={e => setDepartment(e.target.value)}><option value="">全部部门</option>{[...new Set(rows.map(row => row.department).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
         <label>搜索<input type="search" placeholder="姓名 / 座位号" value={search} onChange={e => setSearch(e.target.value)} /></label></div>
       <div className="deployment-table"><table><thead><tr><th>座位号</th><th>姓名</th><th>部门</th><th>登记情况</th><th>电脑资产</th></tr></thead><tbody>

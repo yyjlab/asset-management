@@ -81,6 +81,17 @@ async function main() {
     await rosterPage.getByText('暂无核对名单，请先在名单管理中批量导入人员', { exact: true }).waitFor();
     assert.equal(new URL(page.url()).searchParams.get('view'), 'registration-roster');
     await page.reload();
+    await rosterPage.getByText('暂无核对名单，请先在名单管理中批量导入人员', { exact: true }).waitFor();
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const filters = await rosterPage.locator('.roster-filters').evaluate(element => [...element.querySelectorAll('input,select')].map(control => control.getBoundingClientRect().toJSON()));
+      assert.ok(filters.every(rect => rect.right <= width && rect.width > 0), 'roster filters must fit viewport');
+      if (width === 1440) {
+        assert.ok(filters[0].width <= 180 && filters[1].width <= 230 && filters[2].width <= 300, 'desktop filters must remain compact');
+        assert.ok(filters.every(rect => Math.abs(rect.y - filters[0].y) <= 1), 'desktop filters must share one row');
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     await rosterPage.getByRole('button', { name: '名单管理', exact: true }).click();
     const management = page.getByRole('dialog', { name: '名单管理', exact: true });
     await management.getByLabel('批量人员', { exact: true }).fill('座位号\t部门\t姓名\n1\t运营部\t张三\n2\t研发部\t李四\n3\t研发部\t张三\n4\t研发部\t空置');
@@ -125,7 +136,7 @@ async function main() {
     await queue.getByText('填报使用人：张三 / 运营部', { exact: true }).waitFor();
     await dialog.getByText('采集填报：张三 / 运营部（未经核实；确认领用时请填写下方领用人和部门）', { exact: true }).waitFor();
     assert.equal(await dialog.getByLabel('领用人', { exact: true }).inputValue(), '', 'reported user must not silently become assignee');
-    await dialog.getByText(/鼠标品牌：Logitech · 键盘品牌：无/).waitFor();
+    assert.equal(await dialog.getByText(/鼠标品牌|键盘品牌/).count(), 0, 'removed peripherals must not clutter review');
     assert.equal(await dialog.getByLabel('入库显示器 1', { exact: true }).isChecked(), false);
     assert.equal(await dialog.getByLabel('入库显示器 2', { exact: true }).isChecked(), false);
     assert.equal(await dialog.getByLabel('入库显示器 3', { exact: true }).count(), 0, 'internal panel must not be offered as a new asset');

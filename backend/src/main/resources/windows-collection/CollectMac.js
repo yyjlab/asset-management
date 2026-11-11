@@ -1,18 +1,6 @@
 /* Pure parsers are exported for fixture tests; macOS runs this file with osascript/JXA. */
 function text(value) { return value == null ? '' : String(value).trim(); }
 function serial(value) { var result=text(value); return /^(0+|unknown|none|n\/a)$/i.test(result) ? null : result || null; }
-var vendors = { '046d':'Logitech', '1532':'Razer', '413c':'Dell', '17ef':'Lenovo', '03f0':'HP', '045e':'Microsoft', '05ac':'Apple', '09da':'A4Tech', '24ae':'Rapoo', '1b1c':'Corsair' };
-function peripheralBrands(devices, usage) {
-    var result=[];
-    devices.forEach(function(device){
-        if(Number(device.PrimaryUsagePage)!==1 || Number(device.PrimaryUsage)!==usage)return;
-        var vendor=Number(device.VendorID).toString(16);while(vendor.length<4)vendor='0'+vendor;
-        var brand=vendors[vendor] || null;
-        if(!brand){var supplied=text(device.Manufacturer);if(supplied && !/^(unknown|generic|hid|microsoft|usb|apple inc\.)$/i.test(supplied) && supplied.length<=80)brand=supplied;}
-        if(brand && result.indexOf(brand)<0)result.push(brand);
-    });
-    return result.sort();
-}
 function parseDisplays(profiler) {
     var monitors=[], status='ok';
     if(!Array.isArray(profiler.SPDisplaysDataType))return {monitors:[],status:'unavailable'};
@@ -21,6 +9,7 @@ function parseDisplays(profiler) {
             if(display.spdisplays_online && !/yes|online|是/i.test(display.spdisplays_online))return;
             var description=text(display.spdisplays_display_type)+' '+text(display.spdisplays_connection_type);
             var internal=/built.?in|internal|内建|内置/i.test(description) || /yes/i.test(text(display.spdisplays_builtin));
+            if(internal)return;
             var external=/external|hdmi|displayport|dvi|vga|thunderbolt|外接/i.test(description);
             var connection=internal?'internal':external?'external':'unknown';
             var name=text(display._name), brand=null;
@@ -49,7 +38,7 @@ function parseDisks(disks) {
     });
     return result;
 }
-function makeInventory(profiler, disks, hid) {
+function makeInventory(profiler, disks) {
     var hardware=(profiler.SPHardwareDataType || [])[0];
     if(!hardware)throw new Error('未读取到电脑信息');
     var uuid=text(hardware.platform_UUID).toLowerCase();
@@ -59,7 +48,7 @@ function makeInventory(profiler, disks, hid) {
     return {hardwareUuid:uuid,name:readable?'Apple '+readable:null,capturedAt:new Date().toISOString(),
         snapshot:{model:model||null,cpu:text(hardware.chip_type || hardware.cpu_type)||null,memory:text(hardware.physical_memory)||null,
             internalDisks:parseDisks(disks),graphicsCards:(profiler.SPDisplaysDataType || []).map(function(gpu){return text(gpu.sppci_model);}).filter(Boolean),manufacturerSerialNumber:serial(hardware.serial_number)},
-        collection:{platform:'macos',computerType:type,status:detected.status,monitors:detected.monitors,mouseBrands:peripheralBrands(hid,2),keyboardBrands:peripheralBrands(hid,6)}};
+        collection:{platform:'macos',computerType:type,status:detected.status,monitors:detected.monitors}};
 }
 function validEndpoint(endpoint) { return /^https?:\/\/(?:[a-z0-9.-]+|\[[a-f0-9:]+\])(?::[0-9]{1,5})?\/api\/integrations\/ad-deployment\/v1\/windows-intakes$/i.test(endpoint); }
 function runCollection() {
@@ -84,16 +73,15 @@ function runCollection() {
         if(!validEndpoint(config.endpoint) || !/^adp_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/.test(config.token))throw new Error('采集包配置无效');
         console.log('正在读取电脑与当前连接的显示器……');
         var profiler=JSON.parse(command('/usr/sbin/system_profiler',['SPHardwareDataType','SPDisplaysDataType','-json','-timeout','30']));
-        var disks=[], hid=[];
+        var disks=[];
         try {var listed=plist('/usr/sbin/diskutil',['list','-plist','internal','physical']);(listed.AllDisksAndPartitions || []).forEach(function(disk){disks.push(plist('/usr/sbin/diskutil',['info','-plist','/dev/'+disk.DeviceIdentifier]));});}catch(e){console.log('内置硬盘未采集，请在审核时核对。');}
-        try {hid=plist('/usr/sbin/ioreg',['-a','-r','-c','IOHIDDevice']);}catch(e){console.log('鼠标或键盘品牌未采集。');}
-        var inventory=makeInventory(profiler,disks,hid), records=directory+'/records', error=Ref();
+        var inventory=makeInventory(profiler,disks), records=directory+'/records', error=Ref();
         if(!$.NSFileManager.defaultManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError($(records),true,null,error))throw new Error('无法保存本地记录');
         var file=records+'/'+inventory.hardwareUuid+'.json', saved=inventory;
         if($.NSFileManager.defaultManager.fileExistsAtPath($(file))){var cached=read(file);if(cached.length>32768)throw new Error('本地记录过大');saved=JSON.parse(cached);if(saved.hardwareUuid!==inventory.hardwareUuid)throw new Error('本地记录身份不符');saved.collection=inventory.collection;}
         var person=app.displayDialog('请填写这台电脑的实际使用人姓名，不是装机人员。',{defaultAnswer:saved.reportedUserName||'',buttons:['取消','继续'],defaultButton:'继续',cancelButton:'取消',withTitle:'电脑资产登记'}).textReturned.trim();
         if(!person || person.length>120)throw new Error('姓名必填，最多120字；未提交');
-        var department=app.displayDialog('部门（选填）。确认后提交电脑、显示器及鼠标键盘品牌，资产须由管理员审核。',{defaultAnswer:saved.reportedDepartment||'',buttons:['取消','确认并提交'],defaultButton:'确认并提交',cancelButton:'取消',withTitle:'电脑资产登记'}).textReturned.trim();
+        var department=app.displayDialog('部门（选填）。确认后提交电脑和外接显示器，资产须由管理员审核。',{defaultAnswer:saved.reportedDepartment||'',buttons:['取消','确认并提交'],defaultButton:'确认并提交',cancelButton:'取消',withTitle:'电脑资产登记'}).textReturned.trim();
         if(department.length>120)throw new Error('部门最多120字；未提交');
         saved.reportedUserName=person;saved.reportedDepartment=department;var body=JSON.stringify(saved);
         if($(body).lengthOfBytesUsingEncoding($.NSUTF8StringEncoding)>32768)throw new Error('采集资料过大，未发送');
@@ -112,5 +100,5 @@ function runCollection() {
         throw new Error('采集未完成；未修改系统或自动创建资产。');
     }
 }
-if(typeof module!=='undefined')module.exports={makeInventory:makeInventory,parseDisplays:parseDisplays,parseDisks:parseDisks,peripheralBrands:peripheralBrands,validEndpoint:validEndpoint};
+if(typeof module!=='undefined')module.exports={makeInventory:makeInventory,parseDisplays:parseDisplays,parseDisks:parseDisks,validEndpoint:validEndpoint};
 else runCollection();

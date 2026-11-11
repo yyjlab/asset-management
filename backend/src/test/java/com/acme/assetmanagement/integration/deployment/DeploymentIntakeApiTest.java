@@ -430,4 +430,12 @@ class DeploymentIntakeApiTest {
         }
         assertEquals(before+2,assets.count());assertEquals(2,ids.size());assertEquals(2,tags.size());
     }
+    @Test void listsApprovedHistoricalReviewWithoutNewMonitorFields() throws Exception {
+        receive(request()).andExpect(status().isAccepted());decide(review(),"approve").andExpect(status().isOk());
+        var row=intakes.findById(externalId).orElseThrow();
+        var historical=json.readValue(row.reviewJson,Map.class);historical.remove("monitors");historical.remove("confirmNewMonitors");
+        row.reviewJson=json.writeValueAsString(historical);intakes.saveAndFlush(row);
+        mvc.perform(get("/api/settings/ad-deployment/intakes").param("state","approved").with(user(admin)))
+            .andExpect(status().isOk());
+    }
 }

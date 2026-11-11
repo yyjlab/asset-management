@@ -26,6 +26,7 @@ function Read-CollectionDisplays {
                 $technology=[long]$connections[$id].VideoOutputTechnology
                 if($technology -in @(6,11,13,2147483648)){$link='internal'}elseif($technology -in @(0,4,5,8,10,12,16)){$link='external'}
             }
+            if($link -eq 'internal'){continue}
             $size=$null
             if($sizes.ContainsKey($id)){
                 $width=[double]$sizes[$id].MaxHorizontalImageSize; $height=[double]$sizes[$id].MaxVerticalImageSize
@@ -40,22 +41,7 @@ function Read-CollectionDisplays {
             $monitors+=@{deviceKey=$id;connection=$link;brand=$brand;serialNumber=$serial;sizeInches=$size}
         }
     } catch {$status='unavailable';$monitors=@()}
-    @{platform='windows';computerType=$type;status=$status;monitors=@($monitors);mouseBrands=@(Read-PeripheralBrands 'Win32_PointingDevice');keyboardBrands=@(Read-PeripheralBrands 'Win32_Keyboard')}
-}
-function Read-PeripheralBrands {
-    param([string]$ClassName)
-    $brands=@()
-    $vendors=@{'046D'='Logitech';'1532'='Razer';'413C'='Dell';'17EF'='Lenovo';'03F0'='HP';'045E'='Microsoft';'05AC'='Apple';'09DA'='A4Tech';'24AE'='Rapoo';'1B1C'='Corsair'}
-    try {foreach($device in @(Get-CimInstance -ClassName $ClassName -OperationTimeoutSec 15)){
-        $identity=[string]$device.PNPDeviceID; $brand=$null
-        if($identity -match '(?i)VID_([0-9A-F]{4})'){$vendor=$Matches[1].ToUpperInvariant();if($vendors.ContainsKey($vendor)){$brand=$vendors[$vendor]}}
-        if(!$brand){
-            $name=[string]$device.Name
-            foreach($candidate in @('Logitech','Razer','Dell','Lenovo','Rapoo','Corsair','A4Tech','Apple')){if($name -match ('(?i)\b'+[regex]::Escape($candidate)+'\b')){$brand=$candidate;break}}
-        }
-        if($brand){$brands+=$brand}
-    }}catch{}
-    $brands|Sort-Object -Unique
+    @{platform='windows';computerType=$type;status=$status;monitors=@($monitors)}
 }
 function Read-CollectionInventory {
     $product=Get-CimInstance Win32_ComputerSystemProduct -OperationTimeoutSec 15

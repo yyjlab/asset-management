@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { makeInventory, parseDisplays, parseDisks, peripheralBrands, validEndpoint } = require('../backend/src/main/resources/windows-collection/CollectMac.js');
+const { makeInventory, parseDisplays, parseDisks, validEndpoint } = require('../backend/src/main/resources/windows-collection/CollectMac.js');
 const uuid = '12345678-1234-1234-1234-123456789abc';
 test('Apple Silicon and Intel report actual hardware without Python', () => {
   for (const model of ['Mac14,7', 'MacBookPro16,1']) {
@@ -16,8 +16,8 @@ test('counts multiple monitors separately, excludes offline entries and does not
     { _name: 'DELL U2720Q', spdisplays_connection_type: 'DisplayPort', 'spdisplays_display-serial-number': 'SAME' },
     { _name: 'Offline', spdisplays_online: 'No' }
   ] }] });
-  assert.equal(result.monitors.length, 3); assert.equal(result.monitors[0].connection, 'internal'); assert.equal(result.monitors[0].sizeInches, null);
-  assert.equal(result.monitors[1].sizeInches, 27); assert.equal(result.monitors[2].sizeInches, null); assert.equal(result.status, 'partial');
+  assert.equal(result.monitors.length, 2); assert.ok(result.monitors.every(monitor => monitor.connection !== 'internal'));
+  assert.equal(result.monitors[0].sizeInches, 27); assert.equal(result.monitors[1].sizeInches, null); assert.equal(result.status, 'partial');
   assert.equal(parseDisplays({}).status, 'unavailable');
 });
 test('only known internal physical disk protocols are included', () => {
@@ -28,9 +28,11 @@ test('only known internal physical disk protocols are included', () => {
   ]);
   assert.deepEqual(result, [{ model: 'APPLE SSD', capacityBytes: 512000000000, busType: 'AppleFabric' }]);
 });
-test('HID mouse and keyboard brands use device data not generic driver labels', () => {
-  const devices = [{ PrimaryUsagePage: 1, PrimaryUsage: 2, VendorID: 0x046d, Manufacturer: 'Generic' }, { PrimaryUsagePage: 1, PrimaryUsage: 6, VendorID: 0x05ac, Manufacturer: 'Apple Inc.' }, { PrimaryUsagePage: 1, PrimaryUsage: 6, Manufacturer: 'Generic' }];
-  assert.deepEqual(peripheralBrands(devices, 2), ['Logitech']); assert.deepEqual(peripheralBrands(devices, 6), ['Apple']);
+test('mouse and keyboard collection is not executed or uploaded', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../backend/src/main/resources/windows-collection/CollectMac.js'), 'utf8');
+  assert.doesNotMatch(source, /IOHIDDevice|peripheralBrands|mouseBrands|keyboardBrands/);
+  const result = makeInventory({ SPHardwareDataType: [{ platform_UUID: uuid, machine_name: 'Mac mini', machine_model: 'Macmini9,1' }], SPDisplaysDataType: [] }, []);
+  assert.equal(result.collection.computerType, 'desktop'); assert.equal('mouseBrands' in result.collection, false);
 });
 test('invalid UUID and credential-bearing or redirected endpoint paths are rejected', () => {
   assert.throws(() => makeInventory({ SPHardwareDataType: [{ platform_UUID: '00000000-0000-0000-0000-000000000000' }] }, [], []));

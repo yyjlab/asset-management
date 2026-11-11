@@ -1,8 +1,12 @@
 param([switch]$TestDialog)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../backend/src/main/resources/windows-collection/Collect.ps1" -LibraryOnly
+$script:cimClasses=[Collections.Generic.List[string]]::new()
+$script:failMonitors=$false
 function Get-CimInstance {
     param($ClassName, $OperationTimeoutSec, $Namespace)
+    $script:cimClasses.Add($ClassName)
+    if($script:failMonitors -and $ClassName -eq 'WmiMonitorID'){throw 'Mock monitor read failure'}
     switch ($ClassName) {
         'Win32_ComputerSystemProduct' { [pscustomobject]@{ UUID='12345678-1234-1234-1234-123456789abc'; Version='ThinkPad L13' } }
         'Win32_ComputerSystem' { [pscustomobject]@{ Model='20R4'; SystemFamily='ThinkPad L13'; Manufacturer='LENOVO'; TotalPhysicalMemory=8GB; PCSystemType=2 } }
@@ -27,12 +31,17 @@ if($inventory.name -ne 'LENOVO ThinkPad L13'){throw 'Readable device name lost'}
 if($inventory.snapshot.internalDisks.Count -ne 1){throw 'USB disk included'}
 if($inventory.snapshot.internalDisks[0].capacityBytes -ne 256GB){throw 'Physical capacity changed'}
 if($inventory.snapshot.graphicsCards.Count -ne 1 -or $inventory.snapshot.graphicsCards[0] -ne 'Intel Graphics'){throw 'Basic display adapter included'}
-if($inventory.collection.monitors.Count -ne 3){throw 'Active monitor count incorrect or equal SN merged'}
+if($inventory.collection.monitors.Count -ne 2){throw 'Active external monitor count incorrect or equal SN merged'}
 if(@($inventory.collection.monitors|Where-Object connection -eq 'external').Count -ne 2){throw 'External monitor count incorrect'}
-if($inventory.collection.monitors[0].connection -ne 'internal'){throw 'Built-in panel treated as external'}
-if($null -ne $inventory.collection.monitors[2].sizeInches){throw 'Missing size fabricated'}
+if(@($inventory.collection.monitors|Where-Object connection -eq 'internal').Count){throw 'Built-in panel was not excluded'}
+if($null -ne $inventory.collection.monitors[1].sizeInches){throw 'Missing size fabricated'}
 if($inventory.collection.computerType -ne 'laptop'){throw 'Chassis type incorrect'}
-if($inventory.collection.mouseBrands[0] -ne 'Logitech' -or $inventory.collection.keyboardBrands.Count -ne 0){throw 'Generic HID or PS2 brand fabricated'}
+if($script:cimClasses.Contains('Win32_PointingDevice') -or $script:cimClasses.Contains('Win32_Keyboard')){throw 'Removed mouse/keyboard queries still run'}
+if($inventory.collection.ContainsKey('mouseBrands') -or $inventory.collection.ContainsKey('keyboardBrands')){throw 'Removed peripherals still uploaded'}
+$script:failMonitors=$true
+$unavailable=Read-CollectionDisplays ([pscustomobject]@{PCSystemType=1})
+if($unavailable.status -ne 'unavailable' -or $unavailable.monitors.Count -ne 0 -or $unavailable.computerType -ne 'desktop'){throw 'Missing monitor data inferred as laptop'}
+$script:failMonitors=$false
 $script:sent=0
 function Invoke-RestMethod {
     param([switch]$UseBasicParsing, $Uri, $Method, $MaximumRedirection, $TimeoutSec, $Headers, $ContentType, $Body)

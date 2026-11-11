@@ -58,7 +58,12 @@ public class DeploymentIntakeService {
     public record MonitorReview(String deviceKey, String brand, String serialNumber, Double sizeInches) {}
     public record Review(int revision, Long categoryId, String name, String model, String cpu, String memory,
             String storage, String graphicsCard, String manufacturerSerialNumber, String note,
-            String assignedTo, String ownershipDepartment, String domainJoinStatus, List<MonitorReview> monitors, boolean confirmNewMonitors) {}
+            String assignedTo, String ownershipDepartment, String domainJoinStatus, List<MonitorReview> monitors, Boolean confirmNewMonitors) {
+        public Review {
+            monitors=monitors==null ? List.of() : List.copyOf(monitors);
+            confirmNewMonitors=Boolean.TRUE.equals(confirmNewMonitors);
+        }
+    }
 
     public Result receive(byte[] body) {
         return receive(body, false, null, null, null);
