@@ -36,6 +36,7 @@ class DeploymentIntakeApiTest {
     @Autowired com.acme.assetmanagement.setting.SystemSettingRepository settings;
     @Autowired UserRepository users;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.acme.assetmanagement.audit.AuditLogRepository auditLogs;
     String token, externalId;
     Long categoryId;
     AccountPrincipal admin;
@@ -133,6 +134,70 @@ class DeploymentIntakeApiTest {
         decide(rejection, "reject").andExpect(status().isOk());
         receive(body).andExpect(status().isOk()).andExpect(jsonPath("$.result").value("rejected"));
         decide(review(), "approve").andExpect(status().isConflict()); assertEquals(before, assets.count());
+    }
+    @Test void rejectedIntakeCanBeCorrectedAndResubmittedWithoutCreatingOrDuplicatingAssets() throws Exception {
+        var body = request(); receive(body).andExpect(status().isAccepted());
+        long before = assets.count(); String original = intakes.findById(externalId).orElseThrow().requestJson;
+        decide(Map.of("revision", 0, "note", "主机型号不对"), "reject").andExpect(status().isOk());
+        var correction = review(); correction.put("revision", 1); correction.put("name", "LENOVO ThinkPad L13");
+        correction.put("model", "ThinkPad L13"); correction.put("graphicsCard", "集成显卡");
+        decide(correction, "resubmit").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("pending_review"))
+                .andExpect(jsonPath("$.revision").value(2)).andExpect(jsonPath("$.name").value("LENOVO ThinkPad L13"))
+                .andExpect(jsonPath("$.reviewNote").value("主机型号不对")).andExpect(jsonPath("$.asset").isEmpty());
+        decide(correction, "resubmit").andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(2));
+        assertEquals(before, assets.count());
+        assertEquals(original, intakes.findById(externalId).orElseThrow().requestJson);
+        receive(body).andExpect(status().isAccepted()).andExpect(jsonPath("$.result").value("pending_review"));
+        var wrong = new LinkedHashMap<>(correction); wrong.put("model", "Different correction");
+        decide(wrong, "resubmit").andExpect(status().isConflict());
+        decide(review(), "approve").andExpect(status().isConflict());
+        var approval = new LinkedHashMap<>(correction); approval.put("revision", 2);
+        decide(approval, "approve").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("approved"));
+        decide(approval, "approve").andExpect(status().isOk());
+        decide(correction, "resubmit").andExpect(status().isConflict());
+        assertEquals(before + 1, assets.count());
+        var asset = assets.findById(intakes.findById(externalId).orElseThrow().assetId).orElseThrow();
+        assertEquals("LENOVO ThinkPad L13", asset.getName()); assertEquals("集成显卡", asset.getGraphicsCard());
+        var audits = auditLogs.findAll().stream().filter(v -> externalId.equals(v.getTargetLabel())).toList();
+        assertTrue(audits.stream().anyMatch(v -> v.getChangesJson().contains("主机型号不对")));
+        assertEquals(1, audits.stream().filter(v -> v.getChangesJson().contains("\"result\":\"resubmitted\"")).count());
+    }
+    @Test void resubmissionChecksStateRevisionFieldsRoleAndCsrf() throws Exception {
+        receive(request()).andExpect(status().isAccepted());
+        decide(review(), "resubmit").andExpect(status().isConflict());
+        decide(Map.of("revision", 0, "note", "型号待修正"), "reject").andExpect(status().isOk());
+        decide(review(), "resubmit").andExpect(status().isConflict());
+        var correction = review(); correction.put("revision", 1);
+        var invalid = new LinkedHashMap<>(correction); invalid.put("model", "unknown");
+        decide(invalid, "resubmit").andExpect(status().isUnprocessableEntity());
+        invalid.put("model", "ThinkPad L13"); invalid.put("graphicsCard", "Microsoft Basic Display Adapter");
+        decide(invalid, "resubmit").andExpect(status().isUnprocessableEntity());
+        invalid = new LinkedHashMap<>(correction); invalid.put("name", "x".repeat(161));
+        decide(invalid, "resubmit").andExpect(status().isUnprocessableEntity());
+        invalid = new LinkedHashMap<>(correction); invalid.put("categoryId", option(LookupType.CATEGORY, "显示器").getId());
+        decide(invalid, "resubmit").andExpect(status().isUnprocessableEntity());
+        String path = "/api/settings/ad-deployment/intakes/" + externalId + "/resubmit";
+        mvc.perform(post(path).with(user(admin)).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsBytes(correction))).andExpect(status().isForbidden());
+        mvc.perform(post(path).with(user("viewer").roles("USER")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsBytes(correction))).andExpect(status().isForbidden());
+        mvc.perform(post(path).secure(true).header("Authorization", "Bearer " + token).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsBytes(correction))).andExpect(status().isForbidden());
+        assertEquals("rejected", intakes.findById(externalId).orElseThrow().state);
+        assertEquals(1, intakes.findById(externalId).orElseThrow().revision);
+    }
+    @Test void concurrentResubmissionsOnlyReopenOneRevision() throws Exception {
+        receive(request()).andExpect(status().isAccepted());
+        decide(Map.of("revision", 0, "note", "更正名称"), "reject").andExpect(status().isOk());
+        var correction = review(); correction.put("revision", 1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var start = new CountDownLatch(1); var tasks = new ArrayList<Future<Integer>>();
+            for (int i = 0; i < 2; i++) tasks.add(pool.submit(() -> { start.await(); return decide(correction, "resubmit").andReturn().getResponse().getStatus(); }));
+            start.countDown();
+            for (var task : tasks) assertEquals(200, task.get(30, TimeUnit.SECONDS));
+        }
+        assertEquals(2, intakes.findById(externalId).orElseThrow().revision);
+        assertNull(intakes.findById(externalId).orElseThrow().assetId);
     }
     @Test void approvalValidatesCategoryModelRevisionAndDefaultsWithoutChangingWaitingRecord() throws Exception {
         receive(request()).andExpect(status().isAccepted());

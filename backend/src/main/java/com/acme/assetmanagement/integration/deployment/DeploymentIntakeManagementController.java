@@ -27,4 +27,8 @@ public class DeploymentIntakeManagementController {
     public ResponseEntity<DeploymentIntakeService.Entry> reject(@PathVariable String externalRegistrationId, @RequestBody byte[] body) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.review(externalRegistrationId, body, false));
     }
+    @PostMapping(value = "/intakes/{externalRegistrationId}/resubmit", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<DeploymentIntakeService.Entry> resubmit(@PathVariable String externalRegistrationId, @RequestBody byte[] body) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.resubmit(externalRegistrationId, body));
+    }
 }

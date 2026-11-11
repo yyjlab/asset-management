@@ -101,6 +101,29 @@ public class DeploymentIntakeService {
     @Transactional(readOnly = true)
     public Options options() { reviewer(); return new Options(legacy.connectionInfo().categories()); }
 
+    public Entry resubmit(String id, byte[] body) {
+        reviewer();
+        Review review = parseReview(body, true);
+        String fingerprint = DeploymentCredentialService.hash(json.writeValueAsString(review));
+        return transaction.execute(status -> {
+            var row = intakes.locked(id).orElseThrow(() -> error(HttpStatus.NOT_FOUND, "NOT_FOUND", "待审核记录不存在"));
+            if (row.state.equals("pending_review") && row.revision == review.revision() + 1
+                    && fingerprint.equals(row.reviewFingerprint)) return entry(row);
+            if (!row.state.equals("rejected") || row.assetId != null || row.assetTag != null)
+                throw error(HttpStatus.CONFLICT, "REVIEW_CONFLICT", "仅未批准且未创建资产的记录可以重新送审");
+            if (row.revision != review.revision())
+                throw error(HttpStatus.CONFLICT, "REVISION_CONFLICT", "审核版本已变化，请刷新");
+            validateReview(review);
+            row.reviewJson = json.writeValueAsString(review);
+            row.reviewFingerprint = fingerprint;
+            row.state = "pending_review";
+            row.revision++;
+            intakes.saveAndFlush(row);
+            audit(row, "resubmitted", parseIntake(row.requestJson.getBytes(StandardCharsets.UTF_8), json));
+            return entry(row);
+        });
+    }
+
     public Entry review(String id, byte[] body, boolean approve) {
         String username = reviewer();
         Review review = parseReview(body, approve);
@@ -118,18 +141,7 @@ public class DeploymentIntakeService {
                 var company = legacy.dictionary(LookupType.COMPANY, "微丰启");
                 var location = legacy.dictionary(LookupType.LOCATION, "公司");
                 var available = legacy.dictionary(LookupType.STATUS, "当前可用", "可领用");
-                var category = lookups.findById(review.categoryId()).filter(v -> v.getType() == LookupType.CATEGORY
-                        && !v.isDisabled() && legacy.profile(v) == AssetProfile.COMPUTER)
-                        .orElseThrow(() -> error(HttpStatus.UNPROCESSABLE_ENTITY, "CATEGORY_INVALID", "须选择启用的电脑分类"));
-                if (Set.of("unknown", "system product name", "to be filled by o.e.m.", "default string", "未知")
-                        .contains(review.model().toLowerCase(Locale.ROOT)))
-                    throw error(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "须填写真实型号");
-                if (review.graphicsCard() != null) {
-                    var graphics = review.graphicsCard().toLowerCase(Locale.ROOT).replace(" ", "");
-                    if (graphics.contains("basicdisplay") || graphics.contains("basicrender") || graphics.contains("基本显示")
-                            || graphics.contains("基本呈现") || graphics.contains("standardvga") || graphics.contains("标准vga"))
-                        throw error(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "基础显示驱动不是真实显卡型号，未确认时请留空");
-                }
+                var category = validateReview(review);
                 if (review.manufacturerSerialNumber() != null) legacy.requireDescriptiveSerialSchema();
                 var value = new AssetRequest(null, review.name(), null, review.cpu(), review.memory(), review.storage(),
                         review.graphicsCard(), review.manufacturerSerialNumber(), null, null, null, null, company.getId(),
@@ -147,6 +159,22 @@ public class DeploymentIntakeService {
             audit(row, target, parseIntake(row.requestJson.getBytes(StandardCharsets.UTF_8), json));
             return entry(row);
         });
+    }
+
+    private LookupValue validateReview(Review review) {
+        var category = lookups.findById(review.categoryId()).filter(v -> v.getType() == LookupType.CATEGORY
+                && !v.isDisabled() && legacy.profile(v) == AssetProfile.COMPUTER)
+                .orElseThrow(() -> error(HttpStatus.UNPROCESSABLE_ENTITY, "CATEGORY_INVALID", "须选择启用的电脑分类"));
+        if (Set.of("unknown", "system product name", "to be filled by o.e.m.", "default string", "未知")
+                .contains(review.model().toLowerCase(Locale.ROOT)))
+            throw error(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "须填写真实型号");
+        if (review.graphicsCard() != null) {
+            var graphics = review.graphicsCard().toLowerCase(Locale.ROOT).replace(" ", "");
+            if (graphics.contains("basicdisplay") || graphics.contains("basicrender") || graphics.contains("基本显示")
+                    || graphics.contains("基本呈现") || graphics.contains("standardvga") || graphics.contains("标准vga"))
+                throw error(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "基础显示驱动不是真实显卡型号，未确认时请留空");
+        }
+        return category;
     }
 
     private Review parseReview(byte[] body, boolean approve) {
@@ -204,6 +232,11 @@ public class DeploymentIntakeService {
         changes.put("source", "AD装机平台"); changes.put("credentialId", row.credentialId);
         changes.put("externalRegistrationId", row.externalId); changes.put("declaredOperator", request.operator());
         changes.put("result", state); changes.put("reviewedBy", row.reviewedBy); changes.put("reviewNote", row.reviewNote);
+        if (state.equals("resubmitted")) {
+            changes.put("previousReviewedAt", row.reviewedAt);
+            changes.put("revision", row.revision);
+            changes.put("corrections", json.readValue(row.reviewJson, Review.class));
+        }
         audit.success(AuditAction.AD_DEPLOYMENT_REGISTER, "AD_DEPLOYMENT_INTAKE", row.assetId, row.externalId,
                 "AD装机平台：" + state, changes);
     }

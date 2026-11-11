@@ -228,6 +228,10 @@ export const api = {
     mutate<DeploymentIntake>(`/api/settings/ad-deployment/intakes/${encodeURIComponent(id)}/approve`, {
       method: 'POST', body: JSON.stringify(payload),
     }),
+  resubmitDeploymentIntake: (id: string, payload: DeploymentApproval) =>
+    mutate<DeploymentIntake>(`/api/settings/ad-deployment/intakes/${encodeURIComponent(id)}/resubmit`, {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
   rejectDeploymentIntake: (id: string, revision: number, note: string) =>
     mutate<DeploymentIntake>(`/api/settings/ad-deployment/intakes/${encodeURIComponent(id)}/reject`, {
       method: 'POST', body: JSON.stringify({ revision, note }),

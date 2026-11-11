@@ -20,7 +20,7 @@ async function main() {
       declaredOperator: { id: 'agent', displayName: 'PE 自动采集' }, credentialId: 'service-1', state: 'pending_review', revision: 0,
       name: 'LENOVO ThinkPad L13', model: '20R4S4E200', cpu: 'Intel Core i5', memory: '16 GiB', storage: 'NVMe 512 GiB', graphicsCard: null,
       manufacturerSerialNumber: 'SN-TEST', categoryId: null, asset: null, reviewedAt: null, reviewedBy: null, reviewNote: null };
-    let failApproval = false, administrator = true, intakeReads = 0;
+    let failApproval = false, failResubmit = false, administrator = true, intakeReads = 0;
     await page.route('**/api/**', async route => {
       const request = route.request(), url = new URL(request.url()), endpoint = url.pathname;
       let data;
@@ -32,16 +32,23 @@ async function main() {
       else if (endpoint.endsWith('/ad-deployment/registrations')) data = { items: [], page: 0, totalPages: 0, totalElements: 0 };
       else if (endpoint.endsWith('/ad-deployment/intake-options')) data = { categories: [{ id: 12, name: '笔记本电脑' }] };
       else if (endpoint.endsWith('/ad-deployment/intakes')) { intakeReads++; data = { items: url.searchParams.get('state') === row.state ? [row] : [], page: 0, totalPages: 1, totalElements: url.searchParams.get('state') === row.state ? 1 : 0 }; }
-      else if (endpoint.endsWith('/approve') || endpoint.endsWith('/reject')) {
+      else if (endpoint.endsWith('/approve') || endpoint.endsWith('/reject') || endpoint.endsWith('/resubmit')) {
         assert.equal(request.headers()['x-csrf-token'], 'isolated-test-csrf');
         const body = request.postDataJSON();
         decisions.push({ endpoint, body });
-        assert.equal(body.revision, 0);
+        assert.equal(body.revision, row.revision);
         if (failApproval && endpoint.endsWith('/approve')) { await route.fulfill({ status: 409, json: { message: '状态已变化，请刷新后核对' } }); return; }
+        if (failResubmit && endpoint.endsWith('/resubmit')) { await route.fulfill({ status: 409, json: { message: '审核版本已变化，请刷新' } }); return; }
+        const revision = row.revision + 1;
+        if (endpoint.endsWith('/resubmit')) {
+          Object.assign(row, body, { state: 'pending_review', revision }); data = row;
+          await route.fulfill({ json: data }); return;
+        }
         row.state = endpoint.endsWith('/approve') ? 'approved' : 'rejected';
         row.reviewNote = body.note;
         row.reviewedBy = 'admin'; row.reviewedAt = row.receivedAt;
         if (row.state === 'approved') { Object.assign(row, body); row.asset = { id: 81, assetTag: '202611100001', version: 0 }; }
+        row.revision = revision;
         data = row;
       } else if (['/api/assets', '/api/lookups', '/api/assignees'].includes(endpoint)) data = [];
       else if (endpoint === '/api/assets/summary') data = { total: 0, available: 0, checkedOut: 0, maintenance: 0, scrapped: 0 };
@@ -70,6 +77,8 @@ async function main() {
     const dialog = page.getByRole('dialog');
     assert.equal(await dialog.getByLabel('资产名称', { exact: true }).inputValue(), 'LENOVO ThinkPad L13');
     assert.equal(await dialog.getByLabel('设备型号 *', { exact: true }).inputValue(), '20R4S4E200');
+    assert.equal(await dialog.getByLabel(/显卡/).inputValue(), '集成显卡');
+    await dialog.getByText('未采集，默认填写集成显卡', { exact: true }).waitFor();
     await dialog.getByLabel('资产名称', { exact: true }).fill('测试笔记本');
     await dialog.getByLabel('设备型号 *', { exact: true }).fill('ThinkPad T14');
     await dialog.getByLabel('资产分类', { exact: true }).selectOption('12');
@@ -100,7 +109,7 @@ async function main() {
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(decisions.length, 2);
     assert.equal(decisions[1].body.categoryId, 12);
-    assert.equal(decisions[1].body.graphicsCard, null);
+    assert.equal(decisions[1].body.graphicsCard, '集成显卡');
     assert.ok(!('assetTag' in decisions[1].body), 'browser must not invent an asset tag');
     await queue.getByRole('button', { name: '已批准', exact: true }).click();
     await queue.getByText('202611100001', { exact: true }).waitFor();
@@ -117,6 +126,29 @@ async function main() {
     assert.equal(decisions.at(-1).body.note, '重复送审，保留现有资产');
     assert.ok(decisions.at(-1).endpoint.endsWith('/reject'));
     assert.equal(row.asset, null);
+    row.graphicsCard = 'NVIDIA GeForce GTX 1650';
+    await queue.getByRole('button', { name: '未批准', exact: true }).click();
+    await queue.getByRole('button', { name: '查看结果' }).click();
+    await dialog.getByRole('button', { name: '修改并重新送审', exact: true }).click();
+    assert.equal(await dialog.getByLabel(/显卡/).inputValue(), 'NVIDIA GeForce GTX 1650');
+    await dialog.getByText(/上次不批准：重复送审/).waitFor();
+    await dialog.getByLabel('资产名称', { exact: true }).fill('LENOVO ThinkPad L13');
+    await dialog.getByLabel('设备型号 *', { exact: true }).fill('ThinkPad L13');
+    failResubmit = true;
+    await dialog.getByRole('button', { name: '重新送审', exact: true }).click();
+    await dialog.getByRole('alert').waitFor();
+    assert.equal(await dialog.getByLabel('资产名称', { exact: true }).inputValue(), 'LENOVO ThinkPad L13');
+    failResubmit = false;
+    await dialog.getByRole('button', { name: '重新送审', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(row.state, 'pending_review'); assert.equal(row.asset, null);
+    assert.equal(row.reviewNote, '重复送审，保留现有资产');
+    assert.ok(decisions.at(-1).endpoint.endsWith('/resubmit'));
+    await queue.getByRole('button', { name: '核对 / 审核' }).click();
+    assert.equal(await dialog.getByLabel('设备型号 *', { exact: true }).inputValue(), 'ThinkPad L13');
+    await dialog.getByRole('button', { name: '批准并创建资产', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(row.state, 'approved'); assert.equal(row.asset.assetTag, '202611100001');
     administrator = false;
     const before = intakeReads;
     await page.reload();
@@ -124,7 +156,7 @@ async function main() {
     assert.equal(await page.getByRole('button', { name: '资产入库', exact: true }).count(), 0);
     assert.equal(intakeReads, before, 'unauthorized deep links must not mount review API requests');
     assert.deepEqual(errors, []);
-    console.log('PASS intake review: standalone menu, reload, direct URL, back navigation, access guard, corrections, auto tag, rejection, CSRF and desktop/mobile layout');
+    console.log('PASS intake review: navigation, access guard, graphics default, corrections, rejection/resubmission, auto tag, CSRF and desktop/mobile layout');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.httpServer.close(resolve));

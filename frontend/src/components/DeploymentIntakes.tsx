@@ -14,7 +14,7 @@ const fields = [
 type Draft = Record<(typeof fields)[number][0], string> & { name: string; categoryId: string; note: string }
 const draftOf = (row: DeploymentIntake): Draft => ({
   name: row.name ?? row.model ?? '', model: row.model || '', cpu: row.cpu || '', memory: row.memory || '',
-  storage: row.storage || '', graphicsCard: row.graphicsCard || '', manufacturerSerialNumber: row.manufacturerSerialNumber || '',
+  storage: row.storage || '', graphicsCard: row.graphicsCard || '集成显卡', manufacturerSerialNumber: row.manufacturerSerialNumber || '',
   categoryId: row.categoryId ? String(row.categoryId) : '', note: '',
 })
 
@@ -31,6 +31,7 @@ export function DeploymentIntakes({ onNotify }: Props) {
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState('')
   const [rejecting, setRejecting] = useState(false)
+  const [resubmitting, setResubmitting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -51,13 +52,13 @@ export function DeploymentIntakes({ onNotify }: Props) {
   }, [selected])
 
   const open = (row: DeploymentIntake) => {
-    setSelected(row); setDraft(draftOf(row)); setFormError(''); setRejecting(false)
+    setSelected(row); setDraft(draftOf(row)); setFormError(''); setRejecting(false); setResubmitting(false)
   }
   const close = () => { if (!busy) { setSelected(null); setDraft(null) } }
   const update = (field: keyof Draft, value: string) => setDraft(current => current ? { ...current, [field]: value } : current)
   const decide = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!selected || !draft || busy || selected.state !== 'pending_review') return
+    if (!selected || !draft || busy || (selected.state !== 'pending_review' && !(selected.state === 'rejected' && resubmitting))) return
     setFormError('')
     if (rejecting && !draft.note.trim()) { setFormError('请填写不批准原因'); return }
     if (!rejecting && (!draft.model.trim() || !draft.name.trim() || !categories.some(item => String(item.id) === draft.categoryId))) {
@@ -75,8 +76,13 @@ export function DeploymentIntakes({ onNotify }: Props) {
           graphicsCard: draft.graphicsCard.trim() || null, manufacturerSerialNumber: draft.manufacturerSerialNumber.trim() || null,
           note: draft.note.trim() || null,
         }
-        const result = await api.approveDeploymentIntake(selected.externalRegistrationId, payload)
-        onNotify('已批准并创建资产：' + (result.asset?.assetTag || ''))
+        if (resubmitting) {
+          await api.resubmitDeploymentIntake(selected.externalRegistrationId, payload)
+          onNotify('已重新送审，尚未创建资产'); setState('pending_review'); setPage(0)
+        } else {
+          const result = await api.approveDeploymentIntake(selected.externalRegistrationId, payload)
+          onNotify('已批准并创建资产：' + (result.asset?.assetTag || ''))
+        }
       }
       setSelected(null); setDraft(null); setRefresh(value => value + 1)
     } catch (e) {
@@ -99,7 +105,7 @@ export function DeploymentIntakes({ onNotify }: Props) {
         {data?.items.map(row => <tr key={row.externalRegistrationId}>
           <td><strong>{row.name || row.model || '名称待补充'}</strong>{row.name && row.model && row.name !== row.model && <small>{row.model}</small>}<small>{row.manufacturerSerialNumber || 'SN 未采集'}</small></td>
           <td>{row.cpu || 'CPU 未采集'}<small>{row.memory || '内存未采集'}</small></td>
-          <td>{row.storage || '硬盘未采集'}<small>{row.graphicsCard || '显卡未采集'}</small></td>
+          <td>{row.storage || '硬盘未采集'}<small>{row.graphicsCard || (row.state === 'approved' ? '显卡未采集' : '集成显卡（默认）')}</small></td>
           <td>{date(row.receivedAt)}</td><td><span className={'deployment-intake-state state-' + row.state}>{labels[row.state]}</span>{row.asset && <small>{row.asset.assetTag}</small>}</td>
           <td><button className="button ghost" onClick={() => open(row)}>{row.state === 'pending_review' ? '核对 / 审核' : '查看结果'}</button></td>
         </tr>)}
@@ -111,16 +117,17 @@ export function DeploymentIntakes({ onNotify }: Props) {
     </>}
     {selected && draft && <div className="modal-backdrop"><section className="deployment-dialog deployment-review-dialog" role="dialog" aria-modal="true" aria-labelledby="deployment-review-title"
       onKeyDown={event => { if (event.key === 'Escape') close() }}>
-      <header className="deployment-dialog-head"><div><h3 id="deployment-review-title">{selected.state === 'pending_review' ? '核对装机电脑' : labels[selected.state]}</h3><p>来源：AD 装机平台 · 采集于 {date(selected.capturedAt)}</p></div>
+      <header className="deployment-dialog-head"><div><h3 id="deployment-review-title">{resubmitting ? '修改并重新送审' : selected.state === 'pending_review' ? '核对装机电脑' : labels[selected.state]}</h3><p>来源：AD 装机平台 · 采集于 {date(selected.capturedAt)}</p></div>
         <button className="deployment-dialog-close" title="关闭" aria-label="关闭审核" disabled={busy} onClick={close}><CloseIcon /></button></header>
       <form onSubmit={event => void decide(event)}>
         <div className="deployment-dialog-body">
-          {selected.state === 'pending_review' ? <>
+          {selected.state === 'pending_review' || resubmitting ? <>
+            {selected.reviewedAt && selected.reviewNote && <p>上次不批准：{selected.reviewNote} · {selected.reviewedBy} / {date(selected.reviewedAt)}</p>}
             {!rejecting && <><div className="deployment-review-defaults">编号批准后生成 · 微丰启 / 公司 · 当前可用 · 无领用人</div>
               <div className="deployment-review-fields">
                 <label>资产名称<input autoFocus required maxLength={160} value={draft.name} disabled={busy} onChange={event => update('name', event.target.value)} /></label>
                 <label>资产分类<select aria-label="资产分类" required value={draft.categoryId} disabled={busy} onChange={event => update('categoryId', event.target.value)}><option value="">选择电脑分类</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-                {fields.map(([key, label, max]) => <label key={key}>{label}{key === 'model' ? ' *' : ''}<input required={key === 'model'} maxLength={max} value={draft[key]} disabled={busy} onChange={event => update(key, event.target.value)} /></label>)}
+                {fields.map(([key, label, max]) => <label key={key}>{label}{key === 'model' ? ' *' : ''}<input required={key === 'model'} maxLength={max} value={draft[key]} disabled={busy} onChange={event => update(key, event.target.value)} />{key === 'graphicsCard' && !selected.graphicsCard && <small>未采集，默认填写集成显卡</small>}</label>)}
               </div></>}
             <label className="deployment-review-note">{rejecting ? '不批准原因 *' : '审核备注'}<textarea autoFocus={rejecting} required={rejecting} maxLength={500} rows={3} value={draft.note} disabled={busy} onChange={event => update('note', event.target.value)} /></label>
           </> : <>
@@ -132,6 +139,8 @@ export function DeploymentIntakes({ onNotify }: Props) {
         </div>
         <footer className="deployment-dialog-footer">
           <button type="button" className="button ghost" disabled={busy} onClick={close}>关闭</button>
+          {selected.state === 'rejected' && !resubmitting && <button type="button" className="button primary" disabled={busy} onClick={() => { setResubmitting(true); setFormError('') }}>修改并重新送审</button>}
+          {resubmitting && <button type="submit" className="button primary" disabled={busy}>{busy ? '提交中…' : '重新送审'}</button>}
           {selected.state === 'pending_review' && <>
             <button type="button" className="button ghost" disabled={busy} onClick={() => { setRejecting(value => !value); setFormError('') }}>{rejecting ? '返回核对' : '不批准'}</button>
             <button type="submit" className="button primary" disabled={busy}>{busy ? '提交中…' : rejecting ? '确认不批准' : '批准并创建资产'}</button>
