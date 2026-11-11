@@ -4,9 +4,10 @@ import type { DeploymentCredential } from '../types/deployment'
 import './DeploymentIntegration.css'
 
 export function WindowsCollection({ onNotify }: { onNotify: (text: string, kind?: 'ok' | 'error') => void }) {
-  const [name, setName] = useState('Windows 资产采集')
+  const [name, setName] = useState('电脑资产采集')
   const [baseUrl, setBaseUrl] = useState(location.origin)
   const [days, setDays] = useState('7')
+  const [platform, setPlatform] = useState<'windows' | 'macos'>('windows')
   const [items, setItems] = useState<DeploymentCredential[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -27,8 +28,8 @@ export function WindowsCollection({ onNotify }: { onNotify: (text: string, kind?
     if (lock.current) return
     lock.current = true; setBusy(true); setError('')
     try {
-      await api.downloadWindowsCollection({ name: name.trim(), baseUrl: baseUrl.trim(), days: Number(days) })
-      onNotify('采集包已下载，完整解压后双击“一键采集”，填写使用人和部门后提交')
+      await api.downloadWindowsCollection({ name: name.trim(), baseUrl: baseUrl.trim(), days: Number(days), platform })
+      onNotify(platform === 'windows' ? '采集包已下载，解压后双击“一键采集”，填写使用人和部门后提交' : 'macOS 采集包已下载，解压后按包内说明从终端运行')
       setRevision(v => v + 1)
     } catch (e) { setError(e instanceof Error ? e.message : '下载失败，请刷新后检查采集包列表') }
     finally { lock.current = false; setBusy(false) }
@@ -41,15 +42,17 @@ export function WindowsCollection({ onNotify }: { onNotify: (text: string, kind?
     finally { lock.current = false; setBusy(false) }
   }
   const date = (value: string) => new Date(value).toLocaleString('zh-CN')
-  return <section className="deployment-settings" aria-label="Windows 采集">
-    <header className="deployment-header"><div><h2>Windows 采集</h2><p>采集包可放在电脑或 U 盘。双击运行，填写实际使用人姓名和部门并确认提交，结果进入资产入库审核。</p></div>
+  return <section className="deployment-settings" aria-label="电脑采集">
+    <header className="deployment-header"><div><h2>电脑采集</h2><p>采集包可放在电脑或 U 盘，填写实际使用人和部门，电脑与显示器一起送资产入库审核。</p></div>
       <button className="button ghost" disabled={busy || loading} onClick={() => setRevision(v => v + 1)}>刷新</button></header>
     <form className="deployment-section" onSubmit={event => void download(event)}>
       <div className="deployment-review-fields">
+        <label>系统<select aria-label="采集系统" value={platform} disabled={busy} onChange={e => setPlatform(e.target.value as 'windows' | 'macos')}><option value="windows">Windows</option><option value="macos">macOS（Intel / Apple Silicon）</option></select></label>
         <label>采集包名称<input required maxLength={80} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
         <label>有效期（天）<input type="number" required min={1} max={90} value={days} disabled={busy} onChange={e => setDays(e.target.value)} /></label>
         <label>资产系统地址<input type="url" required value={baseUrl} disabled={busy} onChange={e => setBaseUrl(e.target.value)} /></label>
       </div>
+      {platform === 'macos' && <p>macOS：解压后在终端输入 bash 和空格，将“一键采集.command”拖入并回车。无需管理员权限，不关闭系统安全保护。尚需实机验证。</p>}
       <p>只采集配置，不安装常驻程序、不修改系统。采集包包含专用凭据，请勿公开传播；HTTP 仅用于已确认的受信内网。</p>
       <button className="button primary" disabled={busy}>{busy ? '处理中…' : '生成并下载采集包'}</button>
     </form>

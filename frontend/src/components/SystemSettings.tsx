@@ -38,7 +38,7 @@ export function SystemSettings({ onNotify }: Props) {
     <nav className="deployment-tabs" aria-label="系统设置分类">
       <button className={`button ${tab === 'qr' ? 'primary' : 'ghost'}`} onClick={() => setTab('qr')}>二维码设置</button>
       <button className={`button ${tab === 'deployment' ? 'primary' : 'ghost'}`} onClick={() => setTab('deployment')}>装机平台接入</button>
-      <button className={`button ${tab === 'windows' ? 'primary' : 'ghost'}`} onClick={() => setTab('windows')}>Windows 采集</button>
+      <button className={`button ${tab === 'windows' ? 'primary' : 'ghost'}`} onClick={() => setTab('windows')}>电脑采集</button>
     </nav>
     {tab === 'windows' ? <WindowsCollection onNotify={onNotify} /> : tab === 'deployment' ? <DeploymentIntegration onNotify={onNotify} /> : loading
       ? <div className="settings-loading"><span className="spinner" />正在读取设置…</div>

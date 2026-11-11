@@ -19,6 +19,11 @@ async function main() {
     const row = { externalRegistrationId: 'ad:test:device:1', receivedAt: '2026-11-10T08:00:00Z', capturedAt: '2026-11-10T07:50:00Z',
       declaredOperator: { id: 'agent', displayName: 'PE 自动采集' }, credentialId: 'service-1', state: 'pending_review', revision: 0,
       reportedUserName: '张三', reportedDepartment: '运营部',
+      collection: { platform: 'windows', computerType: 'laptop', status: 'partial', mouseBrands: ['Logitech'], keyboardBrands: [], monitors: [
+        { deviceKey: 'internal', connection: 'internal', brand: null, serialNumber: null, sizeInches: null },
+        { deviceKey: 'external1', connection: 'external', brand: 'Dell', serialNumber: 'DISPLAY-1', sizeInches: 23.8 },
+        { deviceKey: 'external2', connection: 'external', brand: 'HP', serialNumber: null, sizeInches: null }
+      ] },
       name: 'LENOVO ThinkPad L13', model: '20R4S4E200', cpu: 'Intel Core i5', memory: '16 GiB', storage: 'NVMe 512 GiB', graphicsCard: null,
       manufacturerSerialNumber: 'SN-TEST', categoryId: null, asset: null, reviewedAt: null, reviewedBy: null, reviewNote: null };
     let failApproval = false, failResubmit = false, administrator = true, intakeReads = 0;
@@ -59,7 +64,7 @@ async function main() {
         row.state = endpoint.endsWith('/approve') ? 'approved' : 'rejected';
         row.reviewNote = body.note;
         row.reviewedBy = 'admin'; row.reviewedAt = row.receivedAt;
-        if (row.state === 'approved') { Object.assign(row, body); row.asset = { id: 81, assetTag: '202611100001', version: 0 }; }
+        if (row.state === 'approved') { Object.assign(row, body); row.asset = { id: 81, assetTag: '202611100001', version: 0 }; row.monitorAssets = (body.monitors || []).map((monitor, index) => ({ id: 82 + index, assetTag: '20261110000' + (index + 2), version: 0 })); }
         row.revision = revision;
         data = row;
       } else if (['/api/assets', '/api/lookups', '/api/assignees'].includes(endpoint)) data = [];
@@ -120,6 +125,10 @@ async function main() {
     await queue.getByText('填报使用人：张三 / 运营部', { exact: true }).waitFor();
     await dialog.getByText('采集填报：张三 / 运营部（未经核实；确认领用时请填写下方领用人和部门）', { exact: true }).waitFor();
     assert.equal(await dialog.getByLabel('领用人', { exact: true }).inputValue(), '', 'reported user must not silently become assignee');
+    await dialog.getByText(/鼠标品牌：Logitech · 键盘品牌：无/).waitFor();
+    assert.equal(await dialog.getByLabel('入库显示器 1', { exact: true }).isChecked(), false);
+    assert.equal(await dialog.getByLabel('入库显示器 2', { exact: true }).isChecked(), false);
+    assert.equal(await dialog.getByLabel('入库显示器 3', { exact: true }).count(), 0, 'internal panel must not be offered as a new asset');
     assert.equal(await dialog.getByLabel('资产名称', { exact: true }).inputValue(), 'LENOVO ThinkPad L13');
     assert.equal(await dialog.getByLabel('设备型号 *', { exact: true }).inputValue(), '20R4S4E200');
     assert.equal(await dialog.getByLabel(/显卡/).inputValue(), '集成显卡');
@@ -131,6 +140,7 @@ async function main() {
       await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
       for (const size of [{ width: 1440, height: 900 }, { width: 2544, height: 963 }, { width: 390, height: 844 }]) {
         await page.setViewportSize(size);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         const layout = await queue.evaluate(element => {
           const content = element.closest('.content');
           return { right: element.getBoundingClientRect().right, edge: content.getBoundingClientRect().right - parseFloat(getComputedStyle(content).paddingRight),
@@ -144,14 +154,21 @@ async function main() {
         assert.ok(geometry.rect.height <= size.height, 'review dialog must stay in viewport');
         assert.ok(geometry.rect.left >= 0 && geometry.rect.right <= size.width, 'review dialog must fit viewport width');
         if (size.width > 600) {
-          const graphics = await dialog.getByLabel(/显卡/).boundingBox();
-          const serial = await dialog.getByLabel('SN', { exact: true }).boundingBox();
-          assert.ok(Math.abs(graphics.y - serial.y) <= 1, 'SN and graphics inputs must align despite the graphics helper text');
+          const { graphics, serial } = await dialog.evaluate(element => {
+            const labels = [...element.querySelectorAll('label')];
+            return { graphics: labels.find(label => label.textContent.startsWith('显卡')).querySelector('input').getBoundingClientRect().toJSON(), serial: labels.find(label => label.textContent === 'SN').querySelector('input').getBoundingClientRect().toJSON() };
+          });
+          assert.ok(Math.abs(graphics.y - serial.y) <= 1, 'SN and graphics inputs must align despite the graphics helper text: ' + JSON.stringify({ theme, size, graphics, serial }));
           assert.ok(Math.abs(graphics.height - serial.height) <= 1, 'SN and graphics inputs must have equal height');
         }
       }
     }
     failApproval = true;
+    await dialog.getByLabel('入库显示器 1', { exact: true }).check();
+    await dialog.getByRole('button', { name: '批准并创建资产', exact: true }).click();
+    await dialog.getByText('请确认所选显示器尚未登记，已有资产不要重复创建', { exact: true }).waitFor();
+    assert.equal(decisions.length, 0, 'unconfirmed monitor selection must not be sent');
+    await dialog.getByLabel('我已核对，所选显示器尚未登记，需要分别创建资产', { exact: true }).check();
     await dialog.getByRole('button', { name: '批准并创建资产', exact: true }).click();
     await dialog.getByRole('alert').waitFor();
     assert.equal(await dialog.getByLabel('设备型号 *', { exact: true }).inputValue(), 'ThinkPad T14');
@@ -161,6 +178,8 @@ async function main() {
     assert.equal(decisions.length, 2);
     assert.equal(decisions[1].body.categoryId, 12);
     assert.equal(decisions[1].body.graphicsCard, '集成显卡');
+    assert.equal(decisions[1].body.monitors.length, 1); assert.equal(decisions[1].body.monitors[0].deviceKey, 'external1');
+    assert.equal(decisions[1].body.confirmNewMonitors, true);
     assert.ok(!('assetTag' in decisions[1].body), 'browser must not invent an asset tag');
     await queue.getByRole('button', { name: '已批准', exact: true }).click();
     await queue.getByText('202611100001', { exact: true }).waitFor();

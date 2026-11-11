@@ -25,4 +25,6 @@ public class DeploymentIntake {
     @Column(length = 32) String source;
     @Column(length = 120) String reportedUserName;
     @Column(length = 120) String reportedDepartment;
+    @Lob @Column(columnDefinition = "LONGTEXT") String collectionJson;
+    @Lob @Column(columnDefinition = "LONGTEXT") String monitorAssetsJson;
 }

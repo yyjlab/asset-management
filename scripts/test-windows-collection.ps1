@@ -2,13 +2,20 @@ param([switch]$TestDialog)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../backend/src/main/resources/windows-collection/Collect.ps1" -LibraryOnly
 function Get-CimInstance {
-    param($ClassName, $OperationTimeoutSec)
+    param($ClassName, $OperationTimeoutSec, $Namespace)
     switch ($ClassName) {
         'Win32_ComputerSystemProduct' { [pscustomobject]@{ UUID='12345678-1234-1234-1234-123456789abc'; Version='ThinkPad L13' } }
-        'Win32_ComputerSystem' { [pscustomobject]@{ Model='20R4'; SystemFamily='ThinkPad L13'; Manufacturer='LENOVO'; TotalPhysicalMemory=8GB } }
+        'Win32_ComputerSystem' { [pscustomobject]@{ Model='20R4'; SystemFamily='ThinkPad L13'; Manufacturer='LENOVO'; TotalPhysicalMemory=8GB; PCSystemType=2 } }
         'Win32_BIOS' { [pscustomobject]@{ SerialNumber='sample' } }
         'Win32_Processor' { [pscustomobject]@{ Name='Test CPU' } }
         'Win32_VideoController' { [pscustomobject]@{ Name='Microsoft Basic Display Adapter' }; [pscustomobject]@{ Name='Intel Graphics' } }
+        'WmiMonitorID' {
+            foreach($id in @('internal','external1','external2','external2','inactive')){[pscustomobject]@{InstanceName=$id;Active=($id -ne 'inactive');ManufacturerName=([int[]][char[]]'DEL');SerialNumberID=([int[]][char[]]'SAME-SN')}}
+        }
+        'WmiMonitorBasicDisplayParams' {foreach($id in @('internal','external1')){[pscustomobject]@{InstanceName=$id;Active=$true;MaxHorizontalImageSize=53;MaxVerticalImageSize=30}}}
+        'WmiMonitorConnectionParams' {foreach($id in @('internal','external1','external2')){[pscustomobject]@{InstanceName=$id;Active=$true;VideoOutputTechnology=$(if($id -eq 'internal'){2147483648}else{5})}}}
+        'Win32_PointingDevice' { [pscustomobject]@{PNPDeviceID='HID\VID_046D&PID_C52B';Name='HID-compliant mouse'} }
+        'Win32_Keyboard' { [pscustomobject]@{PNPDeviceID='ACPI\PNP0303';Name='Standard PS/2 Keyboard'} }
     }
 }
 function Get-Disk {
@@ -20,6 +27,12 @@ if($inventory.name -ne 'LENOVO ThinkPad L13'){throw 'Readable device name lost'}
 if($inventory.snapshot.internalDisks.Count -ne 1){throw 'USB disk included'}
 if($inventory.snapshot.internalDisks[0].capacityBytes -ne 256GB){throw 'Physical capacity changed'}
 if($inventory.snapshot.graphicsCards.Count -ne 1 -or $inventory.snapshot.graphicsCards[0] -ne 'Intel Graphics'){throw 'Basic display adapter included'}
+if($inventory.collection.monitors.Count -ne 3){throw 'Active monitor count incorrect or equal SN merged'}
+if(@($inventory.collection.monitors|Where-Object connection -eq 'external').Count -ne 2){throw 'External monitor count incorrect'}
+if($inventory.collection.monitors[0].connection -ne 'internal'){throw 'Built-in panel treated as external'}
+if($null -ne $inventory.collection.monitors[2].sizeInches){throw 'Missing size fabricated'}
+if($inventory.collection.computerType -ne 'laptop'){throw 'Chassis type incorrect'}
+if($inventory.collection.mouseBrands[0] -ne 'Logitech' -or $inventory.collection.keyboardBrands.Count -ne 0){throw 'Generic HID or PS2 brand fabricated'}
 $script:sent=0
 function Invoke-RestMethod {
     param([switch]$UseBasicParsing, $Uri, $Method, $MaximumRedirection, $TimeoutSec, $Headers, $ContentType, $Body)

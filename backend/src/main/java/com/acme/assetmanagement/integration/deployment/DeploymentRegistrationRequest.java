@@ -47,7 +47,7 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
             var disk = object(raw, "snapshot.internalDisks[]");
             keys(disk, "snapshot.internalDisks[]", "model", "capacityBytes", "busType");
             String bus = text(disk, "busType", 16, true);
-            if (!Set.of("NVMe", "SATA", "ATA", "SAS", "SCSI", "RAID", "MMC").contains(bus))
+            if (!Set.of("NVMe", "SATA", "ATA", "SAS", "SCSI", "RAID", "MMC", "PCIe", "AppleFabric").contains(bus))
                 invalid("snapshot.internalDisks[].busType", "只接受明确的内置物理硬盘总线，不接受 USB、Unknown 或分区");
             disks.add(new Disk(text(disk, "model", 120, false), positive(disk.get("capacityBytes"), "snapshot.internalDisks[].capacityBytes"), bus));
         }
@@ -67,7 +67,7 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
         if (value instanceof Map<?, ?> map) return map;
         throw validation(field, "须为对象");
     }
-    private static List<?> array(Object value, String field, int max) {
+    static List<?> array(Object value, String field, int max) {
         if (value instanceof List<?> list && list.size() <= max) return list;
         throw validation(field, "须为数组，最多" + max + "项；未采集到时传空数组");
     }
@@ -89,7 +89,7 @@ public record DeploymentRegistrationRequest(String externalRegistrationId, Strin
         if (value.keySet().stream().anyMatch(key -> !known.contains(key))) invalid(field, "包含不支持的字段");
     }
     private static void invalid(String field, String message) { throw validation(field, message); }
-    private static DeploymentApiException validation(String field, String message) {
+    static DeploymentApiException validation(String field, String message) {
         return new DeploymentApiException(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", field + ": " + message, List.of(field));
     }
 }

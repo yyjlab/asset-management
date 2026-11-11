@@ -30,13 +30,15 @@ public class WindowsCollectionController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public List<DeploymentCredentialService.Info> list() { return credentials.list(true); }
 
-    public record PackageRequest(String name, String baseUrl, Integer days) {}
+    public record PackageRequest(String name, String baseUrl, Integer days, String platform) {}
     @PostMapping("/api/settings/windows-collection/packages")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     @Transactional
     public ResponseEntity<byte[]> download(@RequestBody PackageRequest value, HttpServletRequest request) throws IOException {
         if (value.name()==null || value.name().isBlank() || value.name().length()>80 || value.days()==null || value.days()<1 || value.days()>90)
             throw failure("包名称须为1至80字符，有效期须为1至90天");
+        String platform=value.platform()==null ? "windows" : value.platform();
+        if(!Set.of("windows","macos").contains(platform))throw failure("请选择 Windows 或 macOS");
         URI url;
         try { url=URI.create(value.baseUrl()); } catch (RuntimeException e) { throw failure("请填写资产系统完整地址"); }
         if (url.getHost()==null || !Set.of("http","https").contains(url.getScheme()) || url.getUserInfo()!=null
@@ -48,17 +50,26 @@ public class WindowsCollectionController {
         var row=new WindowsCollectionPackage(); row.id=issued.credential().id(); packages.saveAndFlush(row);
         var output=new ByteArrayOutputStream();
         try (var zip=new ZipOutputStream(output, StandardCharsets.UTF_8)) {
+            if(platform.equals("macos")) {
+                zip.putNextEntry(new ZipEntry("Collect.js"));
+                try(var script=new ClassPathResource("windows-collection/CollectMac.js").getInputStream()){zip.write(script.readAllBytes());} zip.closeEntry();
+                zip.putNextEntry(new ZipEntry("一键采集.command"));
+                zip.write("#!/bin/bash\numask 077\ncd -- \"$(dirname -- \"$0\")\" || exit 1\n/usr/bin/osascript -l JavaScript Collect.js\nstatus=$?\nprintf '\\nPress Enter to close...'\nread -r _\nexit \"$status\"\n".getBytes(StandardCharsets.UTF_8)); zip.closeEntry();
+                zip.putNextEntry(new ZipEntry("使用说明.txt"));
+                zip.write("完整解压后，在终端输入 bash 和空格，再把“一键采集.command”拖进终端并回车。无需 sudo，不安装常驻程序。填写实际使用人和部门后提交。系统安全限制可能阻止直接双击，勿关闭系统安全保护。采集包含专用凭据，请勿公开。\n".getBytes(StandardCharsets.UTF_8));zip.closeEntry();
+            } else {
             zip.putNextEntry(new ZipEntry("Collect.ps1")); zip.write(new byte[]{(byte)0xef,(byte)0xbb,(byte)0xbf});
             try (var script = new ClassPathResource("windows-collection/Collect.ps1").getInputStream()) { zip.write(script.readAllBytes()); }
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("一键采集.cmd"));
             zip.write("@echo off\r\npowershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File \"%~dp0Collect.ps1\"\r\npause\r\n".getBytes(StandardCharsets.US_ASCII)); zip.closeEntry();
+            }
             zip.putNextEntry(new ZipEntry("config.json"));
             zip.write(json.writeValueAsBytes(Map.of("endpoint", url.toString().replaceAll("/$", "")+DeploymentSecurityConfig.WINDOWS,
                     "token", issued.token()))); zip.closeEntry();
         }
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename=windows-collection.zip")
+                .header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename="+platform+"-collection.zip")
                 .contentType(MediaType.parseMediaType("application/zip")).body(output.toByteArray());
     }
     @PostMapping("/api/settings/windows-collection/packages/{id}/revoke")
@@ -72,7 +83,9 @@ public class WindowsCollectionController {
         Map<?,?> input;
         try { input=object(json.readerFor(Object.class).with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).readValue(body),"request"); }
         catch (RuntimeException e) { throw failure("采集资料须为有效 JSON 对象"); }
-        keys(input,"request","hardwareUuid","name","capturedAt","snapshot","reportedUserName","reportedDepartment");
+        keys(input,"request","hardwareUuid","name","capturedAt","snapshot","reportedUserName","reportedDepartment","collection");
+        var details=CollectionDetails.parse(input.get("collection"));
+        boolean mac=details!=null && details.platform().equals("macos");
         String reportedUserName=text(input,"reportedUserName",120,false);
         String reportedDepartment=text(input,"reportedDepartment",120,false);
         String hardware=text(input,"hardwareUuid",36,true);
@@ -81,10 +94,10 @@ public class WindowsCollectionController {
         if (!uuid.toString().equalsIgnoreCase(hardware) || uuid.equals(new UUID(0,0)) || uuid.equals(new UUID(-1,-1)))
             throw failure("硬件 UUID 无效，不使用 SN 代替设备身份");
         var value=new LinkedHashMap<String,Object>();
-        value.put("externalRegistrationId","windows:"+uuid); value.put("name",input.get("name"));
+        value.put("externalRegistrationId",(mac ? "macos:" : "windows:")+uuid); value.put("name",input.get("name"));
         value.put("capturedAt",input.get("capturedAt")); value.put("snapshot",input.get("snapshot"));
-        value.put("operator",Map.of("id","windows-collector","displayName","Windows一键采集"));
-        var result=intakes.receiveWindows(json.writeValueAsBytes(value), reportedUserName, reportedDepartment);
+        value.put("operator",Map.of("id",mac ? "macos-collector" : "windows-collector","displayName",mac ? "macOS一键采集" : "Windows一键采集"));
+        var result=intakes.receiveWindows(json.writeValueAsBytes(value), reportedUserName, reportedDepartment, details);
         return ResponseEntity.status("pending_review".equals(result.result())?202:200).cacheControl(CacheControl.noStore()).body(result);
     }
     private DeploymentApiException failure(String message) {

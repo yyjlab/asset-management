@@ -367,4 +367,67 @@ class DeploymentIntakeApiTest {
         assertEquals("李四",intakes.findById(externalId).orElseThrow().reportedUserName);
         body.put("reportedUserName","x".repeat(121)); collect(collector,body).andExpect(status().isUnprocessableEntity());
     }
+    Map<String,Object> monitor(String id,String connection){return Map.of("deviceKey",id,"connection",connection,"brand","Dell","serialNumber","DISPLAY-SN","sizeInches",23.8);}
+    Map<String,Object> collection(String platform){return Map.of("platform",platform,"computerType","laptop","status","partial",
+        "monitors",List.of(monitor("panel","internal"),monitor("external1","external"),monitor("external2","external")),"mouseBrands",List.of("Logitech"),"keyboardBrands",List.of());}
+    void receiveCollected(String platform) throws Exception {
+        String collector=(String)windowsPackage().get("token");
+        var body=new LinkedHashMap<>(windowsBody(UUID.randomUUID().toString()));body.put("collection",collection(platform));
+        var response=collect(collector,body).andExpect(status().isAccepted()).andReturn().getResponse();
+        externalId=json.readTree(response.getContentAsByteArray()).get("externalRegistrationId").asText();
+    }
+    Map<String,Object> displayReview(String key,String brand){return Map.of("deviceKey",key,"brand",brand,"serialNumber","DISPLAY-SN","sizeInches",23.8);}
+    @Test void approvesComputerAndSelectedExternalDisplaysExactlyOnceWithSameCustodian() throws Exception {
+        receiveCollected("windows");option(LookupType.CATEGORY,"显示器");option(LookupType.STATUS,"已经领出");
+        long before=assets.count(); var approval=review();approval.put("assignedTo","张三");approval.put("ownershipDepartment","研发部");
+        approval.put("monitors",List.of(displayReview("external1","Dell"),displayReview("external2","Dell")));approval.put("confirmNewMonitors",true);
+        var response=decide(approval,"approve").andExpect(status().isOk()).andExpect(jsonPath("$.monitorAssets.length()").value(2))
+            .andExpect(jsonPath("$.collection.mouseBrands[0]").value("Logitech")).andReturn().getResponse();
+        assertEquals(before+3,assets.count());
+        for(var reference:json.readTree(response.getContentAsByteArray()).get("monitorAssets")){
+            var display=assets.findById(reference.get("id").asLong()).orElseThrow();
+            assertEquals("显示器",display.getCategory().getName());assertEquals("23.8英寸",display.getScreenSize());
+            assertEquals("DISPLAY-SN",display.getManufacturerSerialNumber());assertEquals("张三",display.getAssignedTo());assertEquals("研发部",display.getOwnershipDepartment());
+        }
+        decide(approval,"approve").andExpect(status().isOk());assertEquals(before+3,assets.count());
+    }
+    @Test void rejectsInternalDisplayUnknownKeyDuplicatesAndUnconfirmedNewMonitorsWithoutCreatingAssets() throws Exception {
+        receiveCollected("windows");option(LookupType.CATEGORY,"显示器");long before=assets.count();
+        var approval=review();approval.put("confirmNewMonitors",true);
+        for(String key:List.of("panel","invented")){approval.put("monitors",List.of(displayReview(key,"Dell")));decide(approval,"approve").andExpect(status().isUnprocessableEntity());}
+        approval.put("monitors",List.of(displayReview("external1","Dell"),displayReview("external1","Dell")));decide(approval,"approve").andExpect(status().isUnprocessableEntity());
+        approval.put("monitors",List.of(displayReview("external1","Dell")));approval.put("confirmNewMonitors",false);decide(approval,"approve").andExpect(status().isUnprocessableEntity());
+        assertEquals(before,assets.count());assertEquals("pending_review",intakes.findById(externalId).orElseThrow().state);
+    }
+    @Test void monitorCreationFailureRollsBackTheComputerAndKeepsIntakePending() throws Exception {
+        receiveCollected("windows");option(LookupType.CATEGORY,"显示器");long before=assets.count();
+        var approval=review();approval.put("monitors",List.of(displayReview("external1","BlockedBrand")));approval.put("confirmNewMonitors",true);
+        jdbc.execute("ALTER TABLE assets ADD CONSTRAINT test_blocked_display CHECK (name NOT LIKE 'BlockedBrand%')");
+        try {decide(approval,"approve").andExpect(status().isInternalServerError());assertEquals(before,assets.count());assertEquals("pending_review",intakes.findById(externalId).orElseThrow().state);}
+        finally {jdbc.execute("ALTER TABLE assets DROP CONSTRAINT test_blocked_display");}
+    }
+    @Test void macPackageUsesSameRestrictedIntakeAndCollectsWithoutChangingLegacyWindowsContract() throws Exception {
+        var bytes=mvc.perform(post("/api/settings/windows-collection/packages").secure(true).with(user(admin)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+            .content(json.writeValueAsBytes(Map.of("name","Mac采集","days",7,"baseUrl","https://asset.test","platform","macos"))))
+            .andExpect(status().isOk()).andExpect(header().string("Content-Disposition","attachment; filename=macos-collection.zip")).andReturn().getResponse().getContentAsByteArray();
+        var names=new HashSet<String>();try(var zip=new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(bytes),java.nio.charset.StandardCharsets.UTF_8)){java.util.zip.ZipEntry entry;while((entry=zip.getNextEntry())!=null)names.add(entry.getName());}
+        assertEquals(Set.of("Collect.js","一键采集.command","使用说明.txt","config.json"),names);
+        receiveCollected("macos");assertTrue(externalId.startsWith("macos:"));assertEquals("macOS一键采集",intakes.findById(externalId).orElseThrow().source);
+    }
+    @Test void validatesCollectionBoundsAndUnknownFieldsOnTheServer() throws Exception {
+        String collector=(String)windowsPackage().get("token");var body=new LinkedHashMap<>(windowsBody(UUID.randomUUID().toString()));
+        var details=new LinkedHashMap<>(collection("windows"));details.put("mouseBrands",List.of("x".repeat(81)));body.put("collection",details);
+        collect(collector,body).andExpect(status().isUnprocessableEntity());
+        details.put("mouseBrands",List.of());details.put("monitors",List.of(monitor("duplicate","external"),monitor("duplicate","external")));collect(collector,body).andExpect(status().isUnprocessableEntity());
+        details.put("monitors",List.of());details.put("computerType","laptop-because-no-monitor");collect(collector,body).andExpect(status().isUnprocessableEntity());
+    }
+    @Test void samePersonCanApproveTwoDifferentComputersWithIndependentAssetNumbers() throws Exception {
+        option(LookupType.STATUS,"已经领出");long before=assets.count();var ids=new HashSet<Long>();var tags=new HashSet<String>();
+        for(int index=0;index<2;index++){
+            receiveCollected("windows");var approval=review();approval.put("assignedTo","同一位员工");approval.put("ownershipDepartment","研发部");
+            var response=decide(approval,"approve").andExpect(status().isOk()).andReturn().getResponse();
+            var reference=json.readTree(response.getContentAsByteArray()).get("asset");ids.add(reference.get("id").asLong());tags.add(reference.get("assetTag").asText());
+        }
+        assertEquals(before+2,assets.count());assertEquals(2,ids.size());assertEquals(2,tags.size());
+    }
 }

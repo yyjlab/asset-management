@@ -63,6 +63,7 @@
 .deployment-review-defaults { margin-bottom: 20px; padding: 10px 12px; border-radius: 6px; background: var(--blue-soft); color: var(--ink); font-size: 13px; line-height: 1.6; }
 .deployment-review-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
 .deployment-review-fields label, .deployment-review-note { display: grid; min-width: 0; gap: 8px; font-size: 13px; }
+.deployment-review-fields label { line-height: 20px; }
 .deployment-review-fields input, .deployment-review-fields select, .deployment-review-note textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--ink); background: var(--surface); border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); border-radius: 6px; font: inherit; }
 .deployment-review-note { margin-top: 20px; }
 .deployment-review-result dt { color: var(--muted); font-size: 13px; }

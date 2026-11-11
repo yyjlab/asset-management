@@ -36,6 +36,8 @@ export interface DeploymentHistory {
 
 export type DeploymentIntakeState = 'pending_review' | 'approved' | 'rejected'
 export interface DeploymentIntake {
+  collection?: CollectionDetails | null
+  monitorAssets?: { id: number; assetTag: string; version: number }[]
   reportedUserName?: string | null
   reportedDepartment?: string | null
   source?: string
@@ -69,6 +71,8 @@ export interface DeploymentIntakePage {
   totalElements: number
 }
 export interface DeploymentApproval {
+  monitors?: { deviceKey: string; brand: string; serialNumber: string | null; sizeInches: number | null }[]
+  confirmNewMonitors?: boolean
   assignedTo?: string | null
   ownershipDepartment?: string | null
   domainJoinStatus?: 'JOINED' | 'NOT_JOINED' | 'UNKNOWN' | null
@@ -82,4 +86,13 @@ export interface DeploymentApproval {
   graphicsCard: string | null
   manufacturerSerialNumber: string | null
   note: string | null
+}
+
+export interface CollectionDetails {
+  platform: 'windows' | 'macos'
+  computerType: 'laptop' | 'desktop' | 'unknown'
+  status: 'ok' | 'partial' | 'unavailable'
+  monitors: { deviceKey: string; connection: 'internal' | 'external' | 'unknown'; brand: string | null; serialNumber: string | null; sizeInches: number | null }[]
+  mouseBrands?: string[]
+  keyboardBrands?: string[]
 }

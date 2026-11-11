@@ -52,25 +52,28 @@ public class DeploymentIntakeService {
             String credentialId, String state, int revision, String name, String model, String cpu, String memory, String storage,
             String graphicsCard, String manufacturerSerialNumber, Long categoryId, AssetRef asset,
             Instant reviewedAt, String reviewedBy, String reviewNote, String assignedTo, String ownershipDepartment,
-            String domainJoinStatus, String source, String reportedUserName, String reportedDepartment) {}
+            String domainJoinStatus, String source, String reportedUserName, String reportedDepartment, CollectionDetails collection, List<AssetRef> monitorAssets) {}
     public record History(List<Entry> items, int page, int totalPages, long totalElements) {}
     public record Options(List<DeploymentRegistrationService.CategoryChoice> categories) {}
+    public record MonitorReview(String deviceKey, String brand, String serialNumber, Double sizeInches) {}
     public record Review(int revision, Long categoryId, String name, String model, String cpu, String memory,
             String storage, String graphicsCard, String manufacturerSerialNumber, String note,
-            String assignedTo, String ownershipDepartment, String domainJoinStatus) {}
+            String assignedTo, String ownershipDepartment, String domainJoinStatus, List<MonitorReview> monitors, boolean confirmNewMonitors) {}
 
     public Result receive(byte[] body) {
-        return receive(body, false, null, null);
+        return receive(body, false, null, null, null);
     }
-    public Result receiveWindows(byte[] body, String reportedUserName, String reportedDepartment) {
-        return receive(body, true, reportedUserName, reportedDepartment);
+    public Result receiveWindows(byte[] body, String reportedUserName, String reportedDepartment, CollectionDetails details) {
+        return receive(body, true, reportedUserName, reportedDepartment, details);
     }
-    private Result receive(byte[] body, boolean collection, String reportedUserName, String reportedDepartment) {
+    private Result receive(byte[] body, boolean collection, String reportedUserName, String reportedDepartment, CollectionDetails details) {
         var request = parseIntake(body, json);
         var principal = principal();
         if (windows.existsById(principal.credentialId()) != collection)
             throw error(HttpStatus.FORBIDDEN, "FORBIDDEN", "凭据用途不匹配");
         String fingerprint = DeploymentCredentialService.hash(json.writeValueAsString(request));
+        String source=details!=null && details.platform().equals("macos") ? "macOS一键采集" : "Windows一键采集";
+        String collectionJson=details==null ? null : json.writeValueAsString(details);
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 return transaction.execute(status -> {
@@ -78,15 +81,16 @@ public class DeploymentIntakeService {
                     credentials.requireActiveLocked(principal);
                     var previous = intakes.locked(request.externalRegistrationId()).orElse(null);
                     if (previous != null) {
-                        if (collection && !"Windows一键采集".equals(previous.source))
+                        if (collection && !source.equals(previous.source))
                             throw error(HttpStatus.CONFLICT, "SOURCE_CONFLICT", "该登记标识已由其他来源使用");
                         if (!collection && !previous.fingerprint.equals(fingerprint))
                             throw error(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", "相同标识不能携带不同内容");
-                        if (collection && "pending_review".equals(previous.state) && reportedUserName != null
-                                && (!java.util.Objects.equals(previous.reportedUserName, reportedUserName)
-                                || !java.util.Objects.equals(previous.reportedDepartment, reportedDepartment))) {
-                            previous.reportedUserName = reportedUserName;
-                            previous.reportedDepartment = reportedDepartment;
+                        if (collection && "pending_review".equals(previous.state)
+                                && (reportedUserName != null && (!java.util.Objects.equals(previous.reportedUserName, reportedUserName)
+                                || !java.util.Objects.equals(previous.reportedDepartment, reportedDepartment))
+                                || collectionJson!=null && !collectionJson.equals(previous.collectionJson))) {
+                            if(reportedUserName!=null){previous.reportedUserName = reportedUserName; previous.reportedDepartment = reportedDepartment;}
+                            if(collectionJson!=null)previous.collectionJson=collectionJson;
                             previous.revision++;
                             intakes.saveAndFlush(previous);
                             audit(previous, "collector_details_updated", request);
@@ -96,7 +100,8 @@ public class DeploymentIntakeService {
                     var row = new DeploymentIntake(); row.externalId = request.externalRegistrationId();
                     row.credentialId = principal.credentialId(); row.fingerprint = fingerprint; row.receivedAt = Instant.now();
                     row.requestJson = new String(body, StandardCharsets.UTF_8);
-                    row.source = collection ? "Windows一键采集" : "AD装机平台";
+                    row.source = collection ? source : "AD装机平台";
+                    row.collectionJson=collectionJson;
                     row.reportedUserName = reportedUserName; row.reportedDepartment = reportedDepartment;
                     intakes.saveAndFlush(row);
                     audit(row, "pending_review", request);
@@ -168,6 +173,25 @@ public class DeploymentIntakeService {
                 var available = review.assignedTo() == null ? legacy.dictionary(LookupType.STATUS, "当前可用", "可领用")
                         : legacy.dictionary(LookupType.STATUS, "已经领出", "在用");
                 var category = validateReview(review);
+                var monitorRequests=new ArrayList<AssetRequest>();
+                if(!review.monitors().isEmpty()) {
+                    if(!review.confirmNewMonitors())throw error(HttpStatus.UNPROCESSABLE_ENTITY,"MONITOR_CONFIRM_REQUIRED","请确认所选外接显示器尚未登记，已有资产不要重复新建");
+                    var detected=row.collectionJson==null ? List.<CollectionDetails.Monitor>of() : json.readValue(row.collectionJson,CollectionDetails.class).monitors();
+                    var displayCategory=legacy.dictionary(LookupType.CATEGORY,"显示器");
+                    if(legacy.profile(displayCategory)!=AssetProfile.DISPLAY)throw error(HttpStatus.UNPROCESSABLE_ENTITY,"CATEGORY_INVALID","显示器分类须配置为显示器类型");
+                    for(var monitor:review.monitors()) {
+                        if(detected.stream().noneMatch(d->d.deviceKey().equals(monitor.deviceKey()) && d.connection().equals("external")))
+                            throw error(HttpStatus.UNPROCESSABLE_ENTITY,"MONITOR_INVALID","只能选择本次采集到的外接显示器；内置屏或连接类型不明不能单独入库");
+                        if(monitor.serialNumber()!=null)legacy.requireDescriptiveSerialSchema();
+                        var display=new AssetRequest(null,monitor.brand()+"显示器",review.ownershipDepartment(),null,null,null,null,
+                                monitor.serialNumber(),monitor.sizeInches()==null ? null : monitor.sizeInches()+"英寸",null,null,null,
+                                company.getId(),null,"型号未采集",displayCategory.getId(),available.getId(),location.getId(),null,null,
+                                review.assignedTo()!=null,review.assignedTo(),null,List.of(),null,List.of(),null,List.of(),List.of(),List.of(),null,null);
+                        var invalid=validator.validate(display);
+                        if(!invalid.isEmpty())throw error(HttpStatus.UNPROCESSABLE_ENTITY,"VALIDATION_FAILED",invalid.iterator().next().getMessage());
+                        monitorRequests.add(display);
+                    }
+                }
                 if (review.manufacturerSerialNumber() != null) legacy.requireDescriptiveSerialSchema();
                 var value = new AssetRequest(null, review.name(), review.ownershipDepartment(), review.cpu(), review.memory(), review.storage(),
                         review.graphicsCard(), review.manufacturerSerialNumber(), null, null, null, null, company.getId(),
@@ -178,6 +202,9 @@ public class DeploymentIntakeService {
                 if (!violations.isEmpty()) throw error(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", violations.iterator().next().getMessage());
                 var created = assets.createFromDeployment(value);
                 row.assetId = created.id(); row.assetTag = created.assetTag(); row.assetVersion = created.version();
+                var displayAssets=new ArrayList<AssetRef>();
+                for(var display:monitorRequests){var saved=assets.createFromDeployment(display);displayAssets.add(new AssetRef(saved.id(),saved.assetTag(),saved.version()));}
+                row.monitorAssetsJson=json.writeValueAsString(displayAssets);
                 row.reviewJson = json.writeValueAsString(review);
             }
             row.state = target; row.revision++; row.reviewedAt = Instant.now(); row.reviewedBy = username;
@@ -210,7 +237,7 @@ public class DeploymentIntakeService {
         try { root = object(json.readerFor(Object.class).with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).readValue(body), "request"); }
         catch (DeploymentApiException e) { throw e; }
         catch (RuntimeException e) { throw error(HttpStatus.BAD_REQUEST, "MALFORMED_JSON", "请求必须为JSON对象"); }
-        if (approve) keys(root, "request", "revision", "categoryId", "name", "model", "cpu", "memory", "storage", "graphicsCard", "manufacturerSerialNumber", "note", "assignedTo", "ownershipDepartment", "domainJoinStatus");
+        if (approve) keys(root, "request", "revision", "categoryId", "name", "model", "cpu", "memory", "storage", "graphicsCard", "manufacturerSerialNumber", "note", "assignedTo", "ownershipDepartment", "domainJoinStatus", "monitors", "confirmNewMonitors");
         else keys(root, "request", "revision", "note");
         Object revision = root.get("revision");
         if (!(revision instanceof Integer number) || number < 0)
@@ -218,11 +245,25 @@ public class DeploymentIntakeService {
         String domain = text(root, "domainJoinStatus", 20, false);
         if (domain != null && !Set.of("JOINED", "NOT_JOINED", "UNKNOWN").contains(domain))
             throw error(HttpStatus.UNPROCESSABLE_ENTITY, "VALIDATION_FAILED", "入域状态无效");
+        var monitors=new ArrayList<MonitorReview>(); var ids=new HashSet<String>();
+        if(approve && root.get("monitors")!=null)for(var raw:array(root.get("monitors"),"monitors",32)) {
+            var monitor=object(raw,"monitors[]");keys(monitor,"monitors[]","deviceKey","brand","serialNumber","sizeInches");
+            String id=text(monitor,"deviceKey",160,true);
+            if(!ids.add(id))throw error(HttpStatus.UNPROCESSABLE_ENTITY,"MONITOR_INVALID","不能重复选择同一显示器");
+            Double size=null;
+            if(monitor.get("sizeInches")!=null){
+                if(!(monitor.get("sizeInches") instanceof Number n) || !Double.isFinite(n.doubleValue()) || n.doubleValue()<1 || n.doubleValue()>200)
+                    throw error(HttpStatus.UNPROCESSABLE_ENTITY,"VALIDATION_FAILED","显示器尺寸须为1至200英寸或留空");
+                size=((Number)monitor.get("sizeInches")).doubleValue();
+            }
+            monitors.add(new MonitorReview(id,text(monitor,"brand",80,true),text(monitor,"serialNumber",160,false),size));
+        }
+        if(root.get("confirmNewMonitors")!=null && !(root.get("confirmNewMonitors") instanceof Boolean))throw error(HttpStatus.UNPROCESSABLE_ENTITY,"VALIDATION_FAILED","显示器确认参数无效");
         return new Review((Integer)revision, approve ? positive(root.get("categoryId"), "categoryId") : null,
                 text(root, "name", 160, approve), text(root, "model", 120, approve), text(root, "cpu", 200, false),
                 text(root, "memory", 200, false), text(root, "storage", 200, false), text(root, "graphicsCard", 200, false),
                 text(root, "manufacturerSerialNumber", 160, false), text(root, "note", 500, !approve),
-                text(root, "assignedTo", 120, false), text(root, "ownershipDepartment", 120, false), domain);
+                text(root, "assignedTo", 120, false), text(root, "ownershipDepartment", 120, false), domain,List.copyOf(monitors),Boolean.TRUE.equals(root.get("confirmNewMonitors")));
     }
 
     private DeploymentIntake find(String id) {
@@ -258,7 +299,9 @@ public class DeploymentIntakeService {
                 r == null ? request.snapshot().manufacturerSerialNumber() : r.manufacturerSerialNumber(),
                 r == null ? request.categoryId() : r.categoryId(), asset(row), row.reviewedAt, row.reviewedBy, row.reviewNote,
                 r == null ? null : r.assignedTo(), r == null ? null : r.ownershipDepartment(), r == null ? null : r.domainJoinStatus(),
-                row.source == null ? "AD装机平台" : row.source, row.reportedUserName, row.reportedDepartment);
+                row.source == null ? "AD装机平台" : row.source, row.reportedUserName, row.reportedDepartment,
+                row.collectionJson==null ? null : json.readValue(row.collectionJson,CollectionDetails.class),
+                row.monitorAssetsJson==null ? List.of() : java.util.Arrays.asList(json.readValue(row.monitorAssetsJson,AssetRef[].class)));
     }
     private void audit(DeploymentIntake row, String state, DeploymentRegistrationRequest request) {
         var changes = new LinkedHashMap<String, Object>();
@@ -266,6 +309,7 @@ public class DeploymentIntakeService {
         changes.put("source", source); changes.put("credentialId", row.credentialId);
         changes.put("externalRegistrationId", row.externalId); changes.put("declaredOperator", request.operator());
         changes.put("reportedUserName", row.reportedUserName); changes.put("reportedDepartment", row.reportedDepartment);
+        if(row.collectionJson!=null)changes.put("collection",json.readValue(row.collectionJson,CollectionDetails.class));
         changes.put("result", state); changes.put("reviewedBy", row.reviewedBy); changes.put("reviewNote", row.reviewNote);
         if (state.equals("resubmitted")) {
             changes.put("previousReviewedAt", row.reviewedAt);
