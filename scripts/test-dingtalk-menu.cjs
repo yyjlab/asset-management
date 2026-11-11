@@ -126,7 +126,7 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, opti
   const visibility = load('featureVisibility.ts'); visibility.featureVisibility.businessWorkflows = options.businessWorkflows ?? true;
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons, '../featureVisibility': visibility });
   const rendered = [];
-  const componentNames = ['AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'DeploymentIntakes', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
+  const componentNames = ['RegistrationRoster', 'AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'DeploymentIntakes', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
   const mocks = { react, './featureVisibility': visibility, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
@@ -1565,6 +1565,16 @@ test('category counters only count the selected ledger subset', () => {
   const { groupSummary } = load('assetGroups.ts');
   const result = groupSummary([domainAsset(), domainAsset({ checkedOut: true }), domainAsset({ status: { name: '维护中' } }), domainAsset({ status: { name: '已报废' } })]);
   assert.equal(JSON.stringify(result), JSON.stringify({ total: 4, available: 1, checkedOut: 1, maintenance: 1, scrapped: 1 }));
+});
+
+test('roster is administrator-only and independent from the asset ledger', () => {
+  const admin = sidebarMarkup({ canReviewDeployment: true, section: 'registrationRoster' });
+  const choices = [...admin.matchAll(/aria-label="([^"]+)"/g)].map(match => match[1]);
+  assert.ok(choices.indexOf('登记核对') > choices.indexOf('全部资产'));
+  assert.ok(choices.indexOf('登记核对') < choices.indexOf('笔记本电脑'));
+  assert.deepEqual(appMarkup('registrationRoster', { role: 'SUPER_ADMIN', canManageUsers: true }).rendered, ['RegistrationRoster']);
+  assert.deepEqual(appMarkup('registrationRoster', { role: 'USER', canManageUsers: true }).rendered, []);
+  assert.ok(!sidebarMarkup({ section: 'registrationRoster' }).includes('aria-label="登记核对"'));
 });
 
 test('asset submenu exposes five separate choices and closes after a mobile selection', () => {

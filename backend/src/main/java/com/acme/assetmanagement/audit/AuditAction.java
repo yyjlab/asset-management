@@ -21,7 +21,8 @@ public enum AuditAction {
     SETTING_UPDATE("设置", "修改设置"),
     CSV_TEMPLATE_EXPORT("导入导出", "导出资产数据"),
     CSV_IMPORT("导入导出", "导入CSV"),
-    AD_DEPLOYMENT_REGISTER("资产", "装机平台资产登记");
+    AD_DEPLOYMENT_REGISTER("资产", "装机平台资产登记"),
+    REGISTRATION_ROSTER_IMPORT("资产", "导入登记核对名单");
 
     private final String module;
     private final String label;

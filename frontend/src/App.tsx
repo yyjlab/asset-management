@@ -12,6 +12,7 @@ import { MoonIcon, SunIcon } from './components/Icons'
 import { LookupModal } from './components/LookupModal'
 import { ArchiveIcon, BoxesIcon, CheckIcon, ChevronIcon, CloseIcon, LogoutIcon, PlusIcon, ReturnIcon, SearchIcon, UserIcon, WrenchIcon } from './components/Icons'
 import { Sidebar } from './components/Sidebar'
+import { RegistrationRoster } from './components/RegistrationRoster'
 import type { AppSection } from './components/Sidebar'
 import { LoginPage } from './components/LoginPage'
 import { UserManagement } from './components/UserManagement'
@@ -118,8 +119,8 @@ export default function App() {
     }
     const params = new URLSearchParams(window.location.search)
     let url = window.location.href
-    if (nextSection === 'deploymentReview' || params.get('view') === 'deployment-review') {
-      if (nextSection === 'deploymentReview') params.set('view', 'deployment-review')
+    if (nextSection === 'deploymentReview' || nextSection === 'registrationRoster' || ['deployment-review', 'registration-roster'].includes(params.get('view') || '')) {
+      if (nextSection === 'deploymentReview' || nextSection === 'registrationRoster') params.set('view', nextSection === 'deploymentReview' ? 'deployment-review' : 'registration-roster')
       else params.delete('view')
       url = `${window.location.pathname}${params.size ? `?${params.toString()}` : ''}${window.location.hash || ''}`
     }
@@ -243,8 +244,8 @@ export default function App() {
     }
     const current = window.history.state as AppHistoryState | null
     const params = new URLSearchParams(window.location.search)
-    if (params.get('view') === 'deployment-review' && !params.has('qr') && !params.has('asset')) {
-      const state: AppHistoryState = { assetManagement: true, section: 'deploymentReview', page: { name: 'list' }, depth: current?.assetManagement ? current.depth : 0 }
+    if (['deployment-review', 'registration-roster'].includes(params.get('view') || '') && !params.has('qr') && !params.has('asset')) {
+      const state: AppHistoryState = { assetManagement: true, section: params.get('view') === 'deployment-review' ? 'deploymentReview' : 'registrationRoster', page: { name: 'list' }, depth: current?.assetManagement ? current.depth : 0 }
       window.history.replaceState(state, '', window.location.href)
       void restoreView(state)
     } else if (current?.assetManagement) {
@@ -458,7 +459,7 @@ export default function App() {
     {avatarEditorOpen && <AvatarEditor user={authUser} revision={avatarRevision} busy={avatarSaving} onClose={() => !avatarSaving && setAvatarEditorOpen(false)} onUpload={uploadAvatar} onDelete={deleteMyAvatar} onError={(message) => notify(message, 'error')} />}
   </>
 
-  const restrictedSection = section === 'deploymentReview' && authUser.role !== 'SUPER_ADMIN' ? '资产入库'
+  const restrictedSection = (section === 'deploymentReview' || section === 'registrationRoster') && authUser.role !== 'SUPER_ADMIN' ? (section === 'deploymentReview' ? '资产入库' : '登记核对')
     : (section === 'users' || section === 'logs' || section === 'settings' || section === 'foundation') && !authUser.canManageUsers
     ? { users: '用户', logs: '日志', settings: '设置', foundation: '基础资料' }[section]
     : section === 'transfer' && !(hasPermission('ASSET_EXPORT') || (hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'))
@@ -513,6 +514,12 @@ export default function App() {
   if (section === 'users' && authUser.canManageUsers) return <div className="app-shell">
     <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content"><UserManagement currentUserId={authUser.id} avatarRevision={avatarRevision} onNotify={notify} onPasswordChanged={() => void logout()} /></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
+
+  if (section === 'registrationRoster' && authUser.role === 'SUPER_ADMIN') return <div className="app-shell">
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><RegistrationRoster key={accessKey} onNotify={notify} onOpenAsset={id => { void api.getAsset(id).then(asset => showView('assets', { name: 'detail', asset })).catch(error => notify(error instanceof Error ? error.message : '读取资产失败', 'error')) }} /></div></main>
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 

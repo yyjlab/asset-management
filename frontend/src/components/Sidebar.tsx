@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { assetGroups } from '../assetGroups'
 import type { AssetGroupKey } from '../assetGroups'
 import type { AssetFilter, Permission } from '../types'
@@ -6,7 +6,7 @@ import { featureVisibility } from '../featureVisibility'
 const version = 'v26.915.1651'
 import { BoxesIcon, ChevronIcon, ClipboardIcon, DashboardIcon, SettingsIcon, SidebarPanelIcon, UploadIcon, UserIcon, UsersIcon } from './Icons'
 
-export type AppSection = 'dashboard' | 'workbench' | 'selfService' | 'assets' | 'handover' | 'operations' | 'inventory' | 'repair' | 'consumables' | 'procurement' | 'kits' | 'support' | 'reports' | 'registrations' | 'transfer' | 'users' | 'logs' | 'foundation' | 'settings' | 'deploymentReview'
+export type AppSection = 'dashboard' | 'workbench' | 'selfService' | 'assets' | 'handover' | 'operations' | 'inventory' | 'repair' | 'consumables' | 'procurement' | 'kits' | 'support' | 'reports' | 'registrations' | 'transfer' | 'users' | 'logs' | 'foundation' | 'settings' | 'deploymentReview' | 'registrationRoster'
 
 interface Props {
   section: AppSection
@@ -29,8 +29,8 @@ const initiallyCollapsed = () => {
 
 export function Sidebar({ section, canManageUsers, canReviewDeployment = false, dingtalkLogin, permissions, onFilter, onSection, assetGroup = 'all', onAssetGroup }: Props) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed)
-  const [assetsOpen, setAssetsOpen] = useState(section === 'assets')
-  useEffect(() => { if (section === 'assets') setAssetsOpen(true) }, [section])
+  const [assetsOpen, setAssetsOpen] = useState(section === 'assets' || section === 'registrationRoster')
+  useEffect(() => { if (section === 'assets' || section === 'registrationRoster') setAssetsOpen(true) }, [section])
   const toggleSidebar = () => setCollapsed((current) => {
     const next = !current
     try { window.localStorage.setItem(sidebarStorageKey, String(next)) } catch { /* Browser storage may be unavailable. */ }
@@ -60,10 +60,10 @@ export function Sidebar({ section, canManageUsers, canReviewDeployment = false, 
           if (collapsed) { setCollapsed(false); setAssetsOpen(true); try { window.localStorage.setItem(sidebarStorageKey, 'false') } catch { /* Storage is optional. */ } }
           else setAssetsOpen(value => !value)
         }}><BoxesIcon /><span>资产</span><ChevronIcon /></button>
-          {assetsOpen && !collapsed && <div className="asset-subnav" id="asset-category-navigation" role="group" aria-label="资产分类">{assetGroups.map(group => <button type="button" key={group.key} aria-label={group.label} aria-current={section === 'assets' && assetGroup === group.key ? 'page' : undefined} className={`nav-item asset-subitem ${section === 'assets' && assetGroup === group.key ? 'active' : ''}`} onClick={() => {
+          {assetsOpen && !collapsed && <div className="asset-subnav" id="asset-category-navigation" role="group" aria-label="资产分类">{assetGroups.map(group => <Fragment key={group.key}><button type="button" aria-label={group.label} aria-current={section === 'assets' && assetGroup === group.key ? 'page' : undefined} className={`nav-item asset-subitem ${section === 'assets' && assetGroup === group.key ? 'active' : ''}`} onClick={() => {
             if (onAssetGroup) onAssetGroup(group.key); else { onSection('assets'); onFilter('all') }
             if (window.matchMedia?.('(max-width: 768px)').matches) setAssetsOpen(false)
-          }}><span>{group.label}</span></button>)}</div>}
+          }}><span>{group.label}</span></button>{group.key === 'all' && canReviewDeployment && <button type="button" aria-label="登记核对" aria-current={section === 'registrationRoster' ? 'page' : undefined} className={`nav-item asset-subitem ${section === 'registrationRoster' ? 'active' : ''}`} onClick={() => onSection('registrationRoster')}><span>登记核对</span></button>}</Fragment>)}</div>}
         </div>}
         {featureVisibility.businessWorkflows && <><button aria-label="入离职交接" title={collapsed ? '入离职交接' : undefined} className={`nav-item ${section === 'handover' ? 'active' : ''}`} onClick={() => onSection('handover')}>
           <ClipboardIcon /><span>入离职交接</span>

@@ -9,6 +9,12 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AssetRepository extends JpaRepository<Asset, Long> {
+    interface RosterAsset {
+        Long getId(); String getAssetTag(); String getName(); String getAssignee();
+        String getDepartment(); String getCategory(); String getStatus(); boolean getCheckedOut();
+    }
+    @Query("select a.id as id, a.assetTag as assetTag, a.name as name, a.assignedTo as assignee, a.ownershipDepartment as department, a.category.name as category, a.status.name as status, a.checkedOut as checkedOut from Asset a where a.assignedTo is not null and a.assignedTo <> '' order by a.assetTag")
+    List<RosterAsset> registrationRosterAssets();
     @Query("select a from Asset a where a.checkedOut=false and a.assignedUserId is null and (a.assignedTo is null or a.assignedTo='') and a.status.name in ('当前可用','可领用') order by a.assetTag asc")
     List<Asset> oaAvailable(org.springframework.data.domain.Pageable page);
     List<Asset> findTop501ByOwnershipDepartmentOrderByAssetTagAsc(String department);

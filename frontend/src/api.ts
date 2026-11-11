@@ -5,6 +5,7 @@ import type { DingTalkQrAuthorization } from './types'
 import type { OaCandidate, OaCreate, OaItem, OaPage, OaStatus } from './types/dingtalkOa'
 import type { DeploymentCredential, DeploymentStatus, DeploymentHistory, DeploymentIntake, DeploymentIntakePage, DeploymentIntakeState, DeploymentApproval } from './types/deployment'
 import type { DomainJoinStatus, DomainStatusOption, ModelOption, AccessoryOption, AccessoryOptionWrite, ManagedLookupType } from './types'
+import type { RosterEntry, RosterPerson, RosterImportResult } from './types/roster'
 import type { Paged, Kit, KitWrite, Supplier, SupplierWrite, Warranty, WarrantyWrite, Workbench, AssetHistory, ManagementReport, ProcurementSummary, ProcurementDetail, ProcurementCreate, ProcurementAction } from './types/management'
 import type { OperationCreate, OperationAction, OperationDetail, OperationPageData, InventoryDetail, InventoryPageData, InventoryAction, Consumable, ConsumablePageData, ConsumableMovementPage } from './types'
 
@@ -83,6 +84,8 @@ function registrationForm(payload: RegistrationSubmit, photos: File[]) {
 }
 
 export const api = {
+  registrationRoster: () => request<RosterEntry[]>('/api/registration-roster'),
+  importRegistrationRoster: (people: RosterPerson[]) => mutate<RosterImportResult>('/api/registration-roster/import', { method: 'POST', body: JSON.stringify({ people }) }),
   listWindowsCollectionPackages: () => request<DeploymentCredential[]>('/api/settings/windows-collection/packages'),
   revokeWindowsCollectionPackage: (id: string) => mutate<DeploymentCredential>(`/api/settings/windows-collection/packages/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
   downloadWindowsCollection: async (payload: { name: string; baseUrl: string; days: number }) => {

@@ -22,11 +22,22 @@ async function main() {
       name: 'LENOVO ThinkPad L13', model: '20R4S4E200', cpu: 'Intel Core i5', memory: '16 GiB', storage: 'NVMe 512 GiB', graphicsCard: null,
       manufacturerSerialNumber: 'SN-TEST', categoryId: null, asset: null, reviewedAt: null, reviewedBy: null, reviewNote: null };
     let failApproval = false, failResubmit = false, administrator = true, intakeReads = 0;
+    const roster = [];
     await page.route('**/api/**', async route => {
       const request = route.request(), url = new URL(request.url()), endpoint = url.pathname;
       let data;
       if (endpoint === '/api/auth/me') data = { id: 1, username: 'admin', displayName: 'Test Admin', role: administrator ? 'SUPER_ADMIN' : 'USER', permissions: ['ASSET_VIEW'], canManageUsers: administrator, dataScope: 'ALL', departments: [], hasAvatar: false, dingtalkLogin: false };
       else if (endpoint === '/api/auth/csrf') data = { headerName: 'X-CSRF-TOKEN', token: 'isolated-test-csrf' };
+      else if (endpoint === '/api/registration-roster') data = roster;
+      else if (endpoint === '/api/registration-roster/import') {
+        assert.equal(request.headers()['x-csrf-token'], 'isolated-test-csrf');
+        let added = 0; const duplicates = [];
+        for (const person of request.postDataJSON().people) {
+          if (roster.some(row => row.name === person.name)) duplicates.push(person.name);
+          else { roster.push({ ...person, id: String(roster.length + 1), state: 'missing', reason: '', computers: [], pendingCount: 0 }); added++; }
+        }
+        data = { added, skipped: duplicates.length, duplicates };
+      }
       else if (endpoint.endsWith('/qr')) data = { qrBaseUrl: 'https://example.test' };
       else if (endpoint.endsWith('/ad-deployment/status')) data = { enabled: true, allowHttp: true, secureRequest: false, endpoint: '/api/integrations/ad-deployment/v1/intakes', lastReceivedAt: row.receivedAt };
       else if (endpoint.endsWith('/ad-deployment/credentials')) data = [];
@@ -57,6 +68,36 @@ async function main() {
       await route.fulfill({ json: data });
     });
     await page.goto(server.resolvedUrls.local[0]);
+    await page.getByRole('button', { name: '资产', exact: true }).click();
+    const submenu = page.getByRole('group', { name: '资产分类' });
+    assert.equal(await submenu.getByRole('button').nth(1).getAttribute('aria-label'), '登记核对');
+    await submenu.getByRole('button', { name: '登记核对', exact: true }).click();
+    const rosterPage = page.getByRole('region', { name: '登记核对', exact: true });
+    await rosterPage.getByText('暂无核对名单，请先在名单管理中批量导入人员', { exact: true }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('view'), 'registration-roster');
+    await page.reload();
+    await rosterPage.getByRole('button', { name: '名单管理', exact: true }).click();
+    const management = page.getByRole('dialog', { name: '名单管理', exact: true });
+    await management.getByLabel('批量人员', { exact: true }).fill('座位号\t部门\t姓名\n1\t运营部\t张三\n2\t研发部\t李四\n3\t研发部\t张三\n4\t研发部\t空置');
+    await management.getByText('待提交 3 行，已忽略空置 1 行', { exact: true }).waitFor();
+    await management.getByText('重复，将跳过', { exact: true }).waitFor();
+    for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(size);
+      const geometry = await management.evaluate(element => ({ width: element.clientWidth, scroll: element.scrollWidth, rect: element.getBoundingClientRect().toJSON() }));
+      assert.ok(geometry.scroll <= geometry.width && geometry.rect.right <= size.width && geometry.rect.height <= size.height, 'roster dialog must fit desktop/mobile');
+    }
+    await management.getByRole('button', { name: '确认导入名单', exact: true }).click();
+    await management.getByText('新增 2 人，重复跳过 1 人：张三', { exact: true }).waitFor();
+    await management.getByRole('button', { name: '关闭', exact: true }).click();
+    await rosterPage.getByText('张三', { exact: true }).waitFor();
+    await rosterPage.getByLabel('搜索', { exact: true }).fill('李四');
+    assert.equal(await rosterPage.getByText('张三', { exact: true }).count(), 0);
+    await rosterPage.getByLabel('部门', { exact: true }).selectOption('运营部');
+    await rosterPage.getByText('没有符合条件的人员', { exact: true }).waitFor();
+    await rosterPage.getByLabel('搜索', { exact: true }).fill('');
+    await rosterPage.getByText('张三', { exact: true }).waitFor();
+    assert.equal(await rosterPage.getByText('李四', { exact: true }).count(), 0);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole('button', { name: '资产入库', exact: true }).click();
     const queue = page.getByRole('region', { name: '资产入库' });
     assert.equal(new URL(page.url()).searchParams.get('view'), 'deployment-review');
@@ -166,7 +207,7 @@ async function main() {
     assert.equal(await page.getByRole('button', { name: '资产入库', exact: true }).count(), 0);
     assert.equal(intakeReads, before, 'unauthorized deep links must not mount review API requests');
     assert.deepEqual(errors, []);
-    console.log('PASS intake review: navigation, access guard, graphics default, corrections, rejection/resubmission, auto tag, CSRF and desktop/mobile layout');
+    console.log('PASS roster and intake review: submenu placement, refresh persistence, import preview/dedup, search, access guard, graphics default, rejection/resubmission, auto tag, CSRF and desktop/mobile layout');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.httpServer.close(resolve));
