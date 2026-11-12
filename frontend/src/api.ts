@@ -90,7 +90,7 @@ export const api = {
   revokeWindowsCollectionPackage: (id: string) => mutate<DeploymentCredential>(`/api/settings/windows-collection/packages/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
   downloadWindowsCollection: async (payload: { name: string; baseUrl: string; days: number; platform?: 'windows' | 'macos' }) => {
     const token = await csrfToken()
-    await download('/api/settings/windows-collection/packages', 'windows-collection.zip', {
+    await download('/api/settings/windows-collection/packages', payload.platform === 'macos' ? 'macos-collection.zip' : 'windows-collection.zip', {
       method: 'POST', headers: { 'Content-Type': 'application/json', [token.headerName]: token.token }, body: JSON.stringify(payload),
     })
   },

@@ -1319,6 +1319,21 @@ test('model management APIs reuse CSRF, remain scoped to metadata and refreshing
 });
 
 const accessoryChoice = (overrides = {}) => ({ id: 1, name: '鼠标', model: 'Logitech M185', specification: '无线 USB', disabled: false, version: 0, ...overrides });
+test('collection downloads use the selected platform name and preserve platform in the request', async () => {
+  const downloaded=[],sent=[];
+  const {api}=load('api.ts',{},false,{
+    fetch:async(path,options)=>{
+      if(path==='/api/auth/csrf')return {ok:true,status:200,json:async()=>({headerName:'X-CSRF-TOKEN',token:'test-only'})};
+      sent.push({path,options});return {ok:true,status:200,blob:async()=>({})};
+    },
+    URL:{createObjectURL:()=> 'blob:test-only',revokeObjectURL(){}},
+    document:{createElement:()=>({click(){downloaded.push(this.download)},remove(){}}),body:{appendChild(){}}},
+  });
+  for(const platform of ['macos','windows',undefined])await api.downloadWindowsCollection({name:'测试采集',baseUrl:'http://asset.test',days:7,...(platform?{platform}:{})});
+  assert.deepEqual(downloaded,['macos-collection.zip','windows-collection.zip','windows-collection.zip']);
+  assert.deepEqual(sent.map(row=>JSON.parse(row.options.body).platform),['macos','windows',undefined]);
+  assert.ok(sent.every(row=>row.path==='/api/settings/windows-collection/packages' && row.options.headers['X-CSRF-TOKEN']==='test-only'));
+});
 function accessoryHarness(api = {}, overrides = {}) {
   const states = [], refs = [], changes = [], effects = []; let index = 0, refIndex = 0;
   const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
