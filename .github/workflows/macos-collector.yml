@@ -1,0 +1,24 @@
+name: Build macOS collector
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/build-macos-collection-launcher.sh
+      - .github/workflows/macos-collector.yml
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and mount-test DMG template
+        run: bash scripts/build-macos-collection-launcher.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-collector-template
+          path: backend/src/main/resources/windows-collection/native/macos-template.dmg
+          if-no-files-found: error
+          retention-days: 7
