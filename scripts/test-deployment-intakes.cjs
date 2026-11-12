@@ -114,6 +114,24 @@ async function main() {
     await rosterPage.getByText('张三', { exact: true }).waitFor();
     assert.equal(await rosterPage.getByText('李四', { exact: true }).count(), 0);
     await page.setViewportSize({ width: 1440, height: 900 });
+    await rosterPage.getByLabel('搜索', { exact: true }).fill('');
+    await rosterPage.getByLabel('部门', { exact: true }).selectOption('');
+    await rosterPage.getByLabel('登记情况', { exact: true }).selectOption('all');
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+      const tones = new Set();
+      for (const state of ['missing', 'confirm', 'pending', 'registered']) {
+        roster[0].state = state;
+        await rosterPage.getByRole('button', { name: '刷新', exact: true }).click();
+        const badge = rosterPage.locator(`tr.roster-state-${state} .roster-state`).first();
+        await badge.waitFor();
+        const style = await badge.evaluate(element => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor, label: element.textContent }));
+        tones.add(style.color);
+        assert.ok(style.label && style.color !== style.background, 'state badge must retain a visible text label');
+      }
+      assert.equal(tones.size, 4, `${theme} theme must distinguish all four roster states`);
+    }
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
     await page.getByRole('button', { name: '资产入库', exact: true }).click();
     const queue = page.getByRole('region', { name: '资产入库' });
     assert.equal(new URL(page.url()).searchParams.get('view'), 'deployment-review');
