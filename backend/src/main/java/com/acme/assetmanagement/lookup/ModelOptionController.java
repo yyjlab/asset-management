@@ -69,4 +69,17 @@ public class ModelOptionController {
     private Option option(LookupValue value, long count) {
         return new Option(value.getId(), value.getName(), value.isDisabled(), value.getOptionVersion(), count);
     }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
+    public void delete(@PathVariable Long id, @RequestHeader(value = "If-Match", required = false) Long version) {
+        if (version == null) throw new ApiException(HttpStatus.BAD_REQUEST, "请提供型号版本");
+        var value = options.locked(id).filter(row -> row.getType() == LookupType.MODEL)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "设备型号不存在"));
+        if (value.getOptionVersion() != version) throw new ApiException(HttpStatus.CONFLICT, "型号已更新，请刷新后重新操作");
+        if (assets.countUsingLookup(id) > 0) throw new ApiException(HttpStatus.CONFLICT, "该型号正在被资产使用，不能删除；可选择停用");
+        options.delete(value); options.flush();
+        audit.success(AuditAction.LOOKUP_DELETE, "LOOKUP", id, value.getName(), "删除未使用设备型号", Map.of("名称", value.getName()));
+    }
 }

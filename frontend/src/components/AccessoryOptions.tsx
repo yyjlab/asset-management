@@ -19,6 +19,7 @@ export function AccessoryOptions({ revision, onNotify }: { revision: number; onN
   const [editing, setEditing] = useState<AccessoryOption | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<AccessoryOption | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AccessoryOption | null>(null)
   const request = useRef(0)
   const mutation = useRef(false)
 
@@ -50,6 +51,16 @@ export function AccessoryOptions({ revision, onNotify }: { revision: number; onN
     } finally { mutation.current = false; setBusy(false) }
   }
   const term = query.trim().toLocaleLowerCase()
+  const remove = async (row: AccessoryOption) => {
+    if (mutation.current) return
+    mutation.current = true; setBusy(true); request.current++
+    try {
+      await api.deleteFoundationOption('ACCESSORY', row.id, row.version)
+      setRows(current => current.filter(item => item.id !== row.id)); if (editing?.id === row.id) reset()
+      onNotify('配件目录已删除')
+    } catch (reason) { onNotify(message(reason), 'error'); await refresh(true) }
+    finally { setDeleteTarget(null); mutation.current = false; setBusy(false) }
+  }
   const visible = rows.filter(row => [row.name, row.model, row.specification].some(value => value.toLocaleLowerCase().includes(term))
     && (!filter || row.disabled === (filter === 'disabled')))
 
@@ -70,10 +81,11 @@ export function AccessoryOptions({ revision, onNotify }: { revision: number; onN
       <ul className="accessory-catalogue-list">{visible.map(row => <li key={row.id}>
         <div className="accessory-identity"><strong>{row.name}</strong>{row.model && <span>{row.model}</span>}{row.specification && <small>{row.specification}</small>}</div>
         <span className={`foundation-model-state ${row.disabled ? 'disabled' : 'enabled'}`}>{row.disabled ? '停用' : '启用'}</span>
-        <div className="accessory-catalogue-actions"><button type="button" className="button ghost" disabled={busy} onClick={() => { setEditing(row); setDraft({ name: row.name, model: row.model, specification: row.specification }) }}>编辑</button><button type="button" className="button ghost" disabled={busy} onClick={() => row.disabled ? void save(() => api.setAccessoryAvailability(row.id, row.version, false), '配件已启用') : setConfirm(row)}>{row.disabled ? '启用' : '停用'}</button></div>
+        <div className="accessory-catalogue-actions"><button type="button" className="button ghost" disabled={busy} onClick={() => { setEditing(row); setDraft({ name: row.name, model: row.model, specification: row.specification }) }}>编辑</button><button type="button" className="button ghost" disabled={busy} onClick={() => row.disabled ? void save(() => api.setAccessoryAvailability(row.id, row.version, false), '配件已启用') : setConfirm(row)}>{row.disabled ? '启用' : '停用'}</button><button type="button" className="button ghost" disabled={busy} onClick={() => setDeleteTarget(row)}>删除</button></div>
       </li>)}</ul>{!visible.length && <p className="foundation-model-empty">暂无匹配配件</p>}
       <div className="foundation-model-total">共 {visible.length} 项配件</div>
     </>}
     {confirm && <ConfirmDialog title="停用随附配件" description={`停用“${confirm.name}${confirm.model ? ` · ${confirm.model}` : ''}”后不再供新选择，资产中已保存的配件记录保持不变。`} confirmLabel="确认停用" busy={busy} onCancel={() => !busy && setConfirm(null)} onConfirm={() => void save(() => api.setAccessoryAvailability(confirm.id, confirm.version, true), '配件已停用')} />}
+    {deleteTarget && <ConfirmDialog title="删除随附配件" description={`确认永久删除“${deleteTarget.name} · ${deleteTarget.model}”？正在被资产使用的配件不能删除。`} confirmLabel="确认删除" busy={busy} onCancel={() => !busy && setDeleteTarget(null)} onConfirm={() => void remove(deleteTarget)} />}
   </article>
 }

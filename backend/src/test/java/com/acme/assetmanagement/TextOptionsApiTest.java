@@ -59,6 +59,22 @@ class TextOptionsApiTest {
         values.put("notes", asset.getNotes()); return values;
     }
 
+    @Test void deleteProtectsUsedCpuAndNameIncludingGenericLookupEndpoint() throws Exception {
+        for(var type:List.of(LookupType.CPU,LookupType.ASSET_NAME)){
+            var unused=option(type,"可删除"+type);
+            mvc.perform(delete(path(type)+"/{id}",unused.getId()).with(user(admin())).with(csrf()).header("If-Match","1")).andExpect(status().isConflict());
+            mvc.perform(delete(path(type)+"/{id}",unused.getId()).with(user(admin())).with(csrf()).header("If-Match","0")).andExpect(status().isNoContent());
+            assertFalse(lookups.existsById(unused.getId()));
+        }
+        var cpu=option(LookupType.CPU,"Delete-CPU");var name=option(LookupType.ASSET_NAME,"Delete-Name");
+        device("981000000099"," delete-name "," delete-cpu ");String before=snapshot();
+        for(var value:List.of(cpu,name)){
+            mvc.perform(delete(path(value.getType())+"/{id}",value.getId()).with(user(admin())).with(csrf()).header("If-Match","0")).andExpect(status().isConflict());
+            mvc.perform(delete("/api/lookups/{id}",value.getId()).with(user(admin())).with(csrf())).andExpect(status().isConflict());
+        }
+        assertEquals(before,snapshot());
+    }
+
     @Test void readingAndAvailabilityOnlyAffectMetadataAndCountExistingTextWithoutRewritingIt() throws Exception {
         var cpu = option(LookupType.CPU, "Text-Test CPU"); var name = option(LookupType.ASSET_NAME, "Text-Test 电脑");
         var first = device("981000000001", name.getName(), cpu.getName());

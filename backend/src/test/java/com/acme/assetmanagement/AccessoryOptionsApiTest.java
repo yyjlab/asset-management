@@ -85,8 +85,24 @@ class AccessoryOptionsApiTest {
                 .andExpect(status().isForbidden());
         mvc.perform(put("/api/foundation/accessories/{id}/availability", option.get("id").asLong()).with(user(admin()))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"version\":0,\"disabled\":true}")).andExpect(status().isForbidden());
-        mvc.perform(delete("/api/foundation/accessories/{id}", option.get("id").asLong()).with(user(admin())).with(csrf())).andExpect(status().isMethodNotAllowed());
+        mvc.perform(delete("/api/foundation/accessories/{id}", option.get("id").asLong()).with(user(admin())).with(csrf())).andExpect(status().isBadRequest());
         assertEquals(1, options.count());
+    }
+
+    @Test void deleteChecksSnapshotsLegacyReferencesVersionsPermissionsAndAudit() throws Exception {
+        var used=create("删除测试鼠标","罗技","USB"); long id=used.get("id").asLong();
+        var asset=assets.findAll().getFirst();
+        asset.setRelatedDevices(List.of(new RelatedDevice(" 删除测试鼠标 ","罗技",null,null,"usb",1)));assets.saveAndFlush(asset);
+        mvc.perform(delete("/api/foundation/accessories/{id}",id).with(user(admin())).with(csrf()).header("If-Match","0")).andExpect(status().isConflict());
+        asset.setRelatedDevices(List.of());asset.setAccessories(List.of(new AssetAccessory("删除测试鼠标","旧规格",1)));assets.saveAndFlush(asset);
+        mvc.perform(delete("/api/foundation/accessories/{id}",id).with(user(admin())).with(csrf()).header("If-Match","0")).andExpect(status().isConflict());
+        asset.setAccessories(List.of());assets.saveAndFlush(asset);
+        mvc.perform(delete("/api/foundation/accessories/{id}",id).with(user(admin())).with(csrf()).header("If-Match","1")).andExpect(status().isConflict());
+        mvc.perform(delete("/api/foundation/accessories/{id}",id).with(user("editor").authorities(()->"ASSET_EDIT")).with(csrf()).header("If-Match","0")).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/foundation/accessories/{id}",id).with(user(admin())).header("If-Match","0")).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/foundation/accessories/{id}",id).with(user(admin())).with(csrf()).header("If-Match","0")).andExpect(status().isNoContent());
+        assertFalse(options.existsById(id));assertTrue(assets.existsById(asset.getId()));
+        assertTrue(audit.findAll().stream().anyMatch(log->log.getAction()==AuditAction.LOOKUP_DELETE));
     }
 
     @Test void staleVersionsCannotOverwriteEditsOrAvailabilityAndUnknownIdsAreRejected() throws Exception {

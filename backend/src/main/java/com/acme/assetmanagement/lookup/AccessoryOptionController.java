@@ -16,9 +16,10 @@ import java.util.*;
 public class AccessoryOptionController {
     private final AccessoryOptionRepository repository;
     private final AuditLogService audit;
+    private final com.acme.assetmanagement.asset.AssetRepository assets;
 
-    public AccessoryOptionController(AccessoryOptionRepository repository, AuditLogService audit) {
-        this.repository = repository; this.audit = audit;
+    public AccessoryOptionController(AccessoryOptionRepository repository, AuditLogService audit, com.acme.assetmanagement.asset.AssetRepository assets) {
+        this.repository = repository; this.audit = audit; this.assets = assets;
     }
 
     public record Option(Long id, String name, String model, String specification, boolean disabled, long version) {}
@@ -80,6 +81,17 @@ public class AccessoryOptionController {
         var value = repository.locked(id).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "配件目录不存在"));
         if (value.version != version) throw new ApiException(HttpStatus.CONFLICT, "配件目录已更新，请刷新后重新操作");
         return value;
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
+    public void delete(@PathVariable Long id, @RequestHeader(value = "If-Match", required = false) Long version) {
+        var value = reviewed(id, version);
+        if (assets.countUsingAccessory(value.name, value.model, value.specification) > 0 || assets.countUsingLegacyAccessory(value.name) > 0)
+            throw new ApiException(HttpStatus.CONFLICT, "该配件正在被资产使用，不能删除；可选择停用");
+        repository.delete(value); repository.flush();
+        audit.success(AuditAction.LOOKUP_DELETE, "ACCESSORY_OPTION", id, value.name, "删除未使用随附配件目录", fields(value));
     }
 
     private void requireUnique(Long id, String name, String model, String specification) {

@@ -76,6 +76,20 @@ public class TextOptionController {
             default -> throw new ApiException(HttpStatus.NOT_FOUND, "选项分类不存在");
         };
     }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
+    public void delete(@PathVariable String type, @PathVariable Long id, @RequestHeader(value = "If-Match", required = false) Long version) {
+        if (version == null) throw new ApiException(HttpStatus.BAD_REQUEST, "请提供选项版本");
+        var kind = kind(type);
+        var value = options.locked(id).filter(row -> row.getType() == kind)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "选项不存在"));
+        if (value.getOptionVersion() != version) throw new ApiException(HttpStatus.CONFLICT, "选项已更新，请刷新后重新操作");
+        if (assets.countUsingLookup(id) > 0) throw new ApiException(HttpStatus.CONFLICT, "该" + kind.getLabel() + "正在被资产使用，不能删除；可选择停用");
+        options.delete(value); options.flush();
+        audit.success(AuditAction.LOOKUP_DELETE, "LOOKUP", id, value.getName(), "删除未使用" + kind.getLabel(), Map.of("名称", value.getName()));
+    }
     private Map<String, Long> usage(LookupType kind) {
         var counts = new HashMap<String, Long>();
         var rows = kind == LookupType.CPU ? assets.countCpuUsage() : assets.countNameUsage();

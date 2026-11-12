@@ -66,6 +66,18 @@ class ModelOptionsApiTest {
         body.put("boundDisplayIds", List.of()); return body;
     }
 
+    @Test void deleteUnusedModelButProtectUsedModelAndRequireReviewedVersion() throws Exception {
+        var value=model();long id=value.getId();
+        mvc.perform(delete("/api/foundation/models/{id}",id).with(user(admin())).with(csrf()).header("If-Match","1")).andExpect(status().isConflict());
+        mvc.perform(delete("/api/foundation/models/{id}",id).with(user(admin())).header("If-Match","0")).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/foundation/models/{id}",id).with(user("editor").authorities(()->"ASSET_EDIT")).with(csrf()).header("If-Match","0")).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/foundation/models/{id}",id).with(user(admin())).with(csrf()).header("If-Match","0")).andExpect(status().isNoContent());
+        assertFalse(lookups.existsById(id));
+        var used=model();device(used,"980000009099");String before=snapshot();
+        mvc.perform(delete("/api/foundation/models/{id}",used.getId()).with(user(admin())).with(csrf()).header("If-Match","0")).andExpect(status().isConflict());
+        assertEquals(before,snapshot());
+    }
+
     @Test void readDefaultsDoNotBackfillAndAvailabilityNeverChangesExistingAssetResponsesOrVersions() throws Exception {
         var model = model(); var first = device(model, "980000009001"); var second = device(model, "980000009002");
         String before = snapshot(); long firstVersion = first.getVersion(), secondVersion = second.getVersion();

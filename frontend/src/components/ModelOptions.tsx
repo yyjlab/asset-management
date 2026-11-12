@@ -20,6 +20,7 @@ export function ModelOptions({ revision, type = 'MODEL', onNotify, onChanged }: 
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<ModelOption | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ModelOption | null>(null)
   const request = useRef(0)
   const mutation = useRef(false)
 
@@ -50,6 +51,15 @@ export function ModelOptions({ revision, type = 'MODEL', onNotify, onChanged }: 
     && (!filter || row.disabled === (filter === 'disabled')))
   const availability = (row: ModelOption, disabled: boolean) => type === 'MODEL'
     ? api.setModelAvailability(row.id, row.version, disabled) : api.setTextAvailability(type, row.id, row.version, disabled)
+  const remove = async (row: ModelOption) => {
+    if (mutation.current) return
+    mutation.current = true; setBusy(true); request.current++
+    try {
+      await api.deleteFoundationOption(type, row.id, row.version)
+      setRows(current => current.filter(item => item.id !== row.id)); onNotify(`${noun}已删除`); onChanged?.()
+    } catch (reason) { onNotify(message(reason), 'error'); await refresh(true) }
+    finally { setDeleteTarget(null); mutation.current = false; setBusy(false) }
+  }
 
   return <article className="foundation-card" aria-label={`${title}管理`}>
     <div className="foundation-model-tools">
@@ -57,9 +67,10 @@ export function ModelOptions({ revision, type = 'MODEL', onNotify, onChanged }: 
       <form className="foundation-model-create" aria-label={`新建${title}`} onSubmit={event => { event.preventDefault(); if (!loading && !error && name.trim()) void save(() => type === 'MODEL' ? api.createModelOption(name.trim()) : api.createTextOption(type, name.trim()), `${noun}已新增`, true) }}><input aria-label={newLabel} placeholder={newLabel} required maxLength={max} value={name} disabled={busy || loading || !!error} onChange={event => setName(event.target.value)} /><button className="button primary" disabled={busy || loading || !!error || !name.trim()}><PlusIcon />新增{noun}</button></form>
     </div>
     {error ? <p role="alert">{error}，请刷新重试。</p> : loading ? <p role="status" className="foundation-model-empty">正在读取{noun}…</p> : <>
-      <div className="foundation-model-table-wrap"><table className="foundation-model-table"><thead><tr><th>{title}</th><th>状态</th><th>关联资产</th><th>操作</th></tr></thead><tbody>{visible.map(row => <tr key={row.id}><td>{row.name}</td><td><span className={`foundation-model-state ${row.disabled ? 'disabled' : 'enabled'}`}>{row.disabled ? '停用' : '启用'}</span></td><td>{row.assetCount} 项</td><td><button className="button ghost" disabled={busy} onClick={() => row.disabled ? void save(() => availability(row, false), `${noun}已启用`) : setConfirm(row)}>{row.disabled ? '启用' : '停用'}</button></td></tr>)}</tbody></table>{!visible.length && <p className="foundation-model-empty">暂无匹配{noun}</p>}</div>
+      <div className="foundation-model-table-wrap"><table className="foundation-model-table"><thead><tr><th>{title}</th><th>状态</th><th>关联资产</th><th>操作</th></tr></thead><tbody>{visible.map(row => <tr key={row.id}><td>{row.name}</td><td><span className={`foundation-model-state ${row.disabled ? 'disabled' : 'enabled'}`}>{row.disabled ? '停用' : '启用'}</span></td><td>{row.assetCount} 项</td><td><button className="button ghost" disabled={busy} onClick={() => row.disabled ? void save(() => availability(row, false), `${noun}已启用`) : setConfirm(row)}>{row.disabled ? '启用' : '停用'}</button><button type="button" className="button ghost" disabled={busy || row.assetCount > 0} title={row.assetCount > 0 ? '正在使用，不能删除' : '删除未使用选项'} onClick={() => setDeleteTarget(row)}>删除</button></td></tr>)}</tbody></table>{!visible.length && <p className="foundation-model-empty">暂无匹配{noun}</p>}</div>
       <div className="foundation-model-total">共 {visible.length} 项{noun}</div>
     </>}
     {confirm && <ConfirmDialog title={`停用${title}`} description={`停用“${confirm.name}”后不再供新选择；已关联的 ${confirm.assetCount} 项资产保留原${noun}，不修改资产档案。`} confirmLabel="确认停用" busy={busy} onCancel={() => !busy && setConfirm(null)} onConfirm={() => void save(() => availability(confirm, true), `${noun}已停用，已有资产保留原${noun}`)} />}
+    {deleteTarget && <ConfirmDialog title={`删除${title}`} description={`确认永久删除“${deleteTarget.name}”？后端会再次检查，正在使用的选项不能删除。`} confirmLabel="确认删除" busy={busy} onCancel={() => !busy && setDeleteTarget(null)} onConfirm={() => void remove(deleteTarget)} />}
   </article>
 }

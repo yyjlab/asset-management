@@ -105,6 +105,8 @@ export const api = {
   updateAccessoryOption: (id: number, version: number, payload: AccessoryOptionWrite) => mutate<AccessoryOption>(`/api/foundation/accessories/${id}`, { method: 'PUT', body: JSON.stringify({ ...payload, version }) }),
   setAccessoryAvailability: (id: number, version: number, disabled: boolean) => mutate<AccessoryOption>(`/api/foundation/accessories/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),
   modelOptions: () => request<ModelOption[]>('/api/foundation/models'),
+  deleteFoundationOption: (type: ManagedLookupType | 'ACCESSORY', id: number, version: number) =>
+    mutate<void>(`/api/foundation/${({ MODEL: 'models', CPU: 'cpus', ASSET_NAME: 'asset-names', ACCESSORY: 'accessories' })[type]}/${id}`, { method: 'DELETE', headers: { 'If-Match': String(version) } }),
   createModelOption: (name: string) => mutate<ModelOption>('/api/foundation/models', { method: 'POST', body: JSON.stringify({ name }) }),
   setModelAvailability: (id: number, version: number, disabled: boolean) => mutate<ModelOption>(`/api/foundation/models/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),
   domainStatuses: () => request<DomainStatusOption[]>('/api/foundation/domain-statuses'),

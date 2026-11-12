@@ -93,6 +93,12 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                or a.category.id = :lookupId
                or a.status.id = :lookupId
                or a.location.id = :lookupId
+               or exists (select l.id from LookupValue l where l.id = :lookupId and (
+                   (l.type = com.acme.assetmanagement.lookup.LookupType.CPU and lower(trim(a.cpu)) = lower(trim(l.name)))
+                   or (l.type = com.acme.assetmanagement.lookup.LookupType.ASSET_NAME and lower(trim(a.name)) = lower(trim(l.name)))
+                   or (l.type = com.acme.assetmanagement.lookup.LookupType.DEPARTMENT and lower(trim(a.ownershipDepartment)) = lower(trim(l.name)))
+                   or (l.type = com.acme.assetmanagement.lookup.LookupType.GRAPHICS_CARD and lower(trim(a.graphicsCard)) = lower(trim(l.name)))
+               ))
             """)
     long countUsingLookup(@Param("lookupId") Long lookupId);
 
@@ -104,4 +110,10 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
 
     @Query("select lower(trim(a.name)), count(a) from Asset a group by lower(trim(a.name))")
     List<Object[]> countNameUsage();
+
+    @Query("select count(a) from Asset a join a.relatedDevices d where lower(trim(d.name)) = lower(trim(:name)) and lower(trim(coalesce(d.model, ''))) = lower(trim(:model)) and lower(trim(coalesce(d.specification, ''))) = lower(trim(:specification))")
+    long countUsingAccessory(@Param("name") String name, @Param("model") String model, @Param("specification") String specification);
+
+    @Query("select count(a) from Asset a join a.accessories d where lower(trim(d.name)) = lower(trim(:name))")
+    long countUsingLegacyAccessory(@Param("name") String name);
 }
