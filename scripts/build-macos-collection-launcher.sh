@@ -27,7 +27,7 @@ cat > "$APP/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 clang -fobjc-arc -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 -framework AppKit "$ROOT/scripts/collection-launchers/MacLauncher.m" -o "$APP/MacOS/collect"
-lipo -verify_arch arm64 x86_64 "$APP/MacOS/collect"
+lipo "$APP/MacOS/collect" -verify_arch arm64 x86_64
 codesign --force --sign - --identifier com.wfq.asset.collector "$APP/MacOS/collect"
 codesign --verify "$APP/MacOS/collect"
 chmod +x "$APP/MacOS/collect"

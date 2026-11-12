@@ -15,6 +15,10 @@ function run(args) {
     if(output!=='fixture-output')throw new Error('Command output missing');
     try{collectionCommand('/bin/sh',['-c','printf fixture-secret >&2; exit 7'],null,{directory:directory,secret:'fixture-secret',timeout:3});throw new Error('Expected subprocess failure');}
     catch(e){if(e.message.indexOf('退出码 7')<0 || e.message.indexOf('fixture-secret')>=0)throw e;}
+    try{collectionCommand('/bin/sleep',['2'],null,{directory:directory,timeout:0.15});throw new Error('Expected timeout');}
+    catch(e){if(e.message.indexOf('超时')<0)throw e;}
+    var actual=JSON.parse(collectionCommand('/usr/sbin/system_profiler',['SPHardwareDataType','-json','-detailLevel','mini','-timeout','10'],null,{directory:directory,timeout:12}));
+    if(!makeInventory(actual,[]).hardwareUuid)throw new Error('Fast hardware query omitted the real UUID');
     if(args[2]){
         var config={endpoint:args[2]+'/api/integrations/ad-deployment/v1/windows-intakes',token:'fixture-only'};
         var options={directory:directory,timeout:8,secret:config.token};
