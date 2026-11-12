@@ -23,8 +23,10 @@ function run(args) {
         var department=collectionResponse(response,[200]);
         if(department.department!=='研发部')throw new Error('UTF-8 department lookup failed');
         var body=JSON.stringify({hardwareUuid:'12345678-1234-1234-1234-123456789abc',reportedUserName:'张三',reportedDepartment:department.department});
-        var request='url = '+JSON.stringify(config.endpoint)+'\nheader = '+JSON.stringify('Authorization: Bearer '+config.token)+'\ndata-binary = '+JSON.stringify(body)+'\n';
-        var submitted=collectionResponse(collectionCommand('/usr/bin/curl',curl,request,options),[202]);
+        var file=directory+'/中文提交记录.json';
+        if(!$(body).writeToFileAtomicallyEncodingError($(file),true,$.NSUTF8StringEncoding,Ref()))throw new Error('Cannot save fixture payload');
+        var request='url = '+JSON.stringify(config.endpoint)+'\nheader = '+JSON.stringify('Authorization: Bearer '+config.token)+'\n';
+        var submitted=collectionResponse(collectionCommand('/usr/bin/curl',curl.concat(['--data-binary','@'+file]),request,options),[202]);
         if(submitted.result!=='pending_review')throw new Error('Submission not acknowledged');
     }
     return 'PASS: real Foundation directory and plist bridges';

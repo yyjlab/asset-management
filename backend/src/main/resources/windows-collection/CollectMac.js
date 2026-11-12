@@ -171,6 +171,7 @@ function runCollection() {
             var response=command('/usr/bin/curl',['--disable','--config','-','--silent','--show-error','--noproxy','*','--connect-timeout','3','--max-time','5','--max-redirs','0','--request','POST','--header','Content-Type: application/json; charset=utf-8','--write-out','\n%{http_code}'],departmentRequest(config,name));
             return collectionResponse(response,[200]);
         });
+        suggestion.message=suggestion.message.split(config.token).join('[REDACTED]');
         progress.hide();stage='确认部门';
         var department=app.displayDialog(suggestion.message+'\n\n使用人：'+person+'\n部门（选填）。确认后提交电脑和外接显示器，等待管理员审核。',{defaultAnswer:suggestion.department,buttons:['取消','确认并提交'],defaultButton:'确认并提交',cancelButton:'取消',withTitle:'确认电脑使用人'}).textReturned.trim();
         if(department.length>120)throw new Error('部门最多120字；未提交');

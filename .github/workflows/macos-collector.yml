@@ -10,6 +10,7 @@ on:
       - scripts/collection-launchers/test-macos-bridge.js
       - scripts/test-macos-runtime.cjs
       - scripts/collection-launchers/WrapMacImage.java
+      - scripts/collection-launchers/MacLauncher.m
       - backend/src/main/java/com/acme/assetmanagement/integration/deployment/MacDiskImage.java
 permissions:
   contents: read

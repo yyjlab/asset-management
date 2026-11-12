@@ -22,26 +22,13 @@ cat > "$APP/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Asset Collector</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
+<key>NSLocalNetworkUsageDescription</key><string>连接公司内网资产系统，按姓名查询部门并提交本机配置，等待管理员审核。</string>
 <key>LSUIElement</key><true/>
 </dict></plist>
 PLIST
-cat > "$APP/MacOS/collect" <<'LAUNCH'
-#!/bin/bash
-set -euo pipefail
-SOURCE="$(cd "$(dirname "$0")/../Resources" && pwd)"
-KEY="$(shasum -a 256 "$SOURCE/config.json" | cut -d ' ' -f 1)"
-BASE="$HOME/Library/Application Support/WFQAssetCollector"
-WORK="$BASE/$KEY"
-umask 077
-mkdir -p "$WORK"
-if [ -L "$BASE" ] || [ -L "$WORK" ]; then exit 1; fi
-for FILE in config.json CollectMac.js; do
-  if [ -L "$WORK/$FILE" ]; then exit 1; fi
-  cp "$SOURCE/$FILE" "$WORK/$FILE"
-done
-cd "$WORK"
-exec /usr/bin/osascript -l JavaScript CollectMac.js
-LAUNCH
+clang -fobjc-arc -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 -framework AppKit "$ROOT/scripts/collection-launchers/MacLauncher.m" -o "$APP/MacOS/collect"
+lipo -verify_arch arm64 x86_64 "$APP/MacOS/collect"
+codesign --verify "$APP/MacOS/collect"
 chmod +x "$APP/MacOS/collect"
 python3 - "$APP/Resources" <<'PY'
 import pathlib, sys
