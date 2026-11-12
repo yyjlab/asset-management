@@ -154,7 +154,7 @@ function runCollection() {
         directory=ObjC.unwrap($.NSFileManager.defaultManager.currentDirectoryPath);config=JSON.parse(read(directory+'/config.json'));
         if(!validEndpoint(config.endpoint) || !/^adp_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/.test(config.token))throw new Error('采集包配置无效');
         progress=collectionProgress();update('1 / 5 · 读取电脑配置');
-        var profiler=JSON.parse(command('/usr/sbin/system_profiler',['SPHardwareDataType','-json','-detailLevel','mini','-timeout','10'],null,12));
+        var profiler=JSON.parse(command('/usr/sbin/system_profiler',['SPHardwareDataType','-json','-timeout','10'],null,12));
         update('2 / 5 · 检测显卡与外接显示器');
         try{var displays=JSON.parse(command('/usr/sbin/system_profiler',['SPDisplaysDataType','-json','-timeout','10'],null,12));profiler.SPDisplaysDataType=displays.SPDisplaysDataType;}catch(e){console.log('显示器信息未采集，审核时请核对。');}
         update('3 / 5 · 读取内置物理硬盘');
