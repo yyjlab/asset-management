@@ -53,11 +53,10 @@ hdiutil detach "$MOUNT" -quiet
 DEST="$ROOT/backend/src/main/resources/windows-collection/native/macos-template.dmg"
 mkdir -p "$(dirname "$DEST")"
 cp "$WORK/template.dmg" "$DEST"
-# Test the same fixed-size payload writes made by the Java backend, inside a real UDIF container.
-python3 - "$DEST" "$WORK/test.dmg" <<'PY'
+# Test fixed-size payload writes, then use the exact Java backend writer to produce a standard DMG.
+python3 - "$DEST" "$WORK/test.raw" <<'PY'
 import pathlib, sys
 data = bytearray(pathlib.Path(sys.argv[1]).read_bytes())
-assert data[-512:-508] == b'koly', 'Expected a real UDIF DMG, not a renamed raw/CD image'
 script = b'function run(){ObjC.import("Foundation");var e=Ref();if(!$("collector-template-ok").writeToFileAtomicallyEncodingError($("launch-smoke.txt"),true,$.NSUTF8StringEncoding,e))throw new Error("Cannot write smoke marker");}'
 for marker, size, value in [(b'WFQ_COLLECTION_CONFIG_SLOT_V1', 4096, b'{"test":true}'), (b'WFQ_COLLECTION_SCRIPT_SLOT_V1', 131072, script)]:
     assert data.count(marker) == 1, 'Slot must occur exactly once'
@@ -66,6 +65,10 @@ for marker, size, value in [(b'WFQ_COLLECTION_CONFIG_SLOT_V1', 4096, b'{"test":t
     data[pos:pos+size] = value + b' ' * (size-len(value))
 pathlib.Path(sys.argv[2]).write_bytes(data)
 PY
+mkdir -p "$WORK/classes"
+javac -d "$WORK/classes" "$ROOT/backend/src/main/java/com/acme/assetmanagement/integration/deployment/MacDiskImage.java" "$ROOT/scripts/collection-launchers/WrapMacImage.java"
+java -cp "$WORK/classes" WrapMacImage "$WORK/test.raw" "$WORK/test.dmg"
+hdiutil verify "$WORK/test.dmg"
 test ! -d "$GUI_MOUNT"
 open -a DiskImageMounter "$WORK/test.dmg"
 for attempt in {1..30}; do

@@ -27,7 +27,7 @@ public class NativeCollectionPackage {
             var bytes=base.readAllBytes();
             fill(bytes,"WFQ_COLLECTION_CONFIG_SLOT_V1",4096,configuration.getBytes(StandardCharsets.UTF_8));
             fill(bytes,"WFQ_COLLECTION_SCRIPT_SLOT_V1",131072,source.readAllBytes());
-            return bytes;
+            return MacDiskImage.wrap(bytes);
         }
     }
     static void fill(byte[] image,String marker,int capacity,byte[] content) throws IOException {

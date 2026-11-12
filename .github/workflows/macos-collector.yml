@@ -8,6 +8,8 @@ on:
       - .github/workflows/macos-collector.yml
       - backend/src/main/resources/windows-collection/CollectMac.js
       - scripts/collection-launchers/test-macos-bridge.js
+      - scripts/collection-launchers/WrapMacImage.java
+      - backend/src/main/java/com/acme/assetmanagement/integration/deployment/MacDiskImage.java
 permissions:
   contents: read
 jobs:
