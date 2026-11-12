@@ -59,6 +59,16 @@ function Invoke-RestMethod {
 }
 $null=Send-CollectionInventory @{endpoint='http://asset.example/api/integrations/ad-deployment/v1/windows-intakes';token='test-only'} ($inventory|ConvertTo-Json -Depth 8)
 if($script:sent -ne 1){throw 'Request count incorrect'}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, $Uri, $Method, $MaximumRedirection, $TimeoutSec, $Headers, $ContentType, $Body)
+    if(([uri]$Uri).AbsolutePath -ne '/api/integrations/ad-deployment/v1/collector-person' -or $MaximumRedirection -ne 0 -or $TimeoutSec -ne 5 -or $Method -ne 'Post'){throw 'Unsafe person lookup options'}
+    if(([Text.Encoding]::UTF8.GetString($Body)|ConvertFrom-Json).name -ne '测试姓名' -or $Headers.Authorization -ne 'Bearer test-only'){throw 'Lookup UTF-8 name or credential changed'}
+    $bytes=[Text.Encoding]::UTF8.GetBytes('{"result":"matched","department":"研发部"}')
+    $stream=New-Object IO.MemoryStream
+    $stream.Write($bytes,0,$bytes.Length)
+    # Deliberately emulate an already misdecoded Content string. Only raw bytes are trustworthy.
+    @{Content=[Text.Encoding]::GetEncoding(28591).GetString($bytes);RawContentStream=$stream}
+}
 $department=Get-CollectionDepartment @{endpoint='http://asset.example/api/integrations/ad-deployment/v1/windows-intakes';token='test-only'} ' 测试姓名 '
 if($department.department -ne '研发部'){throw 'Exact department lookup failed'}
 Write-Host 'PASS Windows collector: readable name, physical disks, GPU filtering, UTF-8 submission and no redirects (mocked).'

@@ -446,6 +446,7 @@ class DeploymentIntakeApiTest {
             .content(json.writeValueAsBytes(Map.of("people",List.of(Map.of("name",name,"department","研发部","seat","1"),Map.of("name",name+"空","department","","seat","2")))))).andExpect(status().isOk());
         mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON)
             .content(json.writeValueAsBytes(Map.of("name"," "+name+" ")))).andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
+            .andExpect(content().contentType("application/json;charset=UTF-8"))
             .andExpect(jsonPath("$.result").value("matched")).andExpect(jsonPath("$.department").value("研发部")).andExpect(jsonPath("$.people").doesNotExist());
         for(var entry:Map.of(name+"空","empty_department","部门匹配","not_found").entrySet())
             mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON)

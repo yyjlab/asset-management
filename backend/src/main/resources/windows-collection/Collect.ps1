@@ -75,7 +75,10 @@ function Get-CollectionDepartment {
     [Net.WebRequest]::DefaultWebProxy=$null
     $target=$url.GetLeftPart([UriPartial]::Authority)+'/api/integrations/ad-deployment/v1/collector-person'
     $body=@{name=$Name.Trim()}|ConvertTo-Json -Compress
-    Invoke-RestMethod -UseBasicParsing -Uri $target -Method Post -MaximumRedirection 0 -TimeoutSec 5 -Headers @{Authorization=('Bearer '+$Config.token)} -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+    $response=Invoke-WebRequest -UseBasicParsing -Uri $target -Method Post -MaximumRedirection 0 -TimeoutSec 5 -Headers @{Authorization=('Bearer '+$Config.token)} -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+    # Windows PowerShell 5.1 may decode JSON without a charset as Latin-1.
+    try { [Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray()).TrimStart([char]0xFEFF) | ConvertFrom-Json }
+    finally { $response.RawContentStream.Dispose() }
 }
 function Show-CollectionUserForm {
     param([string]$UserName, [string]$Department, $Inventory, $Config)

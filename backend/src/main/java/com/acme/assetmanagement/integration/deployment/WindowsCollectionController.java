@@ -112,7 +112,8 @@ public class WindowsCollectionController {
         var department=roster.departmentByNameHash(DeploymentCredentialService.hash(name));
         var result=department.isEmpty() ? new DepartmentMatch("not_found",null)
                 : department.get().isBlank() ? new DepartmentMatch("empty_department",null) : new DepartmentMatch("matched",department.get());
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
+        return ResponseEntity.ok().contentType(org.springframework.http.MediaType.parseMediaType("application/json;charset=UTF-8"))
+                .cacheControl(CacheControl.noStore()).body(result);
     }
     private DeploymentApiException failure(String message) {
         return new DeploymentApiException(HttpStatus.UNPROCESSABLE_ENTITY,"VALIDATION_FAILED",message);
