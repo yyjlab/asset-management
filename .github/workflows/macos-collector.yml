@@ -6,6 +6,8 @@ on:
     paths:
       - scripts/build-macos-collection-launcher.sh
       - .github/workflows/macos-collector.yml
+      - backend/src/main/resources/windows-collection/CollectMac.js
+      - scripts/collection-launchers/test-macos-bridge.js
 permissions:
   contents: read
 jobs:
@@ -14,6 +16,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Test real collector Foundation bridges
+        run: osascript -l JavaScript scripts/collection-launchers/test-macos-bridge.js backend/src/main/resources/windows-collection/CollectMac.js "$RUNNER_TEMP"
       - name: Build and mount-test DMG template
         run: bash scripts/build-macos-collection-launcher.sh
       - uses: actions/upload-artifact@v4

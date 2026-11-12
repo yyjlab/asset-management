@@ -68,6 +68,16 @@ function departmentRequest(config, name) {
     var target=config.endpoint.replace(/\/windows-intakes$/,'/collector-person');
     return 'url = '+JSON.stringify(target)+'\nheader = '+JSON.stringify('Authorization: Bearer '+config.token)+'\ndata-binary = '+JSON.stringify(JSON.stringify({name:text(name)}))+'\n';
 }
+function createCollectionDirectory(path) {
+    var error=Ref();
+    if(!$.NSFileManager.defaultManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError($(path),true,$.NSDictionary.dictionary,error))throw new Error('无法保存本地记录');
+}
+function collectionPlist(xml) {
+    var error=Ref(), format=Ref();
+    var value=$.NSPropertyListSerialization.propertyListWithDataOptionsFormatError($(xml).dataUsingEncoding($.NSUTF8StringEncoding),0,format,error);
+    if(!value || value.isNil())throw new Error('系统资料格式无效');
+    return ObjC.deepUnwrap(value);
+}
 function runCollection() {
     ObjC.import('Foundation');
     var app=Application.currentApplication();app.includeStandardAdditions=true;
@@ -84,7 +94,7 @@ function runCollection() {
         if(task.terminationStatus!==0)throw new Error('系统信息读取或网络请求失败');
         return ObjC.unwrap($.NSString.alloc.initWithDataEncoding(data,$.NSUTF8StringEncoding));
     }
-    function plist(executable,args){var xml=command(executable,args);var error=Ref();var value=$.NSPropertyListSerialization.propertyListWithDataOptionsFormatError($(xml).dataUsingEncoding($.NSUTF8StringEncoding),0,null,error);if(!value)throw new Error('系统资料格式无效');return ObjC.deepUnwrap(value);}
+    function plist(executable,args){return collectionPlist(command(executable,args));}
     try {
         var directory=ObjC.unwrap($.NSFileManager.defaultManager.currentDirectoryPath), config=JSON.parse(read(directory+'/config.json'));
         if(!validEndpoint(config.endpoint) || !/^adp_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/.test(config.token))throw new Error('采集包配置无效');
@@ -93,7 +103,7 @@ function runCollection() {
         var disks=[];
         try {var listed=plist('/usr/sbin/diskutil',['list','-plist','internal','physical']);(listed.AllDisksAndPartitions || []).forEach(function(disk){disks.push(plist('/usr/sbin/diskutil',['info','-plist','/dev/'+disk.DeviceIdentifier]));});}catch(e){console.log('内置硬盘未采集，请在审核时核对。');}
         var inventory=makeInventory(profiler,disks), records=directory+'/records', error=Ref();
-        if(!$.NSFileManager.defaultManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError($(records),true,null,error))throw new Error('无法保存本地记录');
+        createCollectionDirectory(records);
         var file=records+'/'+inventory.hardwareUuid+'.json', saved=inventory;
         if($.NSFileManager.defaultManager.fileExistsAtPath($(file))){var cached=read(file);if(cached.length>32768)throw new Error('本地记录过大');saved=JSON.parse(cached);if(saved.hardwareUuid!==inventory.hardwareUuid)throw new Error('本地记录身份不符');saved.collection=inventory.collection;}
         var person=app.displayDialog('请填写这台电脑的实际使用人姓名，不是装机人员。',{defaultAnswer:saved.reportedUserName||'',buttons:['取消','继续'],defaultButton:'继续',cancelButton:'取消',withTitle:'电脑资产登记'}).textReturned.trim();
