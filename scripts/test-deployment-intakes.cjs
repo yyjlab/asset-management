@@ -196,15 +196,22 @@ async function main() {
     }
     failApproval = true;
     await dialog.getByLabel('入库显示器 1', { exact: true }).check();
-    await dialog.getByRole('button', { name: '批准并创建资产', exact: true }).click();
+    await dialog.getByRole('button', { name: '批准并打印二维码', exact: true }).click();
     await dialog.getByText('请确认所选显示器尚未登记，已有资产不要重复创建', { exact: true }).waitFor();
     assert.equal(decisions.length, 0, 'unconfirmed monitor selection must not be sent');
     await dialog.getByLabel('我已核对，所选显示器尚未登记，需要分别创建资产', { exact: true }).check();
-    await dialog.getByRole('button', { name: '批准并创建资产', exact: true }).click();
+    const failedPopupPromise = page.waitForEvent('popup');
+    await dialog.getByRole('button', { name: '批准并打印二维码', exact: true }).click();
+    const failedPopup = await failedPopupPromise;
     await dialog.getByRole('alert').waitFor();
+    if (!failedPopup.isClosed()) await failedPopup.waitForEvent('close');
     assert.equal(await dialog.getByLabel('设备型号 *', { exact: true }).inputValue(), 'ThinkPad T14');
     failApproval = false;
-    await dialog.getByRole('button', { name: '批准并创建资产', exact: true }).click();
+    const printPopupPromise = page.waitForEvent('popup');
+    await dialog.getByRole('button', { name: '批准并打印二维码', exact: true }).click();
+    const printPopup = await printPopupPromise;
+    await printPopup.waitForURL('**/label-print?assetIds=81,82');
+    await printPopup.close();
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(decisions.length, 2);
     assert.equal(decisions[1].body.categoryId, 12);
@@ -217,6 +224,7 @@ async function main() {
     assert.ok(!('assetTag' in decisions[1].body), 'browser must not invent an asset tag');
     await queue.getByRole('button', { name: '已批准', exact: true }).click();
     await queue.getByText('202611100001', { exact: true }).waitFor();
+    assert.equal(await queue.getByRole('link', { name: '打印二维码', exact: true }).getAttribute('href'), '/label-print?assetIds=81,82');
     await queue.getByRole('button', { name: '查看结果' }).click();
     assert.equal(await dialog.getByRole('button', { name: '批准并创建资产', exact: true }).count(), 0);
     await dialog.getByRole('button', { name: '关闭', exact: true }).click();

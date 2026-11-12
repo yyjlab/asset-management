@@ -20,6 +20,11 @@ const draftOf = (row: DeploymentIntake): Draft => ({
   assignedTo: row.assignedTo ?? row.reportedUserName ?? '', ownershipDepartment: row.ownershipDepartment ?? row.reportedDepartment ?? '', domainJoinStatus: row.domainJoinStatus && row.domainJoinStatus !== 'UNKNOWN' ? row.domainJoinStatus : 'JOINED',
   monitors: (row.collection?.monitors || []).filter(monitor => monitor.connection === 'external').map(monitor => ({ deviceKey: monitor.deviceKey, selected: false, brand: monitor.brand || '', serialNumber: monitor.serialNumber || '', size: monitor.sizeInches == null ? '' : String(monitor.sizeInches) })), confirmNewMonitors: false,
 })
+const printUrl = (row: DeploymentIntake) => {
+  if (row.state !== 'approved' || !row.asset) return null
+  const ids = [...new Set([row.asset.id, ...(row.monitorAssets || []).map(asset => asset.id)])]
+  return ids.length === 1 ? `/label-print?assetId=${row.asset.id}&assetTag=${encodeURIComponent(row.asset.assetTag)}` : `/label-print?assetIds=${ids.join(',')}`
+}
 
 export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
   const [state, setState] = useState<DeploymentIntakeState>('pending_review')
@@ -69,6 +74,13 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
       setFormError('请补充资产名称、真实设备型号，并选择有效电脑分类'); return
     }
     if (!rejecting && draft.monitors.some(monitor => monitor.selected) && !draft.confirmNewMonitors) { setFormError('请确认所选显示器尚未登记，已有资产不要重复创建'); return }
+    const wantsPrint = !rejecting && !resubmitting && (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'print'
+    // Open during the user gesture, before the approval request can trigger popup blocking.
+    let printWindow: Window | null = null
+    if (wantsPrint) {
+      printWindow = window.open('about:blank', '_blank')
+      if (printWindow) { printWindow.opener = null; printWindow.document.title = '等待资产入库'; printWindow.document.body.textContent = '正在批准入库，成功后打开二维码标签…' }
+    }
     setBusy(true)
     try {
       if (rejecting) {
@@ -89,12 +101,17 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
           onNotify('已重新送审，尚未创建资产'); setState('pending_review'); setPage(0)
         } else {
           const result = await api.approveDeploymentIntake(selected.externalRegistrationId, payload)
+          const url = printUrl(result)
+          const previewOpened = !!(wantsPrint && url && printWindow && !printWindow.closed)
+          if (previewOpened) { printWindow!.location.replace(url!); printWindow = null }
+          else if (wantsPrint) { printWindow?.close(); printWindow = null }
           await onAssetsChanged?.()
-          onNotify('已批准并创建资产：' + (result.asset?.assetTag || ''))
+          onNotify('已批准并创建资产：' + (result.asset?.assetTag || '') + (wantsPrint && !previewOpened ? '；请到已批准列表打印二维码' : ''))
         }
       }
       setSelected(null); setDraft(null); setRefresh(value => value + 1)
     } catch (e) {
+      printWindow?.close()
       setFormError(e instanceof Error ? e.message : '提交审核失败，请刷新后核对结果')
       setRefresh(value => value + 1)
     } finally { setBusy(false) }
@@ -116,7 +133,7 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
           <td>{row.cpu || 'CPU 未采集'}<small>{row.memory || '内存未采集'}</small></td>
           <td>{row.storage || '硬盘未采集'}<small>{row.graphicsCard || (row.state === 'approved' ? '显卡未采集' : '集成显卡（默认）')}</small></td>
           <td>{date(row.receivedAt)}</td><td><span className={'deployment-intake-state state-' + row.state}>{labels[row.state]}</span>{row.asset && <small>{row.asset.assetTag}</small>}</td>
-          <td><button className="button ghost" onClick={() => open(row)}>{row.state === 'pending_review' ? '核对 / 审核' : '查看结果'}</button></td>
+          <td><button className="button ghost" onClick={() => open(row)}>{row.state === 'pending_review' ? '核对 / 审核' : '查看结果'}</button>{printUrl(row) && <a className="button ghost" href={printUrl(row)!} target="_blank" rel="noopener noreferrer">打印二维码</a>}</td>
         </tr>)}
         {!data?.items.length && <tr><td colSpan={6}>暂无{labels[state]}电脑</td></tr>}
       </tbody></table></div>
@@ -170,6 +187,7 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
           {selected.state === 'pending_review' && <>
             <button type="button" className="button ghost" disabled={busy} onClick={() => { setRejecting(value => !value); setFormError('') }}>{rejecting ? '返回核对' : '不批准'}</button>
             <button type="submit" className="button primary" disabled={busy}>{busy ? '提交中…' : rejecting ? '确认不批准' : '批准并创建资产'}</button>
+            {!rejecting && <button type="submit" value="print" className="button primary" disabled={busy}>批准并打印二维码</button>}
           </>}
         </footer>
       </form>
