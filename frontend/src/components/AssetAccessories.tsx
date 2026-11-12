@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { AccessoryOption, AssetAccessory, RelatedDevice } from '../types'
-import { PlusIcon, TrashIcon } from './Icons'
+import { CloseIcon, PlusIcon, TrashIcon } from './Icons'
 import './Accessories.css'
 
 const normalized = (value: string) => value.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase()
@@ -61,9 +61,9 @@ export function AssetAccessories({ companyId, locationId, relatedDevices, access
   return <section className="form-section full-width-section accessory-editor" aria-label="随附配件">
     <div className="form-section-head"><h3>随附配件</h3><button ref={choose} type="button" className="section-add-button" disabled={disabled} onClick={() => { if (open) close(); else setOpen(true) }} aria-expanded={open} aria-controls="accessory-picker"><PlusIcon />选择配件</button></div>
     {open && <dialog ref={picker} className="accessory-picker" id="accessory-picker" aria-label="选择随附配件" onCancel={event => { event.preventDefault(); close() }} onKeyDown={event => { if (!event.nativeEvent?.isComposing && event.keyCode !== 229 && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() } }}>
-      <h3>选择随附配件</h3>
+      <div className="accessory-picker-heading"><h3>选择配件</h3><button type="button" className="accessory-picker-close" title="关闭" aria-label="关闭配件选择" onClick={close}><CloseIcon /></button></div>
       <div className="accessory-type-tabs"><button type="button" aria-pressed={!type} onClick={() => setType('')}>全部</button>{[...new Set(options.map(option=>option.name))].map(value=><button type="button" key={value} aria-pressed={type===value} onClick={()=>setType(value)}>{value}</button>)}</div>
-      <div className="accessory-picker-search"><input ref={search} type="search" aria-label="搜索随附配件" placeholder="输入名称、型号或规格搜索" value={query} disabled={disabled} onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent?.isComposing && event.keyCode !== 229) event.preventDefault() }} onChange={event => setQuery(event.target.value)} /><button type="button" className="button ghost" disabled={disabled || loading} onClick={() => setRevision(value => value + 1)}>刷新目录</button></div>
+      <div className="accessory-picker-search"><input ref={search} type="search" aria-label="搜索随附配件" placeholder="搜索品牌或类型" value={query} disabled={disabled} onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent?.isComposing && event.keyCode !== 229) event.preventDefault() }} onChange={event => setQuery(event.target.value)} /><button type="button" className="button ghost" disabled={disabled || loading} onClick={() => setRevision(value => value + 1)}>刷新</button></div>
       {error ? <p role="alert">{error}</p> : loading ? <p role="status">正在读取配件…</p> : matches.length ? <div className="accessory-picker-results">{matches.map(option => <label className={`accessory-choice ${selected.includes(option.id) ? 'selected' : ''}`} key={option.id}>
         <input type="checkbox" disabled={disabled || option.available === 0 || !!(option.stockId && relatedDevices.some(d=>d.stockId===option.stockId))} checked={selected.includes(option.id)} onChange={event => setSelected(current => event.target.checked ? [...new Set([...current, option.id])] : current.filter(id => id !== option.id))} />
         <span className="accessory-identity"><strong>{option.model || option.name}</strong><span>{option.name}</span>{option.stockId ? <small>可用 {option.available}{relatedDevices.some(d=>d.stockId===option.stockId) ? ' · 已添加' : ''}</small> : <small>旧目录 · 不扣库存</small>}{option.specification && <small>{option.specification}</small>}</span>
