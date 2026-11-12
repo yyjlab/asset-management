@@ -57,7 +57,7 @@ public class WindowsCollectionController {
                 zip.putNextEntry(new ZipEntry("一键采集.command"));
                 zip.write("#!/bin/bash\numask 077\ncd -- \"$(dirname -- \"$0\")\" || exit 1\n/usr/bin/osascript -l JavaScript Collect.js\nstatus=$?\nprintf '\\nPress Enter to close...'\nread -r _\nexit \"$status\"\n".getBytes(StandardCharsets.UTF_8)); zip.closeEntry();
                 zip.putNextEntry(new ZipEntry("使用说明.txt"));
-                zip.write("完整解压后，在终端输入 bash 和空格，再把“一键采集.command”拖进终端并回车。无需 sudo，不安装常驻程序。填写实际使用人和部门后提交。系统安全限制可能阻止直接双击，勿关闭系统安全保护。采集包含专用凭据，请勿公开。\n".getBytes(StandardCharsets.UTF_8));zip.closeEntry();
+                zip.write("完整解压后，在终端输入 bash 和空格，再把“一键采集.command”拖进终端并回车。无需 sudo，不安装常驻程序。填写实际使用人姓名后自动匹配部门，可修改或手填，确认后提交等待审核。取消不发送。系统安全限制可能阻止直接双击，勿关闭系统安全保护。采集包含专用凭据，请勿公开。\n".getBytes(StandardCharsets.UTF_8));zip.closeEntry();
             } else {
             zip.putNextEntry(new ZipEntry("Collect.ps1")); zip.write(new byte[]{(byte)0xef,(byte)0xbb,(byte)0xbf});
             try (var script = new ClassPathResource("windows-collection/Collect.ps1").getInputStream()) { zip.write(script.readAllBytes()); }

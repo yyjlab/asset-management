@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { makeInventory, parseDisplays, parseDisks, validEndpoint } = require('../backend/src/main/resources/windows-collection/CollectMac.js');
+const { makeInventory, parseDisplays, parseDisks, validEndpoint, departmentSuggestion, departmentRequest } = require('../backend/src/main/resources/windows-collection/CollectMac.js');
 const uuid = '12345678-1234-1234-1234-123456789abc';
 test('Apple Silicon and Intel report actual hardware without Python', () => {
   for (const model of ['Mac14,7', 'MacBookPro16,1']) {
@@ -38,4 +38,47 @@ test('invalid UUID and credential-bearing or redirected endpoint paths are rejec
   assert.throws(() => makeInventory({ SPHardwareDataType: [{ platform_UUID: '00000000-0000-0000-0000-000000000000' }] }, [], []));
   assert.equal(validEndpoint('http://asset.wfq.com/api/integrations/ad-deployment/v1/windows-intakes'), true);
   for (const url of ['http://a:b@asset.wfq.com/api/integrations/ad-deployment/v1/windows-intakes', 'http://asset.wfq.com/evil', 'http://asset.wfq.com/api/integrations/ad-deployment/v1/windows-intakes?token=secret']) assert.equal(validEndpoint(url), false);
+});
+test('exact name lookup prefills department and remains an editable suggestion', () => {
+  let queried='';
+  const suggestion=departmentSuggestion(' 张三 ',{},name=>{queried=name;return {result:'matched',department:'研发部'};});
+  assert.equal(queried,'张三');assert.equal(suggestion.department,'研发部');
+  assert.match(suggestion.message,/确认或修改/);
+  const saved={reportedUserName:'张三',reportedDepartment:'运营部'};
+  assert.equal(departmentSuggestion('张三',saved,()=>assert.fail('Saved manual department must not be overwritten')).department,'运营部');
+  assert.deepEqual(saved,{reportedUserName:'张三',reportedDepartment:'运营部'});
+});
+test('a changed person does not reuse another employee department and lookup failures allow manual input', () => {
+  const saved={reportedUserName:'旧姓名',reportedDepartment:'旧部门'};
+  for(const result of [{result:'not_found'},{result:'empty_department'},{result:'matched',department:'x'.repeat(121)},{result:'matched',department:42}]){
+    const value=departmentSuggestion('新姓名',saved,()=>result);assert.equal(value.department,'');assert.match(value.message,/手动填写/);
+  }
+  const unavailable=departmentSuggestion('新姓名',saved,()=>{throw new Error('Timeout or HTTP 401');});
+  assert.equal(unavailable.department,'');assert.match(unavailable.message,/手动填写/);
+  for(const name of ['',' ','x'.repeat(121)])assert.throws(()=>departmentSuggestion(name,{},()=>assert.fail('Invalid names must not be queried')));
+});
+test('department request stays on configured origin and sends only the exact name', () => {
+  const config={endpoint:'http://asset.example:8081/api/integrations/ad-deployment/v1/windows-intakes',token:'test-only'};
+  const request=departmentRequest(config,' 研发测试 "姓名" ');
+  const lines=request.trim().split('\n').map(line=>JSON.parse(line.slice(line.indexOf('=')+1).trim()));
+  assert.equal(lines[0],'http://asset.example:8081/api/integrations/ad-deployment/v1/collector-person');
+  assert.equal(lines[1],'Authorization: Bearer test-only');
+  assert.deepEqual(JSON.parse(lines[2]),{name:'研发测试 "姓名"'});
+  assert.throws(()=>departmentRequest({...config,endpoint:'http://evil.example/other'},'姓名'));
+});
+test('real curl stdin configuration preserves UTF-8 department and never puts credentials in command arguments', async () => {
+  const http=require('node:http'),{execFile}=require('node:child_process');
+  let received;
+  const server=http.createServer((request,response)=>{let body='';request.setEncoding('utf8');request.on('data',part=>body+=part);request.on('end',()=>{
+    received={url:request.url,authorization:request.headers.authorization,body:JSON.parse(body)};
+    response.setHeader('Content-Type','application/json');response.end(JSON.stringify({result:'matched',department:'研发部'}));
+  });});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try{
+    const config={endpoint:`http://127.0.0.1:${server.address().port}/api/integrations/ad-deployment/v1/windows-intakes`,token:'test-only'};
+    const args=['--disable','--config','-','--silent','--show-error','--noproxy','*','--connect-timeout','3','--max-time','5','--max-redirs','0','--request','POST','--header','Content-Type: application/json; charset=utf-8'];
+    const value=await new Promise((resolve,reject)=>{const child=execFile(process.platform==='win32'?'curl.exe':'/usr/bin/curl',args,{encoding:'utf8',timeout:8000},(error,stdout)=>error?reject(error):resolve(JSON.parse(stdout)));child.stdin.end(departmentRequest(config,' 姓名"\\测试 '),'utf8');});
+    assert.equal(value.department,'研发部');assert.deepEqual(received,{url:'/api/integrations/ad-deployment/v1/collector-person',authorization:'Bearer test-only',body:{name:'姓名"\\测试'}});
+    assert.ok(!args.join(' ').includes(config.token));
+  }finally{await new Promise(resolve=>server.close(resolve));}
 });
