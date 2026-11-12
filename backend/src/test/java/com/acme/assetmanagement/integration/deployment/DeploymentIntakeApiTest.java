@@ -462,4 +462,28 @@ class DeploymentIntakeApiTest {
         mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"部门匹配\"}"))
             .andExpect(status().isUnauthorized());
     }
+    @Test void nativeWindowsPackageIsAnExecutableWithTheSameRevocableRestrictedCredential() throws Exception {
+        var response=mvc.perform(post("/api/settings/windows-collection/packages").secure(true).with(user(admin)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsBytes(Map.of("name","EXE采集","days",7,"baseUrl","https://asset.test","platform","windows","format","native"))))
+                .andExpect(status().isOk()).andExpect(header().string("Content-Disposition","attachment; filename=windows-collection.exe")).andReturn().getResponse();
+        byte[] file=response.getContentAsByteArray();assertEquals('M',file[0]);assertEquals('Z',file[1]);
+        int length=java.nio.ByteBuffer.wrap(file,file.length-12,4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
+        var payload=json.readTree(Arrays.copyOfRange(file,file.length-44-length,file.length-44));
+        assertTrue(payload.get("script").asText().contains("Show-CollectionUserForm"));
+        var configuration=json.readTree(payload.get("configuration").asText());String collector=configuration.get("token").asText();
+        assertEquals("https://asset.test"+DeploymentSecurityConfig.WINDOWS,configuration.get("endpoint").asText());
+        collect(collector,windowsBody(UUID.randomUUID().toString())).andExpect(status().isAccepted());
+        mvc.perform(get("/api/assets").header("Authorization","Bearer "+collector)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/settings/windows-collection/packages/"+collector.substring(4,40)+"/revoke").with(user(admin)).with(csrf())).andExpect(status().isOk());
+        collect(collector,windowsBody(UUID.randomUUID().toString())).andExpect(status().isUnauthorized());
+    }
+    @Test void unavailableMacNativeFormatDoesNotIssueUnusedCredentials() throws Exception {
+        var formats=mvc.perform(get("/api/settings/windows-collection/formats").with(user(admin))).andExpect(status().isOk()).andExpect(jsonPath("$.windows").value(true)).andReturn().getResponse();
+        org.junit.jupiter.api.Assumptions.assumeFalse(json.readTree(formats.getContentAsByteArray()).get("macos").asBoolean());
+        long before=credentialRows.count();
+        mvc.perform(post("/api/settings/windows-collection/packages").secure(true).with(user(admin)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsBytes(Map.of("name","Mac免安装","days",7,"baseUrl","https://asset.test","platform","macos","format","native"))))
+                .andExpect(status().isUnprocessableEntity());
+        assertEquals(before,credentialRows.count());
+    }
 }

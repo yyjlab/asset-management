@@ -88,9 +88,12 @@ export const api = {
   importRegistrationRoster: (people: RosterPerson[]) => mutate<RosterImportResult>('/api/registration-roster/import', { method: 'POST', body: JSON.stringify({ people }) }),
   listWindowsCollectionPackages: () => request<DeploymentCredential[]>('/api/settings/windows-collection/packages'),
   revokeWindowsCollectionPackage: (id: string) => mutate<DeploymentCredential>(`/api/settings/windows-collection/packages/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
-  downloadWindowsCollection: async (payload: { name: string; baseUrl: string; days: number; platform?: 'windows' | 'macos' }) => {
+  collectionFormats: () => request<{ windows: boolean; macos: boolean }>('/api/settings/windows-collection/formats'),
+  downloadWindowsCollection: async (payload: { name: string; baseUrl: string; days: number; platform?: 'windows' | 'macos'; format?: 'native' | 'zip' }) => {
     const token = await csrfToken()
-    await download('/api/settings/windows-collection/packages', payload.platform === 'macos' ? 'macos-collection.zip' : 'windows-collection.zip', {
+    const platform=payload.platform==='macos'?'macos':'windows'
+    const extension=payload.format==='native'?(platform==='windows'?'exe':'dmg'):'zip'
+    await download('/api/settings/windows-collection/packages', `${platform}-collection.${extension}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', [token.headerName]: token.token }, body: JSON.stringify(payload),
     })
   },

@@ -23,15 +23,20 @@ public class WindowsCollectionController {
     private final DeploymentIntakeService intakes;
     private final ObjectMapper json;
     private final com.acme.assetmanagement.asset.RegistrationRosterRepository roster;
+    private final NativeCollectionPackage nativePackages;
     public WindowsCollectionController(DeploymentCredentialService credentials, WindowsCollectionPackageRepository packages,
-            DeploymentAccessService access, DeploymentIntakeService intakes, ObjectMapper json, com.acme.assetmanagement.asset.RegistrationRosterRepository roster) {
-        this.credentials=credentials; this.packages=packages; this.access=access; this.intakes=intakes; this.json=json; this.roster=roster;
+            DeploymentAccessService access, DeploymentIntakeService intakes, ObjectMapper json, com.acme.assetmanagement.asset.RegistrationRosterRepository roster, NativeCollectionPackage nativePackages) {
+        this.credentials=credentials; this.packages=packages; this.access=access; this.intakes=intakes; this.json=json; this.roster=roster;this.nativePackages=nativePackages;
     }
     @GetMapping("/api/settings/windows-collection/packages")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public List<DeploymentCredentialService.Info> list() { return credentials.list(true); }
 
-    public record PackageRequest(String name, String baseUrl, Integer days, String platform) {}
+    @GetMapping("/api/settings/windows-collection/formats")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public Map<String,Boolean> formats(){return nativePackages.formats();}
+
+    public record PackageRequest(String name, String baseUrl, Integer days, String platform, String format) {}
     @PostMapping("/api/settings/windows-collection/packages")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     @Transactional
@@ -40,6 +45,9 @@ public class WindowsCollectionController {
             throw failure("包名称须为1至80字符，有效期须为1至90天");
         String platform=value.platform()==null ? "windows" : value.platform();
         if(!Set.of("windows","macos").contains(platform))throw failure("请选择 Windows 或 macOS");
+        String format=value.format()==null?"zip":value.format();
+        if(!Set.of("zip","native").contains(format))throw failure("请选择免安装文件或脚本包");
+        if(format.equals("native")&&!nativePackages.formats().get(platform))throw failure("该平台的免安装文件尚未构建，请先完成构建，不会生成无效下载");
         URI url;
         try { url=URI.create(value.baseUrl()); } catch (RuntimeException e) { throw failure("请填写资产系统完整地址"); }
         if (url.getHost()==null || !Set.of("http","https").contains(url.getScheme()) || url.getUserInfo()!=null
@@ -49,6 +57,13 @@ public class WindowsCollectionController {
             throw failure("请先在装机平台接入中启用登记；HTTP 须明确允许受信内网传输");
         var issued=credentials.issue(value.name(), Instant.now().plusSeconds(value.days()*86400L));
         var row=new WindowsCollectionPackage(); row.id=issued.credential().id(); packages.saveAndFlush(row);
+        String configuration=json.writeValueAsString(Map.of("endpoint",url.toString().replaceAll("/$", "")+DeploymentSecurityConfig.WINDOWS,"token",issued.token()));
+        if(format.equals("native")){
+            boolean windows=platform.equals("windows");
+            byte[] file=windows?nativePackages.windows(configuration):nativePackages.macos(configuration);
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename="+platform+"-collection."+(windows?"exe":"dmg"))
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM).body(file);
+        }
         var output=new ByteArrayOutputStream();
         try (var zip=new ZipOutputStream(output, StandardCharsets.UTF_8)) {
             if(platform.equals("macos")) {
