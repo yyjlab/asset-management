@@ -152,8 +152,10 @@ async function main() {
     await queue.getByRole('button', { name: '核对 / 审核' }).click();
     const dialog = page.getByRole('dialog');
     await queue.getByText('填报使用人：张三 / 运营部', { exact: true }).waitFor();
-    await dialog.getByText('采集填报：张三 / 运营部（未经核实；确认领用时请填写下方领用人和部门）', { exact: true }).waitFor();
-    assert.equal(await dialog.getByLabel('领用人', { exact: true }).inputValue(), '', 'reported user must not silently become assignee');
+    await dialog.getByText('采集填报：张三 / 运营部（已带入审核表单，请核对；可修改或清空）', { exact: true }).waitFor();
+    assert.equal(await dialog.getByLabel('领用人', { exact: true }).inputValue(), '张三');
+    assert.equal(await dialog.getByLabel('部门', { exact: true }).inputValue(), '运营部');
+    assert.equal(await dialog.getByLabel('入域状态', { exact: true }).inputValue(), 'JOINED');
     assert.equal(await dialog.getByText(/鼠标品牌|键盘品牌/).count(), 0, 'removed peripherals must not clutter review');
     assert.equal(await dialog.getByLabel('入库显示器 1', { exact: true }).isChecked(), false);
     assert.equal(await dialog.getByLabel('入库显示器 2', { exact: true }).isChecked(), false);
@@ -207,6 +209,9 @@ async function main() {
     assert.equal(decisions.length, 2);
     assert.equal(decisions[1].body.categoryId, 12);
     assert.equal(decisions[1].body.graphicsCard, '集成显卡');
+    assert.equal(decisions[1].body.assignedTo, '张三');
+    assert.equal(decisions[1].body.ownershipDepartment, '运营部');
+    assert.equal(decisions[1].body.domainJoinStatus, 'JOINED');
     assert.equal(decisions[1].body.monitors.length, 1); assert.equal(decisions[1].body.monitors[0].deviceKey, 'external1');
     assert.equal(decisions[1].body.confirmNewMonitors, true);
     assert.ok(!('assetTag' in decisions[1].body), 'browser must not invent an asset tag');

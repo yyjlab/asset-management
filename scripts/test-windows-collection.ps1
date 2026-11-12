@@ -71,6 +71,7 @@ if($TestDialog){
         if(!$form){return}
         $layout=$form.Controls[0]
         $inputs=@($layout.Controls | Where-Object {$_ -is [Windows.Forms.TextBox]})
+        if(@($inputs | Where-Object ImeMode -ne 'On').Count){throw 'Chinese IME must be enabled for both inputs'}
         $inputs[0].Text='测试使用人'; $inputs[1].Text='测试部门'
         $buttons=$layout.Controls | Where-Object {$_ -is [Windows.Forms.FlowLayoutPanel]}
         if($buttons.Bottom -gt $layout.ClientSize.Height){throw 'Form buttons clipped'}
@@ -104,7 +105,7 @@ if($TestDialog){
         @{result='matched';department='研发部'}
     }
     try {
-        foreach($scenario in @('manual','stale','unavailable')){
+        foreach($scenario in @('manual','stale','unavailable','focused')){
             $testState=@{Changed=$false;Since=$null;Error=$null;Started=[DateTime]::UtcNow}
             $timer=New-Object Windows.Forms.Timer; $timer.Interval=80
             $timer.Add_Tick({
@@ -114,6 +115,11 @@ if($TestDialog){
                 $status=@($layout.Controls | Where-Object {$_ -is [Windows.Forms.Label]})[-1].Text
                 $buttons=$layout.Controls | Where-Object {$_ -is [Windows.Forms.FlowLayoutPanel]}
                 if(([DateTime]::UtcNow-$testState.Started).TotalSeconds -gt 8){$testState.Error='Department UI timed out: '+$status; $form.Close();return}
+                if($scenario -eq 'focused' -and !$testState.Changed){$null=$inputs[1].Focus();$testState.Changed=$true;$testState.Since=[DateTime]::UtcNow}
+                if($scenario -eq 'focused' -and ([DateTime]::UtcNow-$testState.Since).TotalMilliseconds -gt 1200){
+                    if($inputs[1].Text){$testState.Error='Lookup rewrote the focused department input'}
+                    $inputs[1].Text='手填研发部';($buttons.Controls|Where-Object Text -eq '确认并提交').PerformClick();$timer.Stop()
+                }
                 if($scenario -eq 'manual' -and !$testState.Changed -and $inputs[1].Text -eq '研发部'){
                     $inputs[1].Text='手工运营部'; $inputs[0].Text='另一个姓名'; $testState.Changed=$true; $testState.Since=[DateTime]::UtcNow
                 }
@@ -126,7 +132,7 @@ if($TestDialog){
                 if($scenario -eq 'stale' -and $inputs[1].Text -eq '新部门'){($buttons.Controls|Where-Object Text -eq '确认并提交').PerformClick();$timer.Stop()}
                 if($scenario -eq 'unavailable' -and $status -like '*查询暂不可用*'){$inputs[1].Text='手填部门';($buttons.Controls|Where-Object Text -eq '确认并提交').PerformClick();$timer.Stop()}
             })
-            $name=switch($scenario){manual{'自动匹配'} stale{'旧姓名'} unavailable{'查询失败'}}
+            $name=switch($scenario){manual{'自动匹配'} stale{'旧姓名'} unavailable{'查询失败'} focused{'输入中'}}
             try {$timer.Start();$person=Show-CollectionUserForm -UserName $name -Config @{endpoint='test-only'} -Inventory $inventory}
             finally {$timer.Stop();$timer.Dispose()}
             if($testState.Error){throw $testState.Error}

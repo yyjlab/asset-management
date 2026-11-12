@@ -17,7 +17,7 @@ const draftOf = (row: DeploymentIntake): Draft => ({
   name: row.name ?? row.model ?? '', model: row.model || '', cpu: row.cpu || '', memory: row.memory || '',
   storage: row.storage || '', graphicsCard: row.graphicsCard || '集成显卡', manufacturerSerialNumber: row.manufacturerSerialNumber || '',
   categoryId: row.categoryId ? String(row.categoryId) : '', note: '',
-  assignedTo: row.assignedTo || '', ownershipDepartment: row.ownershipDepartment || '', domainJoinStatus: row.domainJoinStatus || 'UNKNOWN',
+  assignedTo: row.assignedTo ?? row.reportedUserName ?? '', ownershipDepartment: row.ownershipDepartment ?? row.reportedDepartment ?? '', domainJoinStatus: row.domainJoinStatus && row.domainJoinStatus !== 'UNKNOWN' ? row.domainJoinStatus : 'JOINED',
   monitors: (row.collection?.monitors || []).filter(monitor => monitor.connection === 'external').map(monitor => ({ deviceKey: monitor.deviceKey, selected: false, brand: monitor.brand || '', serialNumber: monitor.serialNumber || '', size: monitor.sizeInches == null ? '' : String(monitor.sizeInches) })), confirmNewMonitors: false,
 })
 
@@ -130,7 +130,7 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
         <button className="deployment-dialog-close" title="关闭" aria-label="关闭审核" disabled={busy} onClick={close}><CloseIcon /></button></header>
       <form onSubmit={event => void decide(event)}>
         <div className="deployment-dialog-body">
-          {selected.reportedUserName && <p>采集填报：{selected.reportedUserName} / {selected.reportedDepartment || '部门未填写'}（未经核实；确认领用时请填写下方领用人和部门）</p>}
+          {selected.reportedUserName && <p>采集填报：{selected.reportedUserName} / {selected.reportedDepartment || '部门未填写'}（已带入审核表单，请核对；可修改或清空）</p>}
           {selected.collection && <section aria-label="外设采集"><p>电脑类型：{({ laptop: '笔记本', desktop: '台式电脑', unknown: '未识别' })[selected.collection.computerType]} · 检测到屏幕 {selected.collection.monitors.length} 块，其中外接 {selected.collection.monitors.filter(m => m.connection === 'external').length} 台、内置 {selected.collection.monitors.filter(m => m.connection === 'internal').length} 块、连接不明 {selected.collection.monitors.filter(m => m.connection === 'unknown').length} 块</p>
             {selected.collection.status !== 'ok' && <p>{selected.collection.status === 'unavailable' ? '显示器读取失败，需现场核对，不能据此判断没有显示器。' : '部分显示器信息缺失，尺寸为系统提供的近似值，请核对。'}</p>}
             <div className="deployment-table"><table><thead><tr><th>类型</th><th>品牌</th><th>SN</th><th>尺寸</th></tr></thead><tbody>{selected.collection.monitors.map(monitor => <tr key={monitor.deviceKey}><td>{({ internal: '内置屏', external: '外接显示器', unknown: '连接不明' })[monitor.connection]}</td><td>{monitor.brand || '未读取'}</td><td>{monitor.serialNumber || '未读取'}</td><td>{monitor.sizeInches == null ? '未读取' : `约 ${monitor.sizeInches} 英寸`}</td></tr>)}</tbody></table></div>
@@ -144,7 +144,7 @@ export function DeploymentIntakes({ onNotify, onAssetsChanged }: Props) {
                 {fields.map(([key, label, max]) => <label key={key}>{label}{key === 'model' ? ' *' : ''}<input required={key === 'model'} maxLength={max} value={draft[key]} disabled={busy} onChange={event => update(key, event.target.value)} />{key === 'graphicsCard' && !selected.graphicsCard && <small>未采集，默认填写集成显卡</small>}</label>)}
                 <label>领用人<input maxLength={120} value={draft.assignedTo} disabled={busy} onChange={event => update('assignedTo', event.target.value)} placeholder="选填" /></label>
                 <label>部门<input maxLength={120} value={draft.ownershipDepartment} disabled={busy} onChange={event => update('ownershipDepartment', event.target.value)} placeholder="选填" /></label>
-                <label>入域状态<select value={draft.domainJoinStatus} disabled={busy} onChange={event => update('domainJoinStatus', event.target.value as Draft['domainJoinStatus'])}><option value="UNKNOWN">待确认</option><option value="JOINED">已入域</option><option value="NOT_JOINED">未入域</option></select></label>
+                <label>入域状态<select aria-label="入域状态" value={draft.domainJoinStatus} disabled={busy} onChange={event => update('domainJoinStatus', event.target.value as Draft['domainJoinStatus'])}><option value="UNKNOWN">待确认</option><option value="JOINED">已入域</option><option value="NOT_JOINED">未入域</option></select></label>
               </div>
               {!!draft.monitors.length && <section aria-label="显示器入库"><h4>外接显示器入库</h4><p>只勾选尚未登记的显示器。内置屏不单独入库，已有资产不要重复创建；领用人和部门沿用上方填写值。</p>
                 {draft.monitors.map((monitor, index) => <div key={monitor.deviceKey}><label className="deployment-check"><input type="checkbox" checked={monitor.selected} disabled={busy} onChange={e => updateMonitor(monitor.deviceKey, { selected: e.target.checked })} /><span>入库显示器 {index + 1}</span></label><div className="deployment-review-fields">

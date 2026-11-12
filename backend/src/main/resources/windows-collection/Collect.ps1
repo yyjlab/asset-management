@@ -122,6 +122,7 @@ function Show-CollectionUserForm {
     $departmentLabel.Text='部门（选填）'; $departmentLabel.Dock='Fill'; $layout.Controls.Add($departmentLabel,0,4)
     $departmentInput=New-Object System.Windows.Forms.TextBox
     $departmentInput.Text=$Department; $departmentInput.MaxLength=120; $departmentInput.Dock='Top'; $departmentInput.Font=New-Object Drawing.Font('Microsoft YaHei UI',11); $departmentInput.BorderStyle='FixedSingle'; $layout.Controls.Add($departmentInput,0,5)
+    $nameInput.ImeMode='On'; $departmentInput.ImeMode='On'
     $errorLabel=New-Object System.Windows.Forms.Label
     $errorLabel.ForeColor=[Drawing.Color]::Firebrick; $errorLabel.Dock='Fill'; $layout.Controls.Add($errorLabel,0,6)
     $buttons=New-Object System.Windows.Forms.FlowLayoutPanel
@@ -150,6 +151,8 @@ function Show-CollectionUserForm {
     $timer=New-Object Windows.Forms.Timer
     $timer.Interval=100
     $timer.Add_Tick({
+        # Do not rewrite text or lookup hints while the department IME is composing.
+        if($departmentInput.Focused){return}
         $current=$nameInput.Text.Trim()
         if($lookup.Worker){
             if(!$lookup.Pending.IsCompleted){return}
