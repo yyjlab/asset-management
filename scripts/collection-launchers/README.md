@@ -14,4 +14,4 @@ pwsh -File scripts/build-windows-collection-launcher.ps1
 
 macOS 选择免安装文件后下载 DMG，双击打开磁盘映像，再双击 Asset Collector；不用解压或复制到“应用程序”。程序在当前用户的 Application Support 中保存配置及重试记录。当前未签名或公证，不应关闭系统安全保护；企业终端如阻止运行，请联系管理员。
 
-macOS 模板由 GitHub Actions 的 Build macOS collector 工作流构建；构建包含配置槽写入、挂载及测试 JXA 执行验证，产物不含真实凭据。模板改动后需要取回通过验证的产物放入后端资源再构建后端。尚需在实际 Intel 和 Apple Silicon 员工电脑验证完整采集、弹窗与送审。
+macOS 模板由 GitHub Actions 的 Build macOS collector 工作流构建。下载时后端生成带校验和的标准只读 DMG；云端测试使用同一个生成器，通过镜像校验、系统磁盘映像挂载器和 APP 启动入口验证，产物不含真实凭据。模板改动后需要取回通过验证的产物放入后端资源再构建后端。仍需在员工电脑验证钉钉下载后的完整采集与送审；云端测试不代表企业终端安全策略已放行。

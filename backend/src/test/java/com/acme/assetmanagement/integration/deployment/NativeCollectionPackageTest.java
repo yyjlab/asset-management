@@ -26,4 +26,25 @@ class NativeCollectionPackageTest {
         assertThrows(IOException.class,()->NativeCollectionPackage.fill("SLOTx   ".getBytes(StandardCharsets.US_ASCII),"SLOT",8,new byte[1]));
         assertThrows(IOException.class,()->NativeCollectionPackage.fill("SLOT    ".getBytes(StandardCharsets.US_ASCII),"SLOT",8,new byte[9]));
     }
+    @Test void macDownloadIsAStandardUdifWithChecksumsForItsActualPayload() throws Exception {
+        byte[] raw=new byte[1024];
+        raw[100]=42;
+        byte[] image=MacDiskImage.wrap(raw);
+        var footer=ByteBuffer.wrap(image,image.length-512,512).slice();
+        assertEquals(0x6b6f6c79,footer.getInt(0));
+        assertEquals(4,footer.getInt(4));
+        assertEquals(512,footer.getInt(8));
+        assertEquals(raw.length,footer.getLong(32));
+        assertEquals(raw.length,footer.getLong(216));
+        assertEquals(image.length-512-raw.length,footer.getLong(224));
+        assertEquals(2,footer.getLong(492));
+        var crc=new java.util.zip.CRC32();crc.update(raw);
+        assertEquals((int)crc.getValue(),footer.getInt(88));
+        assertArrayEquals(raw,Arrays.copyOf(image,raw.length));
+        raw[100]=43;
+        byte[] changed=MacDiskImage.wrap(raw);
+        assertNotEquals(footer.getInt(88),ByteBuffer.wrap(changed,changed.length-512,512).slice().getInt(88));
+        assertThrows(IOException.class,()->MacDiskImage.wrap(new byte[0]));
+        assertThrows(IOException.class,()->MacDiskImage.wrap(new byte[513]));
+    }
 }

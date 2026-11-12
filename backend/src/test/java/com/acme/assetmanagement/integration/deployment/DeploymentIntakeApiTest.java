@@ -481,8 +481,10 @@ class DeploymentIntakeApiTest {
         mvc.perform(get("/api/settings/windows-collection/formats").with(user(admin))).andExpect(status().isOk()).andExpect(jsonPath("$.windows").value(true)).andExpect(jsonPath("$.macos").value(true));
         var response=mvc.perform(post("/api/settings/windows-collection/packages").secure(true).with(user(admin)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsBytes(Map.of("name","Mac免安装","days",7,"baseUrl","https://asset.test","platform","macos","format","native"))))
-                .andExpect(status().isOk()).andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.containsString("macos-collection.dmg"))).andReturn().getResponse();
+                .andExpect(status().isOk()).andExpect(content().contentType("application/x-apple-diskimage")).andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.containsString("macos-collection.dmg"))).andReturn().getResponse();
         var contents=new String(response.getContentAsByteArray(),java.nio.charset.StandardCharsets.UTF_8);
+        byte[] disk=response.getContentAsByteArray();
+        assertEquals("koly",new String(disk,disk.length-512,4,java.nio.charset.StandardCharsets.US_ASCII));
         assertTrue(contents.contains("https://asset.test/api/integrations/ad-deployment/v1/windows-intakes"));
         assertTrue(contents.contains("function runCollection()"));
         assertFalse(contents.contains("WFQ_COLLECTION_CONFIG_SLOT_V1"));

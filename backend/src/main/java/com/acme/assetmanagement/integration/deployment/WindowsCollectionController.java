@@ -62,7 +62,7 @@ public class WindowsCollectionController {
             boolean windows=platform.equals("windows");
             byte[] file=windows?nativePackages.windows(configuration):nativePackages.macos(configuration);
             return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename="+platform+"-collection."+(windows?"exe":"dmg"))
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM).body(file);
+                    .contentType(windows?MediaType.APPLICATION_OCTET_STREAM:MediaType.parseMediaType("application/x-apple-diskimage")).body(file);
         }
         var output=new ByteArrayOutputStream();
         try (var zip=new ZipOutputStream(output, StandardCharsets.UTF_8)) {

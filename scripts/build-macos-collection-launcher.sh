@@ -4,7 +4,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 MOUNT="$WORK/mount"
 GUI_MOUNT='/Volumes/Asset Collector'
-cleanup() { hdiutil detach "$MOUNT" -quiet 2>/dev/null || true; hdiutil detach "$GUI_MOUNT" -quiet 2>/dev/null || true; rm -rf "$WORK"; }
+GUI_ATTACHED=0
+cleanup() {
+  hdiutil detach "$MOUNT" -quiet 2>/dev/null || true
+  if [ "$GUI_ATTACHED" = 1 ]; then hdiutil detach "$GUI_MOUNT" -quiet 2>/dev/null || true; fi
+  rm -rf "$WORK"
+}
 trap cleanup EXIT
 APP="$WORK/source/Asset Collector.app/Contents"
 mkdir -p "$APP/MacOS" "$APP/Resources" "$MOUNT"
@@ -76,6 +81,7 @@ for attempt in {1..30}; do
   sleep 1
 done
 test -d "$GUI_MOUNT"
+GUI_ATTACHED=1
 plutil -lint "$GUI_MOUNT/Asset Collector.app/Contents/Info.plist"
 open -W "$GUI_MOUNT/Asset Collector.app"
 KEY="$(shasum -a 256 "$GUI_MOUNT/Asset Collector.app/Contents/Resources/config.json" | cut -d ' ' -f 1)"
