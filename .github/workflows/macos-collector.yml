@@ -8,6 +8,7 @@ on:
       - .github/workflows/macos-collector.yml
       - backend/src/main/resources/windows-collection/CollectMac.js
       - scripts/collection-launchers/test-macos-bridge.js
+      - scripts/test-macos-runtime.cjs
       - scripts/collection-launchers/WrapMacImage.java
       - backend/src/main/java/com/acme/assetmanagement/integration/deployment/MacDiskImage.java
 permissions:
@@ -19,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test real collector Foundation bridges
-        run: osascript -l JavaScript scripts/collection-launchers/test-macos-bridge.js backend/src/main/resources/windows-collection/CollectMac.js "$RUNNER_TEMP"
+        run: node scripts/test-macos-runtime.cjs
       - name: Build and mount-test DMG template
         run: bash scripts/build-macos-collection-launcher.sh
       - uses: actions/upload-artifact@v4

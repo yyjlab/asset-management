@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { makeInventory, parseDisplays, parseDisks, validEndpoint, departmentSuggestion, departmentRequest } = require('../backend/src/main/resources/windows-collection/CollectMac.js');
+const { makeInventory, parseDisplays, parseDisks, validEndpoint, departmentSuggestion, departmentRequest, collectionFailure, collectionResponse } = require('../backend/src/main/resources/windows-collection/CollectMac.js');
 const uuid = '12345678-1234-1234-1234-123456789abc';
 test('Apple Silicon and Intel report actual hardware without Python', () => {
   for (const model of ['Mac14,7', 'MacBookPro16,1']) {
@@ -81,4 +81,17 @@ test('real curl stdin configuration preserves UTF-8 department and never puts cr
     assert.equal(value.department,'研发部');assert.deepEqual(received,{url:'/api/integrations/ad-deployment/v1/collector-person',authorization:'Bearer test-only',body:{name:'姓名"\\测试'}});
     assert.ok(!args.join(' ').includes(config.token));
   }finally{await new Promise(resolve=>server.close(resolve));}
+});
+test('Mac failures identify DNS, connection, timeout, TLS and HTTP authentication without exposing secrets', () => {
+  for(const [code,expected] of [[6,/域名/],[7,/连接/],[28,/超时/],[60,/证书/]]){
+    const detail=collectionFailure('/usr/bin/curl',code,'fixture-secret\nreason','fixture-secret');
+    assert.match(detail,expected);assert.ok(!detail.includes('fixture-secret'));assert.ok(!detail.includes('\n'));
+  }
+  assert.throws(()=>collectionResponse('{"message":"expired"}\n401',[200,202]),/凭据.*HTTP 401/);
+  assert.throws(()=>collectionResponse('{"error":"missing"}\n404',[200]),/接口不存在/);
+  assert.throws(()=>collectionResponse('<html>proxy</html>\n502',[200]),/反向代理/);
+  assert.throws(()=>collectionResponse('{}',[200]),/HTTP 回报/);
+  assert.deepEqual(collectionResponse('{"result":"matched","department":"研发部"}\n200',[200]),{result:'matched',department:'研发部'});
+  const suggestion=departmentSuggestion('张三',{},()=>{throw new Error('DNS unavailable');});
+  assert.match(suggestion.message,/DNS unavailable/);assert.match(suggestion.message,/手动填写/);
 });
