@@ -297,6 +297,8 @@ class DeploymentIntakeApiTest {
         }
         assertEquals(Set.of("Collect.ps1","一键采集.cmd","config.json"),files.keySet());
         assertEquals((byte)0xef,files.get("Collect.ps1")[0]);
+        String launcher=new String(files.get("一键采集.cmd"),java.nio.charset.StandardCharsets.US_ASCII);
+        assertTrue(launcher.contains("-WindowStyle Hidden"));assertTrue(launcher.contains("-STA"));assertFalse(launcher.contains("pause"));
         var config=json.readValue(files.get("config.json"),Map.class);
         assertEquals("https://asset.test"+DeploymentSecurityConfig.WINDOWS,config.get("endpoint"));
         return new LinkedHashMap<>(config);
@@ -437,5 +439,26 @@ class DeploymentIntakeApiTest {
         row.reviewJson=json.writeValueAsString(historical);intakes.saveAndFlush(row);
         mvc.perform(get("/api/settings/ad-deployment/intakes").param("state","approved").with(user(admin)))
             .andExpect(status().isOk());
+    }
+    @Test void collectionPackageCanMatchOnlyOneExactRosterNameDepartment() throws Exception {
+        String collector=(String)windowsPackage().get("token"), name="部门匹配"+UUID.randomUUID();
+        mvc.perform(post("/api/registration-roster/import").with(user(admin)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+            .content(json.writeValueAsBytes(Map.of("people",List.of(Map.of("name",name,"department","研发部","seat","1"),Map.of("name",name+"空","department","","seat","2")))))).andExpect(status().isOk());
+        mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON)
+            .content(json.writeValueAsBytes(Map.of("name"," "+name+" ")))).andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
+            .andExpect(jsonPath("$.result").value("matched")).andExpect(jsonPath("$.department").value("研发部")).andExpect(jsonPath("$.people").doesNotExist());
+        for(var entry:Map.of(name+"空","empty_department","部门匹配","not_found").entrySet())
+            mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsBytes(Map.of("name",entry.getKey())))).andExpect(status().isOk()).andExpect(jsonPath("$.result").value(entry.getValue())).andExpect(jsonPath("$.department").isEmpty());
+        mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+token).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"部门匹配\"}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(get(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector)).andExpect(status().isForbidden());
+        mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\"}"))
+            .andExpect(status().isUnprocessableEntity());
+        mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON).content("x".repeat(32769)))
+            .andExpect(status().isPayloadTooLarge());
+        mvc.perform(post("/api/settings/windows-collection/packages/"+collector.substring(4,40)+"/revoke").with(user(admin)).with(csrf())).andExpect(status().isOk());
+        mvc.perform(post(DeploymentSecurityConfig.PERSON).secure(true).header("Authorization","Bearer "+collector).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"部门匹配\"}"))
+            .andExpect(status().isUnauthorized());
     }
 }

@@ -22,9 +22,10 @@ public class WindowsCollectionController {
     private final DeploymentAccessService access;
     private final DeploymentIntakeService intakes;
     private final ObjectMapper json;
+    private final com.acme.assetmanagement.asset.RegistrationRosterRepository roster;
     public WindowsCollectionController(DeploymentCredentialService credentials, WindowsCollectionPackageRepository packages,
-            DeploymentAccessService access, DeploymentIntakeService intakes, ObjectMapper json) {
-        this.credentials=credentials; this.packages=packages; this.access=access; this.intakes=intakes; this.json=json;
+            DeploymentAccessService access, DeploymentIntakeService intakes, ObjectMapper json, com.acme.assetmanagement.asset.RegistrationRosterRepository roster) {
+        this.credentials=credentials; this.packages=packages; this.access=access; this.intakes=intakes; this.json=json; this.roster=roster;
     }
     @GetMapping("/api/settings/windows-collection/packages")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
@@ -62,7 +63,7 @@ public class WindowsCollectionController {
             try (var script = new ClassPathResource("windows-collection/Collect.ps1").getInputStream()) { zip.write(script.readAllBytes()); }
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("一键采集.cmd"));
-            zip.write("@echo off\r\npowershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File \"%~dp0Collect.ps1\"\r\npause\r\n".getBytes(StandardCharsets.US_ASCII)); zip.closeEntry();
+            zip.write("@echo off\r\nstart \"\" \"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%~dp0Collect.ps1\"\r\n".getBytes(StandardCharsets.US_ASCII)); zip.closeEntry();
             }
             zip.putNextEntry(new ZipEntry("config.json"));
             zip.write(json.writeValueAsBytes(Map.of("endpoint", url.toString().replaceAll("/$", "")+DeploymentSecurityConfig.WINDOWS,
@@ -99,6 +100,19 @@ public class WindowsCollectionController {
         value.put("operator",Map.of("id",mac ? "macos-collector" : "windows-collector","displayName",mac ? "macOS一键采集" : "Windows一键采集"));
         var result=intakes.receiveWindows(json.writeValueAsBytes(value), reportedUserName, reportedDepartment, details);
         return ResponseEntity.status("pending_review".equals(result.result())?202:200).cacheControl(CacheControl.noStore()).body(result);
+    }
+    public record DepartmentMatch(String result, String department) {}
+    @PostMapping(value=DeploymentSecurityConfig.PERSON, consumes=MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<DepartmentMatch> department(@RequestAttribute(DeploymentSecurityConfig.BODY) byte[] body) {
+        Map<?,?> input;
+        try {input=object(json.readerFor(Object.class).with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).readValue(body),"request");}
+        catch(RuntimeException e){throw failure("须提交有效姓名 JSON");}
+        keys(input,"request","name");
+        String name=text(input,"name",120,true).strip();
+        var department=roster.departmentByNameHash(DeploymentCredentialService.hash(name));
+        var result=department.isEmpty() ? new DepartmentMatch("not_found",null)
+                : department.get().isBlank() ? new DepartmentMatch("empty_department",null) : new DepartmentMatch("matched",department.get());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
     }
     private DeploymentApiException failure(String message) {
         return new DeploymentApiException(HttpStatus.UNPROCESSABLE_ENTITY,"VALIDATION_FAILED",message);

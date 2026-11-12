@@ -67,52 +67,190 @@ function Read-CollectionInventory {
     @{hardwareUuid=$hardware;name=$name;capturedAt=[DateTime]::UtcNow.ToString('o');collection=(Read-CollectionDisplays $computer);snapshot=@{
         model=$model;cpu=$cpu;memory=$memory;internalDisks=$disks;graphicsCards=$graphics;manufacturerSerialNumber=([string]$bios.SerialNumber).Trim()}}
 }
+function Get-CollectionDepartment {
+    param($Config,[string]$Name)
+    $url=[uri]$Config.endpoint
+    if(!$url.IsAbsoluteUri -or $url.Scheme -notin @('http','https') -or $url.UserInfo -or $url.Query -or $url.Fragment -or $url.AbsolutePath -cne '/api/integrations/ad-deployment/v1/windows-intakes'){throw '采集包地址无效'}
+    [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+    [Net.WebRequest]::DefaultWebProxy=$null
+    $target=$url.GetLeftPart([UriPartial]::Authority)+'/api/integrations/ad-deployment/v1/collector-person'
+    $body=@{name=$Name.Trim()}|ConvertTo-Json -Compress
+    Invoke-RestMethod -UseBasicParsing -Uri $target -Method Post -MaximumRedirection 0 -TimeoutSec 5 -Headers @{Authorization=('Bearer '+$Config.token)} -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
 function Show-CollectionUserForm {
-    param([string]$UserName, [string]$Department)
+    param([string]$UserName, [string]$Department, $Inventory, $Config)
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
+    [Windows.Forms.Application]::EnableVisualStyles()
     $form=New-Object System.Windows.Forms.Form
     $form.Text='电脑资产登记'
     $form.StartPosition='CenterScreen'
     $form.FormBorderStyle='FixedDialog'
     $form.MaximizeBox=$false; $form.MinimizeBox=$false
     $form.AutoScaleMode='Dpi'
-    $form.ClientSize=New-Object System.Drawing.Size(500,310)
+    $form.BackColor=[Drawing.Color]::White
+    $form.ClientSize=New-Object System.Drawing.Size(560,404)
     $form.Font=New-Object System.Drawing.Font('Microsoft YaHei UI',10)
     $layout=New-Object System.Windows.Forms.TableLayoutPanel
-    $layout.Dock='Fill'; $layout.Padding=New-Object System.Windows.Forms.Padding(20)
-    $layout.ColumnCount=1; $layout.RowCount=7
-    $layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Absolute',60))) | Out-Null
-    foreach($height in @(26,38,26,38,36,46)){$layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Absolute',$height))) | Out-Null}
+    $layout.Dock='Fill'; $layout.Padding=New-Object System.Windows.Forms.Padding(24)
+    $layout.AutoScroll=$true
+    $layout.ColumnCount=1; $layout.RowCount=8
+    foreach($height in @(48,80,26,42,26,42,34,52)){$layout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Absolute',$height))) | Out-Null}
     $hint=New-Object System.Windows.Forms.Label
-    $hint.Text="请填写这台电脑的实际使用人，不是装机人员。`r`n确认后提交电脑配置，领用信息由管理员审核。"
+    $hint.Text='确认电脑使用人'
+    $hint.Font=New-Object Drawing.Font('Microsoft YaHei UI',17,[Drawing.FontStyle]::Bold)
+    $hint.ForeColor=[Drawing.ColorTranslator]::FromHtml('#1D4ED8')
     $hint.Dock='Fill'; $layout.Controls.Add($hint,0,0)
+    $summary=New-Object System.Windows.Forms.Label
+    $summary.Dock='Fill'; $summary.AutoEllipsis=$true
+    $summary.ForeColor=[Drawing.ColorTranslator]::FromHtml('#526174')
+    $summary.Font=New-Object Drawing.Font('Microsoft YaHei UI',9)
+    $summary.Text="填写实际使用人，不是装机人员。`r`n提交后由管理员审核，不会直接领用。"
+    if($Inventory){
+        $external=@($Inventory.collection.monitors|Where-Object connection -eq 'external').Count
+        $device=if($Inventory.name){[string]$Inventory.name}else{'设备名称未采集'}
+        $memory=if($Inventory.snapshot.memory){[string]$Inventory.snapshot.memory}else{'未采集'}
+        $screens=if($Inventory.collection.status -eq 'unavailable'){'未读取'}else{[string]$external+' 台'}
+        $summary.Text=$device+"`r`n内存："+$memory+"  ·  外接显示器："+$screens+"`r`n填写实际使用人，提交后等待资产管理员审核。"
+    }
+    $layout.Controls.Add($summary,0,1)
     $nameLabel=New-Object System.Windows.Forms.Label
-    $nameLabel.Text='使用人姓名 *'; $nameLabel.Dock='Fill'; $layout.Controls.Add($nameLabel,0,1)
+    $nameLabel.Text='使用人姓名 *'; $nameLabel.Dock='Fill'; $layout.Controls.Add($nameLabel,0,2)
     $nameInput=New-Object System.Windows.Forms.TextBox
-    $nameInput.Text=$UserName; $nameInput.MaxLength=120; $nameInput.Dock='Fill'; $layout.Controls.Add($nameInput,0,2)
+    $nameInput.Text=$UserName; $nameInput.MaxLength=120; $nameInput.Dock='Top'; $nameInput.Font=New-Object Drawing.Font('Microsoft YaHei UI',11); $nameInput.BorderStyle='FixedSingle'; $layout.Controls.Add($nameInput,0,3)
     $departmentLabel=New-Object System.Windows.Forms.Label
-    $departmentLabel.Text='部门（选填）'; $departmentLabel.Dock='Fill'; $layout.Controls.Add($departmentLabel,0,3)
+    $departmentLabel.Text='部门（选填）'; $departmentLabel.Dock='Fill'; $layout.Controls.Add($departmentLabel,0,4)
     $departmentInput=New-Object System.Windows.Forms.TextBox
-    $departmentInput.Text=$Department; $departmentInput.MaxLength=120; $departmentInput.Dock='Fill'; $layout.Controls.Add($departmentInput,0,4)
+    $departmentInput.Text=$Department; $departmentInput.MaxLength=120; $departmentInput.Dock='Top'; $departmentInput.Font=New-Object Drawing.Font('Microsoft YaHei UI',11); $departmentInput.BorderStyle='FixedSingle'; $layout.Controls.Add($departmentInput,0,5)
     $errorLabel=New-Object System.Windows.Forms.Label
-    $errorLabel.ForeColor=[Drawing.Color]::Firebrick; $errorLabel.Dock='Fill'; $layout.Controls.Add($errorLabel,0,5)
+    $errorLabel.ForeColor=[Drawing.Color]::Firebrick; $errorLabel.Dock='Fill'; $layout.Controls.Add($errorLabel,0,6)
     $buttons=New-Object System.Windows.Forms.FlowLayoutPanel
-    $buttons.Dock='Fill'; $buttons.FlowDirection='RightToLeft'; $layout.Controls.Add($buttons,0,6)
+    $buttons.Dock='Fill'; $buttons.FlowDirection='RightToLeft'; $layout.Controls.Add($buttons,0,7)
     $submit=New-Object System.Windows.Forms.Button
-    $submit.Text='确认并提交'; $submit.AutoSize=$true
+    $submit.Text='确认并提交'; $submit.Size=New-Object Drawing.Size(136,38); $submit.FlatStyle='Flat'; $submit.FlatAppearance.BorderSize=0
+    $submit.BackColor=[Drawing.ColorTranslator]::FromHtml('#2563EB'); $submit.ForeColor=[Drawing.Color]::White
     $submit.Add_Click({
         if(!$nameInput.Text.Trim()){$errorLabel.Text='请填写实际使用人姓名。'; $nameInput.Focus(); return}
         $form.DialogResult=[Windows.Forms.DialogResult]::OK
     })
     $cancel=New-Object System.Windows.Forms.Button
-    $cancel.Text='取消'; $cancel.AutoSize=$true; $cancel.DialogResult='Cancel'
+    $cancel.Text='取消'; $cancel.Size=New-Object Drawing.Size(88,38); $cancel.FlatStyle='Flat'; $cancel.FlatAppearance.BorderColor=[Drawing.ColorTranslator]::FromHtml('#CBD5E1'); $cancel.DialogResult='Cancel'
     $buttons.Controls.Add($submit); $buttons.Controls.Add($cancel)
     $form.Controls.Add($layout); $form.AcceptButton=$submit; $form.CancelButton=$cancel
+    $lookup=@{Worker=$null;Pending=$null;Name='';LastQueried='';Due=[DateTime]::UtcNow;Manual=![string]::IsNullOrWhiteSpace($Department);Programmatic=$false;AutoDepartment=''}
+    if($lookup.Manual){$errorLabel.ForeColor=[Drawing.ColorTranslator]::FromHtml('#526174');$errorLabel.Text='保留上次填写的部门，可修改。'}
+    $nameInput.Add_TextChanged({
+        $lookup.Due=[DateTime]::UtcNow.AddMilliseconds(650)
+        if(!$lookup.Manual -and $lookup.AutoDepartment -and $departmentInput.Text -eq $lookup.AutoDepartment){
+            $lookup.Programmatic=$true; $departmentInput.Text=''; $lookup.Programmatic=$false
+            $lookup.AutoDepartment=''; $lookup.Manual=$false
+        }
+    })
+    $departmentInput.Add_TextChanged({if(!$lookup.Programmatic){$lookup.Manual=$true}})
+    $timer=New-Object Windows.Forms.Timer
+    $timer.Interval=100
+    $timer.Add_Tick({
+        $current=$nameInput.Text.Trim()
+        if($lookup.Worker){
+            if(!$lookup.Pending.IsCompleted){return}
+            try {
+                $answer=$lookup.Worker.EndInvoke($lookup.Pending)
+                if($lookup.Name -eq $current -and !$lookup.Manual){
+                    $errorLabel.ForeColor=[Drawing.ColorTranslator]::FromHtml('#526174')
+                    if($answer.Count -eq 1 -and $answer[0].result -eq 'matched' -and $answer[0].department -is [string] -and $answer[0].department.Length -le 120){
+                        $lookup.Programmatic=$true; $departmentInput.Text=$answer[0].department; $lookup.Programmatic=$false
+                        $lookup.AutoDepartment=$departmentInput.Text; $errorLabel.Text='已根据登记核对名单填写部门，可修改。'
+                    }else{$errorLabel.Text='名单未匹配到部门，请手动填写（可选）。'}
+                }
+            } catch {if($lookup.Name -eq $current -and !$lookup.Manual){$errorLabel.Text='部门查询暂不可用，可手动填写后提交。'}}
+            finally {$lookup.Worker.Dispose(); $lookup.Worker=$null; $lookup.Pending=$null}
+        }
+        if(!$Config -or !$current -or $lookup.Manual -or $current -eq $lookup.LastQueried -or [DateTime]::UtcNow -lt $lookup.Due){return}
+        $lookup.Name=$current; $lookup.LastQueried=$current
+        $errorLabel.ForeColor=[Drawing.ColorTranslator]::FromHtml('#526174'); $errorLabel.Text='正在匹配部门…'
+        $lookup.Worker=[PowerShell]::Create()
+        $script="`$ErrorActionPreference='Stop'; function Get-CollectionDepartment {"+(Get-Command Get-CollectionDepartment -CommandType Function).Definition+'}'
+        $null=$lookup.Worker.AddScript($script).AddStatement().AddScript('param($Config,$Name) Get-CollectionDepartment $Config $Name').AddArgument($Config).AddArgument($current)
+        $lookup.Pending=$lookup.Worker.BeginInvoke()
+    })
     try {
+        $timer.Start()
         if($form.ShowDialog() -ne [Windows.Forms.DialogResult]::OK){return $null}
         return @{reportedUserName=$nameInput.Text.Trim(); reportedDepartment=$departmentInput.Text.Trim()}
-    } finally { $form.Dispose() }
+    } finally {
+        $timer.Stop(); $timer.Dispose()
+        if($lookup.Worker){$lookup.Worker.Stop(); $lookup.Worker.Dispose()}
+        $form.Dispose()
+    }
+}
+function Invoke-CollectionStage {
+    param([ValidateSet('collect','send')][string]$Stage, $Config, [string]$Body)
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [Windows.Forms.Application]::EnableVisualStyles()
+    $form=New-Object Windows.Forms.Form
+    $form.Text='电脑资产采集'; $form.StartPosition='CenterScreen'; $form.FormBorderStyle='FixedDialog'
+    $form.ControlBox=$false; $form.BackColor=[Drawing.Color]::White; $form.AutoScaleMode='Dpi'
+    $form.ClientSize=New-Object Drawing.Size(500,196); $form.Font=New-Object Drawing.Font('Microsoft YaHei UI',10)
+    $layout=New-Object Windows.Forms.TableLayoutPanel
+    $layout.Dock='Fill'; $layout.Padding=New-Object Windows.Forms.Padding(24); $layout.ColumnCount=1; $layout.RowCount=3
+    foreach($height in @(46,44,38)){$layout.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute',$height)))|Out-Null}
+    $title=New-Object Windows.Forms.Label
+    $title.Dock='Fill'; $title.Font=New-Object Drawing.Font('Microsoft YaHei UI',16,[Drawing.FontStyle]::Bold)
+    $title.ForeColor=[Drawing.ColorTranslator]::FromHtml('#1D4ED8')
+    $title.Text=if($Stage -eq 'collect'){'正在读取电脑配置'}else{'正在提交资产信息'}
+    $layout.Controls.Add($title,0,0)
+    $description=New-Object Windows.Forms.Label
+    $description.Dock='Fill'; $description.ForeColor=[Drawing.ColorTranslator]::FromHtml('#526174')
+    $description.Text=if($Stage -eq 'collect'){'采集电脑和外接显示器，请稍候。'}else{'正在连接资产系统，使用 U 盘时请勿拔出。'}
+    $layout.Controls.Add($description,0,1)
+    $progress=New-Object Windows.Forms.ProgressBar
+    $progress.Dock='Top'; $progress.Height=12; $progress.Style='Marquee'; $progress.MarqueeAnimationSpeed=30
+    $layout.Controls.Add($progress,0,2); $form.Controls.Add($layout)
+    $worker=[PowerShell]::Create()
+    try {
+        $definitions="`$ErrorActionPreference='Stop'`n"
+        foreach($name in @('Convert-MonitorText','Read-CollectionDisplays','Read-CollectionInventory','Send-CollectionInventory')){
+            $definitions+="function $name {"+(Get-Command $name -CommandType Function).Definition+"}`n"
+        }
+        $null=$worker.AddScript($definitions).AddStatement()
+        if($Stage -eq 'collect'){$null=$worker.AddScript('Read-CollectionInventory')}
+        else{$null=$worker.AddScript('param($Config,$Body) Send-CollectionInventory -Config $Config -Body $Body').AddArgument($Config).AddArgument($Body)}
+        $form.Show(); $form.Refresh()
+        $pending=$worker.BeginInvoke()
+        while(!$pending.IsCompleted){[Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 60}
+        $result=$worker.EndInvoke($pending)
+        if($result.Count -ne 1){throw '采集程序没有返回有效结果，请重新运行并核对。'}
+        return $result[0]
+    } finally { $worker.Dispose(); $form.Close(); $form.Dispose() }
+}
+function Show-CollectionResult {
+    param([string]$Title,[string]$Message,[ValidateSet('success','warning','error')][string]$Kind='success')
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [Windows.Forms.Application]::EnableVisualStyles()
+    $form=New-Object Windows.Forms.Form
+    $form.Text='电脑资产采集'; $form.StartPosition='CenterScreen'; $form.FormBorderStyle='FixedDialog'
+    $form.MaximizeBox=$false; $form.MinimizeBox=$false; $form.AutoScaleMode='Dpi'; $form.BackColor=[Drawing.Color]::White
+    $form.ClientSize=New-Object Drawing.Size(540,278); $form.Font=New-Object Drawing.Font('Microsoft YaHei UI',10)
+    $layout=New-Object Windows.Forms.TableLayoutPanel
+    $layout.Dock='Fill'; $layout.Padding=New-Object Windows.Forms.Padding(24); $layout.ColumnCount=1; $layout.RowCount=3
+    foreach($height in @(48,128,48)){$layout.RowStyles.Add((New-Object Windows.Forms.RowStyle('Absolute',$height)))|Out-Null}
+    $heading=New-Object Windows.Forms.Label
+    $heading.Text=$Title; $heading.Dock='Fill'; $heading.Font=New-Object Drawing.Font('Microsoft YaHei UI',17,[Drawing.FontStyle]::Bold)
+    $colors=@{success='#15803D';warning='#92400E';error='#B42318'}; $heading.ForeColor=[Drawing.ColorTranslator]::FromHtml($colors[$Kind])
+    $layout.Controls.Add($heading,0,0)
+    $detail=New-Object Windows.Forms.TextBox
+    $detail.Multiline=$true; $detail.ReadOnly=$true; $detail.BorderStyle='None'; $detail.BackColor=[Drawing.Color]::White
+    $detail.ForeColor=[Drawing.ColorTranslator]::FromHtml('#526174'); $detail.Dock='Fill'; $detail.ScrollBars='Vertical'; $detail.Text=$Message
+    $layout.Controls.Add($detail,0,1)
+    $buttons=New-Object Windows.Forms.FlowLayoutPanel
+    $buttons.Dock='Fill'; $buttons.FlowDirection='RightToLeft'
+    $close=New-Object Windows.Forms.Button
+    $close.Text='关闭'; $close.Size=New-Object Drawing.Size(108,36); $close.FlatStyle='Flat'; $close.FlatAppearance.BorderSize=0
+    $close.BackColor=[Drawing.ColorTranslator]::FromHtml('#2563EB'); $close.ForeColor=[Drawing.Color]::White; $close.DialogResult='OK'
+    $buttons.Controls.Add($close); $layout.Controls.Add($buttons,0,2); $form.Controls.Add($layout); $form.AcceptButton=$close; $form.CancelButton=$close
+    try{$null=$form.ShowDialog()}finally{$form.Dispose()}
 }
 function Send-CollectionInventory {
     param($Config,[string]$Body)
@@ -138,7 +276,7 @@ if($LibraryOnly){return}
 try {
     $config=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     Write-Host '正在采集电脑配置……'
-    $inventory=Read-CollectionInventory
+    $inventory=Invoke-CollectionStage -Stage collect
     $directory=Join-Path $PSScriptRoot 'records'
     if(!(Test-Path -LiteralPath $directory)){New-Item -ItemType Directory -Path $directory | Out-Null}
     $file=Join-Path $directory ($inventory.hardwareUuid+'.json')
@@ -150,21 +288,22 @@ try {
     $saved=$body|ConvertFrom-Json
     $saved | Add-Member -NotePropertyName collection -NotePropertyValue $inventory.collection -Force
     Write-Host ('本次检测屏幕 '+$inventory.collection.monitors.Count+' 块；外接 '+@($inventory.collection.monitors|Where-Object connection -eq 'external').Count+' 台。检测状态：'+$inventory.collection.status)
-    $person=Show-CollectionUserForm -UserName $saved.reportedUserName -Department $saved.reportedDepartment
+    $person=Show-CollectionUserForm -UserName $saved.reportedUserName -Department $saved.reportedDepartment -Inventory $inventory -Config $config
     if($null -eq $person){Write-Host '已取消，未发送电脑配置。'; exit 0}
     $saved | Add-Member -NotePropertyName reportedUserName -NotePropertyValue $person.reportedUserName -Force
     $saved | Add-Member -NotePropertyName reportedDepartment -NotePropertyValue $person.reportedDepartment -Force
     $body=$saved|ConvertTo-Json -Depth 8 -Compress
     [IO.File]::WriteAllText($file,$body,[Text.UTF8Encoding]::new($false))
     Write-Host '正在提交资产系统，请勿拔出 U 盘……'
-    $result=Send-CollectionInventory $config $body
+    $result=Invoke-CollectionStage -Stage send -Config $config -Body $body
     if($result.result -notin @('pending_review','approved','rejected') -or $result.externalRegistrationId -cne ('windows:'+$inventory.hardwareUuid)){throw '服务器回报不匹配，请在资产系统核对；不要当成提交成功。'}
-    if($result.result -eq 'approved'){Write-Host ('已有入库记录：'+$result.asset.assetTag+'，未重复创建，也未更新显示器；请在资产系统核对已有记录。') -ForegroundColor Yellow}
-    elseif($result.result -eq 'rejected'){Write-Host '这台电脑已有未批准记录，请在资产入库中修改并重新送审。' -ForegroundColor Yellow}
-    else{Write-Host '提交成功，使用人和部门已送资产入库审核，不代表已领用。可以关闭窗口；使用 U 盘时现在可安全拔盘。' -ForegroundColor Green}
+    if($result.result -eq 'approved'){Show-CollectionResult -Title '这台电脑已登记' -Kind warning -Message ("资产编号："+$result.asset.assetTag+"`r`n`r`n未重复创建电脑，也未更新显示器。`r`n请在资产系统核对已有记录。"); Write-Host ('已有入库记录：'+$result.asset.assetTag)}
+    elseif($result.result -eq 'rejected'){Show-CollectionResult -Title '已有未批准记录' -Kind warning -Message '请由管理员在资产入库中修改并重新送审。本次未创建资产。'}
+    else{Show-CollectionResult -Title '提交成功，等待审核' -Message "电脑配置及使用人信息已送到资产系统。`r`n`r`n尚未直接创建或领用资产，请等待管理员批准。`r`n现在可以关闭窗口；使用 U 盘时可以安全拔盘。"}
     exit 0
 } catch {
     $message=if($config -and $config.token){$_.Exception.Message.Replace([string]$config.token,'[REDACTED]')}else{'采集包配置读取失败，请从资产系统重新下载并完整解压。'}
     Write-Host ('未完成：'+$message) -ForegroundColor Red
+    Show-CollectionResult -Title '本次采集未完成' -Kind error -Message ($message+"`r`n`r`n未自动创建资产。请核对网络、采集包有效期或联系管理员后重试。")
     exit 1
 }

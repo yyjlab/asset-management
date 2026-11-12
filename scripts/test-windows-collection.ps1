@@ -45,6 +45,12 @@ $script:failMonitors=$false
 $script:sent=0
 function Invoke-RestMethod {
     param([switch]$UseBasicParsing, $Uri, $Method, $MaximumRedirection, $TimeoutSec, $Headers, $ContentType, $Body)
+    if(([uri]$Uri).AbsolutePath -eq '/api/integrations/ad-deployment/v1/collector-person'){
+        if($MaximumRedirection -ne 0 -or $TimeoutSec -ne 5 -or $Method -ne 'Post'){throw 'Unsafe person lookup options'}
+        if(([Text.Encoding]::UTF8.GetString($Body)|ConvertFrom-Json).name -ne '测试姓名'){throw 'Lookup UTF-8 name changed'}
+        if($Headers.Authorization -ne 'Bearer test-only'){throw 'Lookup credential missing'}
+        return @{result='matched';department='研发部'}
+    }
     if($MaximumRedirection -ne 0 -or $TimeoutSec -ne 30 -or $Method -ne 'Post'){throw 'Unsafe request options'}
     if($Headers.Authorization -ne 'Bearer test-only'){throw 'Credential missing'}
     if(([Text.Encoding]::UTF8.GetString($Body)|ConvertFrom-Json).hardwareUuid -ne $inventory.hardwareUuid){throw 'Snapshot changed'}
@@ -53,6 +59,8 @@ function Invoke-RestMethod {
 }
 $null=Send-CollectionInventory @{endpoint='http://asset.example/api/integrations/ad-deployment/v1/windows-intakes';token='test-only'} ($inventory|ConvertTo-Json -Depth 8)
 if($script:sent -ne 1){throw 'Request count incorrect'}
+$department=Get-CollectionDepartment @{endpoint='http://asset.example/api/integrations/ad-deployment/v1/windows-intakes';token='test-only'} ' 测试姓名 '
+if($department.department -ne '研发部'){throw 'Exact department lookup failed'}
 Write-Host 'PASS Windows collector: readable name, physical disks, GPU filtering, UTF-8 submission and no redirects (mocked).'
 if($TestDialog){
     Add-Type -AssemblyName System.Windows.Forms
@@ -65,6 +73,7 @@ if($TestDialog){
         $inputs=@($layout.Controls | Where-Object {$_ -is [Windows.Forms.TextBox]})
         $inputs[0].Text='测试使用人'; $inputs[1].Text='测试部门'
         $buttons=$layout.Controls | Where-Object {$_ -is [Windows.Forms.FlowLayoutPanel]}
+        if($buttons.Bottom -gt $layout.ClientSize.Height){throw 'Form buttons clipped'}
         ($buttons.Controls | Where-Object Text -eq '确认并提交').PerformClick()
         $timer.Stop()
     })
@@ -84,4 +93,59 @@ if($TestDialog){
         if($null -ne (Show-CollectionUserForm)){throw 'Cancel must not return submitted data'}
     } finally {$timer.Stop(); $timer.Dispose()}
     Write-Host 'PASS native dialog: editable name/department, submit and close-to-cancel.'
+    $originalLookup=(Get-Command Get-CollectionDepartment).ScriptBlock
+    $originalRead=(Get-Command Read-CollectionInventory).ScriptBlock
+    $originalSend=(Get-Command Send-CollectionInventory).ScriptBlock
+    function Get-CollectionDepartment {
+        param($Config,$Name)
+        if($Name -eq '查询失败'){throw 'Mock unavailable'}
+        if($Name -eq '旧姓名'){Start-Sleep -Milliseconds 500;return @{result='matched';department='旧部门'}}
+        if($Name -eq '新姓名'){return @{result='matched';department='新部门'}}
+        @{result='matched';department='研发部'}
+    }
+    try {
+        foreach($scenario in @('manual','stale','unavailable')){
+            $testState=@{Changed=$false;Since=$null;Error=$null;Started=[DateTime]::UtcNow}
+            $timer=New-Object Windows.Forms.Timer; $timer.Interval=80
+            $timer.Add_Tick({
+                $form=[Windows.Forms.Application]::OpenForms | Where-Object Text -eq '电脑资产登记' | Select-Object -First 1
+                if(!$form){return}
+                $layout=$form.Controls[0]; $inputs=@($layout.Controls | Where-Object {$_ -is [Windows.Forms.TextBox]})
+                $status=@($layout.Controls | Where-Object {$_ -is [Windows.Forms.Label]})[-1].Text
+                $buttons=$layout.Controls | Where-Object {$_ -is [Windows.Forms.FlowLayoutPanel]}
+                if(([DateTime]::UtcNow-$testState.Started).TotalSeconds -gt 8){$testState.Error='Department UI timed out: '+$status; $form.Close();return}
+                if($scenario -eq 'manual' -and !$testState.Changed -and $inputs[1].Text -eq '研发部'){
+                    $inputs[1].Text='手工运营部'; $inputs[0].Text='另一个姓名'; $testState.Changed=$true; $testState.Since=[DateTime]::UtcNow
+                }
+                if($scenario -eq 'manual' -and $testState.Changed -and ([DateTime]::UtcNow-$testState.Since).TotalMilliseconds -gt 900){
+                    if($inputs[1].Text -ne '手工运营部'){$testState.Error='Manual department overwritten'}
+                    ($buttons.Controls|Where-Object Text -eq '确认并提交').PerformClick();$timer.Stop()
+                }
+                if($scenario -eq 'stale' -and !$testState.Changed -and $status -eq '正在匹配部门…'){$inputs[0].Text='新姓名';$testState.Changed=$true}
+                if($scenario -eq 'stale' -and $inputs[1].Text -eq '旧部门'){$testState.Error='Old query applied after name changed';$form.Close()}
+                if($scenario -eq 'stale' -and $inputs[1].Text -eq '新部门'){($buttons.Controls|Where-Object Text -eq '确认并提交').PerformClick();$timer.Stop()}
+                if($scenario -eq 'unavailable' -and $status -like '*查询暂不可用*'){$inputs[1].Text='手填部门';($buttons.Controls|Where-Object Text -eq '确认并提交').PerformClick();$timer.Stop()}
+            })
+            $name=switch($scenario){manual{'自动匹配'} stale{'旧姓名'} unavailable{'查询失败'}}
+            try {$timer.Start();$person=Show-CollectionUserForm -UserName $name -Config @{endpoint='test-only'} -Inventory $inventory}
+            finally {$timer.Stop();$timer.Dispose()}
+            if($testState.Error){throw $testState.Error}
+            if(!$person){throw 'Lookup prevented submission'}
+        }
+        function Read-CollectionInventory { Start-Sleep -Milliseconds 120; @{hardwareUuid='test-progress'} }
+        function Send-CollectionInventory { param($Config,$Body) @{result='pending_review'} }
+        if((Invoke-CollectionStage -Stage collect).hardwareUuid -ne 'test-progress'){throw 'Background collect result lost'}
+        if((Invoke-CollectionStage -Stage send -Config @{} -Body '{}').result -ne 'pending_review'){throw 'Background send result lost'}
+        $timer=New-Object Windows.Forms.Timer; $timer.Interval=120
+        $timer.Add_Tick({
+            $form=[Windows.Forms.Application]::OpenForms|Where-Object Text -eq '电脑资产采集'|Select-Object -First 1
+            if($form){$form.Close();$timer.Stop()}
+        })
+        try {$timer.Start();Show-CollectionResult -Title '测试提交结果' -Message '模拟成功，不提交实际资产'}finally{$timer.Stop();$timer.Dispose()}
+        Write-Host 'PASS department lookup: autofill, manual override, stale responses, unavailable fallback; background progress and result window.'
+    } finally {
+        Set-Item Function:Get-CollectionDepartment $originalLookup
+        Set-Item Function:Read-CollectionInventory $originalRead
+        Set-Item Function:Send-CollectionInventory $originalSend
+    }
 }
