@@ -21,6 +21,8 @@ export interface LookupValue {
 export interface ModelOption { id: number; name: string; disabled: boolean; version: number; assetCount: number }
 export type ManagedLookupType = 'MODEL' | 'CPU' | 'ASSET_NAME'
 export interface AccessoryOption { id: number; name: string; model: string; specification: string; disabled: boolean; version: number }
+export interface AccessoryStock { id: number; version: number; type: string; brand: string; companyId: number; company: string; locationId: number; location: string; total: number; available: number; paired: number; used: number; scrapped: number }
+export interface AccessoryStockDetails { allocations: { assetId: number; assetTag: string; name: string; assignedTo: string | null; quantity: number; checkedOut: boolean }[]; events: { time: string; operator: string; summary: string; changes: string }[] }
 export type AccessoryOptionWrite = Pick<AccessoryOption, 'name' | 'model' | 'specification'>
 
 export interface Asset {
@@ -119,6 +121,7 @@ export interface AssetLink {
 }
 
 export interface RelatedDevice {
+  stockId?: number | null
   name: string
   model: string
   serialNumber: string

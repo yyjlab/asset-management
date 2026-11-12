@@ -5,7 +5,7 @@ export const assetGroups = [
   { key: 'laptop', label: '笔记本电脑', profile: 'COMPUTER', aliases: ['笔记本电脑', '笔记本', '笔记本计算机'] },
   { key: 'desktop', label: '台式电脑', profile: 'COMPUTER', aliases: ['台式电脑', '台式', '台式机', '台式计算机', '桌面电脑'] },
   { key: 'display', label: '显示器', profile: 'DISPLAY', aliases: ['显示器', '显示设备', '屏幕', '大屏'] },
-  { key: 'mouse', label: '鼠标', profile: 'GENERAL', aliases: ['鼠标'] },
+  { key: 'mouse', label: '配件', profile: 'GENERAL', aliases: ['鼠标'] },
 ] as const
 export type AssetGroupKey = typeof assetGroups[number]['key']
 export const assetGroupOf = (key?: string) => assetGroups.find(group => group.key === key) || assetGroups[0]

@@ -29,11 +29,12 @@ public class AssetService {
     private final AssetAccess access;
     private final com.acme.assetmanagement.user.UserRepository users;
     private final AssetTagSequenceRepository sequences;
+    private final AccessoryStockService accessoryStock;
 
     public AssetService(AssetRepository assetRepository, LookupRepository lookupRepository,
                         AuditLogService auditLogService, AssetTagGenerator assetTagGenerator,
                         AssetImageStorageService assetImageStorageService, AssetAccess access,
-                        com.acme.assetmanagement.user.UserRepository users, AssetTagSequenceRepository sequences) {
+                        com.acme.assetmanagement.user.UserRepository users, AssetTagSequenceRepository sequences,AccessoryStockService accessoryStock) {
         this.assetRepository = assetRepository;
         this.lookupRepository = lookupRepository;
         this.auditLogService = auditLogService;
@@ -42,6 +43,7 @@ public class AssetService {
         this.access = access;
         this.users = users;
         this.sequences = sequences;
+        this.accessoryStock=accessoryStock;
     }
 
     @Transactional(readOnly = true)
@@ -95,6 +97,7 @@ public class AssetService {
         if (assetTag == null) assetTag = assetTagGenerator.nextTag();
         validateUnique(request, null, assetTag, descriptiveSerial);
         Asset asset = new Asset();
+        accessoryStock.reconcile(null,request.relatedDevices(),request.companyId(),request.locationId(),false);
         apply(asset, request);
         // A cloned record is a different device, not a verified copy of domain membership.
         if (cloneSourceId != null && profileOf(asset.getCategory()) == AssetProfile.COMPUTER) {
@@ -113,6 +116,9 @@ public class AssetService {
     }
 
     public AssetResponse update(Long id, AssetRequest request, String version) {
+        return update(id,request,version,false);
+    }
+    public AssetResponse update(Long id, AssetRequest request, String version,boolean confirmAccessoryReturn) {
         String assetTag = clean(request.assetTag());
         if (assetTag == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "更新资产时资产编号不能为空");
@@ -130,6 +136,7 @@ public class AssetService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "已创建资产的编号不能修改，以免与已打印标签不一致");
         }
         validateUnique(request, id, assetTag);
+        accessoryStock.reconcile(asset,request.relatedDevices(),request.companyId(),request.locationId(),confirmAccessoryReturn);
         apply(asset, request);
         rememberChangedSuggestions(previousName, previousDepartment, previousGraphicsCard, asset);
         applyBindings(asset, request.boundDisplayIds(), request.boundComputerId());
@@ -173,6 +180,7 @@ public class AssetService {
 
     public void delete(Long id) {
         Asset asset = findAsset(id);
+        if(asset.getRelatedDevices().stream().anyMatch(d->d.getStockId()!=null))throw new ApiException(HttpStatus.CONFLICT,"资产仍有库存配件，请先确认拆下并退库，再删除资产");
         assetImageStorageService.removeAfterCommit(imageReferences(asset));
         Map<String, Object> before = snapshot(asset);
         String label = assetLabel(asset);
@@ -350,8 +358,8 @@ public class AssetService {
         asset.setImageUrl(images.isEmpty() ? null : images.getFirst());
         asset.setNotes(clean(request.notes()));
         asset.setRelatedDevices(request.relatedDevices() == null ? List.of() : request.relatedDevices().stream()
-                .map(device -> new RelatedDevice(device.name().trim(), clean(device.model()), clean(device.serialNumber()),
-                        clean(device.orderNumber()), clean(device.specification()), device.quantity()))
+                .map(device -> {var result=new RelatedDevice(device.name().trim(), clean(device.model()), clean(device.serialNumber()),
+                        clean(device.orderNumber()), clean(device.specification()), device.quantity());result.setStockId(device.stockId());return result;})
                 .toList());
         asset.setAccessories(request.accessories() == null ? List.of() : request.accessories().stream()
                 .map(accessory -> new AssetAccessory(accessory.name().trim(), clean(accessory.specification()),

@@ -126,7 +126,7 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, opti
   const visibility = load('featureVisibility.ts'); visibility.featureVisibility.businessWorkflows = options.businessWorkflows ?? true;
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons, '../featureVisibility': visibility });
   const rendered = [];
-  const componentNames = ['RegistrationRoster', 'AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'DeploymentIntakes', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
+  const componentNames = ['AccessoryInventory', 'RegistrationRoster', 'AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'DeploymentIntakes', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
   const mocks = { react, './featureVisibility': visibility, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
@@ -1267,13 +1267,14 @@ function modelManagerHarness(api = {}, rows = [{ id: 4, name: '历史电脑型�
   const { ModelOptions } = load('components/ModelOptions.tsx', { react, '../api': { api, ApiError }, './Icons': load('components/Icons.tsx'), './ConfirmDialog': { ConfirmDialog: () => null } }, false, { Error });
   return { states, effects, notices, ApiError, get refreshed() { return refreshed; }, render(revision = 0, type = 'MODEL') { index = 0; refIndex = 0; return treeElements(ModelOptions({ revision, type, onNotify: (text, kind) => notices.push({ text, kind }), onChanged: () => { refreshed++; } })); } };
 }
-test('model manager filters locally and offers availability controls without rename or deletion', () => {
+test('model manager filters locally and disables deletion for options in use', () => {
   const view = modelManagerHarness({}, [{ id: 4, name: 'ThinkPad', disabled: false, version: 0, assetCount: 3 }, { id: 5, name: 'HUAWEI', disabled: true, version: 1, assetCount: 1 }]);
   const first = view.render(); assert.equal(first.filter(item => item.type === 'tr').length, 3);
   first.find(item => item.props['aria-label'] === '搜索设备型号').props.onChange({ target: { value: 'think' } });
   const filtered = view.render(); assert.equal(filtered.filter(item => item.type === 'tr').length, 2);
   const text = renderToStaticMarkup(filtered[0]); assert.match(text, /ThinkPad/); assert.ok(!text.includes('HUAWEI'));
-  assert.ok(!text.includes('删除')); assert.ok(!text.includes('改名'));
+  assert.ok(text.includes('删除')); assert.ok(!text.includes('改名'));
+  assert.equal(accessoryButton(filtered,'删除').props.disabled,true);
 });
 test('model creation prevents double submissions and changes only the option list', async () => {
   const writes = []; let release;
@@ -1321,20 +1322,21 @@ const accessoryChoice = (overrides = {}) => ({ id: 1, name: '鼠标', model: 'Lo
 function accessoryHarness(api = {}, overrides = {}) {
   const states = [], refs = [], changes = [], effects = []; let index = 0, refIndex = 0;
   const react = { useState(initial) { const i = index++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(initial) { return refs[refIndex++] ||= { current: initial }; }, useEffect: effect => effects.push(effect) };
-  const exports = load('components/AssetAccessories.tsx', { react, '../api': { api }, './Icons': load('components/Icons.tsx') }, false, { Error });
-  const props = { relatedDevices: [], accessories: [], disabled: false, onChange: (relatedDevices, accessories) => { changes.push({ relatedDevices, accessories }); props.relatedDevices = relatedDevices; props.accessories = accessories; }, ...overrides };
+  const stockApi = { ...api, accessoryStockChoices: api.accessoryStockChoices || (async () => (await api.accessoryChoices()).filter(item => !item.disabled).map(item => ({ id: item.id, type: item.name, brand: item.model, version: item.version, available: 10 }))) };
+  const exports = load('components/AssetAccessories.tsx', { react, '../api': { api: stockApi }, './Icons': load('components/Icons.tsx') }, false, { Error });
+  const props = { companyId: 1, locationId: 2, relatedDevices: [], accessories: [], disabled: false, onChange: (relatedDevices, accessories) => { changes.push({ relatedDevices, accessories }); props.relatedDevices = relatedDevices; props.accessories = accessories; }, ...overrides };
   return { states, effects, changes, props, ...exports, render() { index = 0; refIndex = 0; effects.length = 0; return treeElements(exports.AssetAccessories(props)); } };
 }
 const accessoryButton = (items, text) => items.find(item => item.type === 'button' && React.Children.toArray(item.props.children).some(value => value === text));
 
-test('accessory lookup waits for input, searches full-width case-insensitively, excludes disabled options and caps results without mutation', () => {
+test('accessory lookup shows available cards immediately and searches full-width case-insensitively without mutation', () => {
   const view = accessoryHarness();
   const choices = Object.freeze([accessoryChoice(), accessoryChoice({ id: 2, name: '停用鼠标', disabled: true }), ...Array.from({ length: 12 }, (_, i) => accessoryChoice({ id: i + 3 }))]);
   const before = JSON.stringify(choices);
-  assert.equal(view.matchingAccessories(choices, ' ').length, 0);
-  assert.equal(view.matchingAccessories(choices, 'ｌｏｇｉ tech').length, 8);
+  assert.equal(view.matchingAccessories(choices, ' ').length, 13);
+  assert.equal(view.matchingAccessories(choices, 'ｌｏｇｉ tech').length, 13);
   assert.ok(!view.matchingAccessories(choices, '鼠标').some(row => row.id === 2));
-  assert.equal(view.matchingAccessories(choices, 'USB').length, 8);
+  assert.equal(view.matchingAccessories(choices, 'USB').length, 13);
   assert.equal(JSON.stringify(choices), before);
 });
 
@@ -1345,6 +1347,28 @@ test('new accessory selections are independent snapshots, not catalogue links or
   option.name = '目录已改名'; first.quantity = 4;
   assert.equal(first.name, '鼠标'); assert.equal(second.quantity, 1); assert.equal(second.name, '鼠标');
   assert.equal(Object.hasOwn(first, 'id'), false);
+});
+
+test('managed stock keeps its identity and cannot be selected twice or when unavailable', async () => {
+  const view=accessoryHarness({accessoryStockChoices:async()=>[
+    {id:7,type:'鼠标',brand:'罗技',version:0,available:0},
+    {id:8,type:'键盘',brand:'双飞燕',version:0,available:4},
+  ]},{relatedDevices:[{stockId:8,name:'键盘',model:'双飞燕',quantity:1}]});
+  accessoryButton(view.render(),'选择配件').props.onClick();view.render();view.effects[0]();await new Promise(setImmediate);
+  const boxes=view.render().filter(item=>item.props.type==='checkbox');
+  assert.equal(boxes.length,2);assert.ok(boxes.every(box=>box.props.disabled));
+  assert.equal(view.accessorySnapshot({...accessoryChoice(),stockId:8}).stockId,8);
+});
+test('stock picker requires company and location and never falls back to untracked templates', () => {
+  const view=accessoryHarness({accessoryChoices:()=>assert.fail('Legacy templates must not be used')},{companyId:null,locationId:null});
+  accessoryButton(view.render(),'选择配件').props.onClick();view.render();view.effects[0]();
+  assert.equal(view.render().find(item=>item.props.role==='alert').props.children,'请先选择公司和存放位置');
+});
+test('cloning a computer does not silently copy managed stock allocations', () => {
+  const old={name:'旧文字配件',quantity:1};
+  const asset=domainAsset({relatedDevices:[old,{name:'鼠标',model:'罗技',quantity:1,stockId:7}]});
+  const view=assetFormHarness(asset,true);const editor=treeElements(view.render()).find(item=>item.type.name==='AssetAccessories');
+  assert.equal(editor.props.relatedDevices.length,1);assert.equal(editor.props.relatedDevices[0].name,'旧文字配件');assert.equal(asset.relatedDevices.length,2);
 });
 
 test('asset editor keeps legacy and current accessory rows in their original collections when saving unrelated edits', async () => {
@@ -1367,7 +1391,7 @@ test('accessory picker supports multiple selections across searches and changes 
   const search = () => view.render().find(item => item.type === 'input' && item.props.type === 'search');
   search().props.onChange({ target: { value: '鼠标' } });
   view.render().find(item => item.props.type === 'checkbox').props.onChange({ target: { checked: true } });
-  search().props.onChange({ target: { value: '65w' } });
+  search().props.onChange({ target: { value: 'Lenovo' } });
   view.render().find(item => item.props.type === 'checkbox').props.onChange({ target: { checked: true } });
   assert.equal(view.changes.length, 0); assert.equal(reads, 1);
   view.render().find(item => item.type === 'button' && item.props.className === 'button primary').props.onClick();
@@ -1582,7 +1606,7 @@ test('asset submenu exposes five separate choices and closes after a mobile sele
   const { Sidebar } = load('components/Sidebar.tsx', { react: { useEffect() {}, useState: () => { const i = index++; return [i === 1, value => updates.push({ i, value })]; } } }, false, { window: { matchMedia: () => ({ matches: true }) } });
   const tree = Sidebar({ section: 'assets', canManageUsers: false, dingtalkLogin: false, permissions: ['ASSET_VIEW'], assetGroup: 'display', onAssetGroup: key => selected.push(key), onSection() {}, onFilter() {} });
   const choices = treeElements(tree).filter(item => item.props.className?.includes('asset-subitem'));
-  assert.deepEqual(choices.map(item => item.props['aria-label']), ['全部资产', '笔记本电脑', '台式电脑', '显示器', '鼠标']);
+  assert.deepEqual(choices.map(item => item.props['aria-label']), ['全部资产', '笔记本电脑', '台式电脑', '显示器', '配件']);
   assert.equal(choices[3].props['aria-current'], 'page');
   choices[4].props.onClick(); assert.deepEqual(selected, ['mouse']);
   assert.ok(updates.some(update => update.i === 1 && update.value === false));
@@ -1613,27 +1637,27 @@ test('contextual creation reuses an existing category without writes and preserv
 test('missing category creation requires confirmation and never creates an asset', async () => {
   for (const accepted of [false, true]) {
     const writes = [];
-    const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'mouse' }, { lookups: [], loading: false, window: { location: { pathname: '/' }, localStorage: { getItem: () => 'false' }, history: { state: null, pushState() {}, replaceState() {} }, confirm: () => accepted }, api: { createLookup: async (...args) => { writes.push(args); return categoryFixtures[3]; }, createAsset: () => assert.fail('No asset may be created by opening a form') } });
-    const button = findNativeElement(page.tree, item => item.type === 'button' && String(item.props.children).includes('新增鼠标'));
+    const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'display' }, { lookups: [], loading: false, window: { location: { pathname: '/' }, localStorage: { getItem: () => 'false' }, history: { state: null, pushState() {}, replaceState() {} }, confirm: () => accepted }, api: { createLookup: async (...args) => { writes.push(args); return categoryFixtures[2]; }, createAsset: () => assert.fail('No asset may be created by opening a form') } });
+    const button = findNativeElement(page.tree, item => item.type === 'button' && String(item.props.children).includes('新增显示器'));
     button.props.onClick();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(writes.length, Number(accepted));
-    if (accepted) assert.deepEqual(writes[0], ['CATEGORY', '鼠标', 'GENERAL']);
+    if (accepted) assert.deepEqual(writes[0], ['CATEGORY', '显示器', 'DISPLAY']);
     assert.equal(page.changes.some(change => change.index === 6), accepted);
   }
 });
 
 test('category creation rejects double clicks and does not redirect after navigation away', async () => {
   let resolve, writes = 0;
-  const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'mouse' }, { loading: false,
+  const page = appMarkup('assets', { permissions: ['ASSET_VIEW', 'ASSET_CREATE'] }, { name: 'list', assetGroup: 'display' }, { loading: false,
     window: { location: { pathname: '/' }, localStorage: { getItem: () => 'false' }, history: { state: null, pushState() {}, replaceState() {} }, confirm: () => true },
     api: { createLookup: () => { writes++; return new Promise(done => { resolve = done; }); } } });
-  const button = findNativeElement(page.tree, item => item.type === 'button' && String(item.props.children).includes('新增鼠标'));
+  const button = findNativeElement(page.tree, item => item.type === 'button' && String(item.props.children).includes('新增显示器'));
   button.props.onClick(); button.props.onClick(); assert.equal(writes, 1);
-  findNativeElement(page.tree, item => item.type.name === 'Sidebar').props.onAssetGroup('display');
-  resolve(categoryFixtures[3]); await new Promise(done => setImmediate(done));
+  findNativeElement(page.tree, item => item.type.name === 'Sidebar').props.onAssetGroup('laptop');
+  resolve(categoryFixtures[2]); await new Promise(done => setImmediate(done));
   assert.ok(!page.changes.some(change => change.index === 6 && change.value.name === 'form'));
-  assert.ok(page.changes.some(change => change.index === 6 && change.value.assetGroup === 'display'));
+  assert.ok(page.changes.some(change => change.index === 6 && change.value.assetGroup === 'laptop'));
 });
 
 test('category navigation retains existing view and create permissions', () => {

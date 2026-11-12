@@ -66,7 +66,7 @@ function fromAsset(asset: Asset | null, clone = false): AssetPayload {
     notes: asset.notes || '',
     boundDisplayIds: clone ? [] : (asset.boundDisplays || []).map((item) => item.id),
     boundComputerId: clone ? null : asset.boundComputer?.id ?? null,
-    relatedDevices: (asset.relatedDevices || []).map((item) => ({ ...item })),
+    relatedDevices: (asset.relatedDevices || []).filter(item => !clone || !item.stockId).map((item) => ({ ...item })),
     accessories: (asset.accessories || []).map((item) => ({ ...item })),
     customParameters: (asset.customParameters || []).map((parameter) => ({ ...parameter })),
   }
@@ -417,7 +417,7 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
           : <label className="bound-computer-field"><span>绑定电脑</span><select value={form.boundComputerId ?? ''} onChange={(event) => set('boundComputerId', event.target.value ? Number(event.target.value) : null)}><option value="">暂不绑定电脑</option>{availableComputers.map((item) => <option key={item.id} value={item.id}>{item.assetTag} · {item.name} · {item.model.name}</option>)}</select></label>}
       </section>}
 
-      <AssetAccessories relatedDevices={form.relatedDevices} accessories={form.accessories} disabled={saving} onChange={(relatedDevices, accessories) => setForm(current => ({ ...current, relatedDevices, accessories }))} />
+      <AssetAccessories companyId={form.companyId} locationId={form.locationId} relatedDevices={form.relatedDevices} accessories={form.accessories} disabled={saving} onChange={(relatedDevices, accessories) => setForm(current => ({ ...current, relatedDevices, accessories }))} />
 
       <section className="form-section">
         <div className="form-section-head"><div><h3>价值与领用</h3><p>价格和当前使用状态</p></div></div>

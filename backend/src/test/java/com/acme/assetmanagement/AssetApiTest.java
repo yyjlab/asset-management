@@ -376,7 +376,7 @@ class AssetApiTest {
     }
 
     @Test
-    void manuallyDeletesAssetNameSuggestionWithoutDeletingExistingAsset() throws Exception {
+    void protectsAssetNameSuggestionWhileExistingAssetUsesIt() throws Exception {
         var asset = assetRepository.findAll().stream()
                 .filter(item -> "202609010001".equals(item.getAssetTag()))
                 .findFirst().orElseThrow();
@@ -384,9 +384,9 @@ class AssetApiTest {
                 .orElseThrow();
 
         mockMvc.perform(delete("/api/lookups/{id}", suggestion.getId()).with(assetUser()).with(csrf()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isConflict());
 
-        assertTrue(lookupRepository.findByTypeAndNameIgnoreCase(LookupType.ASSET_NAME, asset.getName()).isEmpty());
+        assertTrue(lookupRepository.findByTypeAndNameIgnoreCase(LookupType.ASSET_NAME, asset.getName()).isPresent());
         assertEquals(asset.getName(), assetRepository.findById(asset.getId()).orElseThrow().getName());
     }
 

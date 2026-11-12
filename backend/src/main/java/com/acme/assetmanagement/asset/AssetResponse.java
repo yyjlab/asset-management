@@ -79,10 +79,10 @@ public record AssetResponse(
     }
 
     public record RelatedDeviceResponse(String name, String model, String serialNumber, String orderNumber,
-                                        String specification, int quantity) {
+                                        String specification, int quantity,Long stockId) {
         static RelatedDeviceResponse from(RelatedDevice device) {
             return new RelatedDeviceResponse(device.getName(), device.getModel(), device.getSerialNumber(),
-                    device.getOrderNumber(), device.getSpecification(), device.getQuantity());
+                    device.getOrderNumber(), device.getSpecification(), device.getQuantity(),device.getStockId());
         }
     }
 

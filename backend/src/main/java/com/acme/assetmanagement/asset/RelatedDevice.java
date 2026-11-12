@@ -22,6 +22,13 @@ public class RelatedDevice {
 
     @Column(name = "device_quantity", nullable = false)
     private int quantity = 1;
+    @Column(name = "stock_id")
+    private Long stockId;
+    @jakarta.persistence.ManyToOne(fetch=jakarta.persistence.FetchType.LAZY)
+    @jakarta.persistence.JoinColumn(name="stock_id",insertable=false,updatable=false)
+    private AccessoryStock stockReference;
+    public Long getStockId(){return stockId;}
+    public void setStockId(Long value){stockId=value;}
 
     public RelatedDevice() {}
 

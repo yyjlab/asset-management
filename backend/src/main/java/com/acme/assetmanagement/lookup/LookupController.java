@@ -21,11 +21,13 @@ public class LookupController {
     private final LookupRepository repository;
     private final AssetRepository assetRepository;
     private final AuditLogService auditLogService;
+    private final com.acme.assetmanagement.asset.AccessoryStockRepository stocks;
 
-    public LookupController(LookupRepository repository, AssetRepository assetRepository, AuditLogService auditLogService) {
+    public LookupController(LookupRepository repository, AssetRepository assetRepository, AuditLogService auditLogService,com.acme.assetmanagement.asset.AccessoryStockRepository stocks) {
         this.repository = repository;
         this.assetRepository = assetRepository;
         this.auditLogService = auditLogService;
+        this.stocks=stocks;
     }
 
     @GetMapping
@@ -68,6 +70,7 @@ public class LookupController {
             throw new ApiException(HttpStatus.BAD_REQUEST, "资产状态是系统固定选项，不能删除");
         }
         long usageCount = assetRepository.countUsingLookup(id);
+        if(stocks.existsByCompanyIdOrLocationId(id,id))throw new ApiException(HttpStatus.CONFLICT,"该选项正在被配件库存使用，不能删除");
         if (usageCount > 0) {
             throw new ApiException(HttpStatus.CONFLICT, value.getType().getLabel() + "“" + value.getName()
                     + "”正在被 " + usageCount + " 项资产使用，不能删除");

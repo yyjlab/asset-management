@@ -22,6 +22,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { AuditLogPage } from './components/AuditLogPage'
 import { AvatarEditor } from './components/AvatarEditor'
 import { AssetLabelPrintPreview } from './components/AssetLabelPrintPreview'
+import { AccessoryInventory } from './components/AccessoryInventory'
 import { ComputerDashboard } from './components/ComputerDashboard'
 import { AssetTransfer } from './components/AssetTransfer'
 import { HandoverPage } from './components/HandoverPage'
@@ -333,7 +334,9 @@ export default function App() {
     setSaving(true)
     try {
       const editingAsset = page.name === 'form' && !page.clone ? page.asset : null
-      if (editingAsset) await api.updateAsset(editingAsset.id, payload)
+      const returning = !!editingAsset?.relatedDevices.some(item => item.stockId && (payload.relatedDevices.filter(next => next.stockId === item.stockId).reduce((sum,next)=>sum+next.quantity,0) < item.quantity))
+      if (returning && !window.confirm('已减少或移除库存配件。请确认这些配件已实际拆下，保存后退回可用库存。损坏配件退库后请在配件库存中报废。')) return
+      if (editingAsset) await api.updateAsset(editingAsset.id, payload, returning)
       else await api.createAsset(payload, page.name === 'form' && page.clone ? page.asset?.id : undefined)
       notify(editingAsset ? '资产已更新' : page.name === 'form' && page.clone ? '克隆资产已创建' : '资产已创建')
       showView('assets', { name: 'list' }, 'replace'); await load('')
@@ -529,6 +532,11 @@ export default function App() {
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
+  if (section === 'assets' && activeGroup.key === 'mouse' && page.name === 'list') return <div className="app-shell">
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content">{authUser.role === 'SUPER_ADMIN' ? <AccessoryInventory lookups={lookups} onNotify={notify}/> : <p role="alert">配件库存由超级管理员管理。</p>}</div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
   if ((section === 'settings' || section === 'foundation') && authUser.canManageUsers) return <div className="app-shell">
     <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content">{section === 'foundation' ? <FoundationData key={accessKey} onNotify={notify} onLookupsChanged={() => void api.listLookups().then(setLookups).catch(() => notify('选项已保存，列表刷新失败，请刷新页面', 'error'))} /> : <SystemSettings key={accessKey} onNotify={notify} />}</div></main>

@@ -100,6 +100,11 @@ export const api = {
   createTextOption: (type: Exclude<ManagedLookupType, 'MODEL'>, name: string) => mutate<ModelOption>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}`, { method: 'POST', body: JSON.stringify({ name }) }),
   setTextAvailability: (type: Exclude<ManagedLookupType, 'MODEL'>, id: number, version: number, disabled: boolean) => mutate<ModelOption>(`/api/foundation/${type === 'CPU' ? 'cpus' : 'asset-names'}/${id}/availability`, { method: 'PUT', body: JSON.stringify({ version, disabled }) }),
   accessoryOptions: () => request<AccessoryOption[]>('/api/foundation/accessories'),
+  accessoryStock: () => request<import('./types').AccessoryStock[]>('/api/accessory-stock'),
+  accessoryStockChoices: (companyId: number, locationId: number) => request<import('./types').AccessoryStock[]>(`/api/accessory-stock/choices?companyId=${companyId}&locationId=${locationId}`),
+  createAccessoryStock: (payload: { type: string; brand: string; companyId: number; locationId: number; quantity: number }) => mutate<import('./types').AccessoryStock>('/api/accessory-stock', { method: 'POST', body: JSON.stringify(payload) }),
+  adjustAccessoryStock: (id: number, payload: { version: number; quantity: number; scrap: boolean; note: string }) => mutate<import('./types').AccessoryStock>(`/api/accessory-stock/${id}/adjust`, { method: 'POST', body: JSON.stringify(payload) }),
+  accessoryStockDetails: (id: number) => request<import('./types').AccessoryStockDetails>(`/api/accessory-stock/${id}`),
   accessoryChoices: () => request<AccessoryOption[]>('/api/foundation/accessories/choices'),
   createAccessoryOption: (payload: AccessoryOptionWrite) => mutate<AccessoryOption>('/api/foundation/accessories', { method: 'POST', body: JSON.stringify(payload) }),
   updateAccessoryOption: (id: number, version: number, payload: AccessoryOptionWrite) => mutate<AccessoryOption>(`/api/foundation/accessories/${id}`, { method: 'PUT', body: JSON.stringify({ ...payload, version }) }),
@@ -194,8 +199,8 @@ export const api = {
   summary: () => request<Summary>('/api/assets/summary'),
   createAsset: (payload: AssetPayload, cloneSourceId?: number) =>
     mutate<Asset>(`/api/assets${cloneSourceId ? `?cloneSourceId=${cloneSourceId}` : ''}`, { method: 'POST', body: JSON.stringify(payload) }),
-  updateAsset: (id: number, payload: AssetPayload) =>
-    mutate<Asset>(`/api/assets/${id}`, { method: 'PUT', headers: { 'If-Match': String(payload.version) }, body: JSON.stringify({ ...payload, version: undefined }) }),
+  updateAsset: (id: number, payload: AssetPayload, confirmAccessoryReturn = false) =>
+    mutate<Asset>(`/api/assets/${id}`, { method: 'PUT', headers: { 'If-Match': String(payload.version), 'X-Accessory-Return-Confirmed': String(confirmAccessoryReturn) }, body: JSON.stringify({ ...payload, version: undefined }) }),
   returnAsset: (id: number, version: number) => mutate<Asset>(`/api/assets/${id}/return`, { method: 'POST', headers: { 'If-Match': String(version) } }),
   returnAssetByQrToken: (qrToken: string, version: number) =>
     mutate<Asset>(`/api/assets/qr/${encodeURIComponent(qrToken)}/return`, { method: 'POST', headers: { 'If-Match': String(version) } }),

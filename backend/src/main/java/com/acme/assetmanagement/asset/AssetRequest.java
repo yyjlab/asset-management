@@ -54,8 +54,11 @@ public record AssetRequest(
             @Size(max = 160) String serialNumber,
             @Size(max = 160) String orderNumber,
             @Size(max = 300) String specification,
-            @Min(value = 1, message = "随附配件数量至少为1") @Max(value = 9999, message = "随附配件数量不能超过9999") int quantity
-    ) {}
+            @Min(value = 1, message = "随附配件数量至少为1") @Max(value = 9999, message = "随附配件数量不能超过9999") int quantity,
+            @Positive Long stockId
+    ) {
+        public RelatedDeviceRequest(String name,String model,String serialNumber,String orderNumber,String specification,int quantity){this(name,model,serialNumber,orderNumber,specification,quantity,null);}
+    }
 
     public record AccessoryRequest(
             @NotBlank(message = "配件名称不能为空") @Size(max = 120) String name,

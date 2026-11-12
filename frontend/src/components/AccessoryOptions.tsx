@@ -65,6 +65,7 @@ export function AccessoryOptions({ revision, onNotify }: { revision: number; onN
     && (!filter || row.disabled === (filter === 'disabled')))
 
   return <article className="foundation-card accessory-catalogue" aria-label="随附配件管理">
+    <p>旧配件目录保留维护；新的品牌数量库存请在“资产 → 配件”管理。</p>
     <form className="accessory-catalogue-form" aria-label={editing ? '编辑配件目录' : '新增配件目录'} onSubmit={event => {
       event.preventDefault()
       if (loading || error || !draft.name.trim()) return

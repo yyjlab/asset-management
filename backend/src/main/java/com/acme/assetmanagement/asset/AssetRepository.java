@@ -116,4 +116,9 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
 
     @Query("select count(a) from Asset a join a.accessories d where lower(trim(d.name)) = lower(trim(:name))")
     long countUsingLegacyAccessory(@Param("name") String name);
+
+    @Query("select coalesce(sum(d.quantity),0) from Asset a join a.relatedDevices d where d.stockId = :id and a.checkedOut = :checkedOut")
+    long countStockQuantity(Long id,boolean checkedOut);
+    @Query("select a.id,a.assetTag,a.name,a.assignedTo,d.quantity,a.checkedOut from Asset a join a.relatedDevices d where d.stockId = :id")
+    List<Object[]> stockAllocations(Long id);
 }
