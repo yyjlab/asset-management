@@ -42,7 +42,8 @@ public record AssetResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         Long assignedUserId,
-        DomainJoinStatus domainJoinStatus
+        DomainJoinStatus domainJoinStatus,
+        List<KnownDefectResponse> knownDefects
 ) {
     public static AssetResponse from(Asset asset) {
         return from(asset, ignored -> true);
@@ -66,7 +67,8 @@ public record AssetResponse(
                 asset.getRelatedDevices().stream().map(RelatedDeviceResponse::from).toList(),
                 asset.getAccessories().stream().map(AccessoryResponse::from).toList(),
                 asset.getCustomParameters().stream().map(CustomParameterResponse::from).toList(),
-                asset.getCreatedAt(), asset.getUpdatedAt(), asset.getAssignedUserId(), asset.effectiveDomainJoinStatus()
+                asset.getCreatedAt(), asset.getUpdatedAt(), asset.getAssignedUserId(), asset.effectiveDomainJoinStatus(),
+                asset.getKnownDefects().stream().map(KnownDefectResponse::from).toList()
         );
     }
 
@@ -75,6 +77,14 @@ public record AssetResponse(
             return new AssetLinkResponse(asset.getId(), asset.getAssetTag(), asset.getName(),
                     asset.getModel() == null ? null : asset.getModel().getName(),
                     asset.getCategory() == null ? null : asset.getCategory().getName());
+        }
+    }
+
+    public record KnownDefectResponse(String id, String description, String recordedBy, LocalDateTime recordedAt,
+                                      String archivedBy, LocalDateTime archivedAt) {
+        static KnownDefectResponse from(AssetKnownDefect defect) {
+            return new KnownDefectResponse(defect.getId(), defect.getDescription(), defect.getRecordedBy(),
+                    defect.getRecordedAt(), defect.getArchivedBy(), defect.getArchivedAt());
         }
     }
 

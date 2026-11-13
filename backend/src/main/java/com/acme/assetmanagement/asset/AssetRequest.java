@@ -38,15 +38,37 @@ public record AssetRequest(
         List<@Valid AccessoryRequest> accessories,
         @Size(max = 5, message = "自定义参数最多5项") List<@Valid CustomParameterRequest> customParameters,
         Long assignedUserId,
-        DomainJoinStatus domainJoinStatus
+        DomainJoinStatus domainJoinStatus,
+        @Size(max = 50, message = "设备已知缺陷及历史记录最多50条") List<@NotNull @Valid KnownDefectRequest> knownDefects
 ) {
+    public AssetRequest(String assetTag, String name, String ownershipDepartment, String cpu, String memory,
+                        String storage, String graphicsCard, String manufacturerSerialNumber, String screenSize,
+                        String displayResolution, String displayInterface, String orderNumber, Long companyId,
+                        Long modelId, String modelName, Long categoryId, Long statusId, Long locationId,
+                        BigDecimal purchasePrice, BigDecimal currentValue, boolean checkedOut, String assignedTo,
+                        String imageUrl, List<String> imageUrls, String notes, List<Long> boundDisplayIds,
+                        Long boundComputerId, List<RelatedDeviceRequest> relatedDevices, List<AccessoryRequest> accessories,
+                        List<CustomParameterRequest> customParameters, Long assignedUserId, DomainJoinStatus domainJoinStatus) {
+        this(assetTag, name, ownershipDepartment, cpu, memory, storage, graphicsCard, manufacturerSerialNumber,
+                screenSize, displayResolution, displayInterface, orderNumber, companyId, modelId, modelName,
+                categoryId, statusId, locationId, purchasePrice, currentValue, checkedOut, assignedTo, imageUrl,
+                imageUrls, notes, boundDisplayIds, boundComputerId, relatedDevices, accessories, customParameters,
+                assignedUserId, domainJoinStatus, null);
+    }
+
     public AssetRequest withBindings(List<Long> displayIds, Long computerId) {
         return new AssetRequest(assetTag, name, ownershipDepartment, cpu, memory, storage, graphicsCard,
                 manufacturerSerialNumber, screenSize, displayResolution, displayInterface, orderNumber,
                 companyId, modelId, modelName, categoryId, statusId, locationId, purchasePrice, currentValue,
                 checkedOut, assignedTo, imageUrl, imageUrls, notes, displayIds, computerId, relatedDevices,
-                accessories, customParameters, assignedUserId, domainJoinStatus);
+                accessories, customParameters, assignedUserId, domainJoinStatus, knownDefects);
     }
+
+    public record KnownDefectRequest(
+            @Size(max = 36) String id,
+            @NotBlank(message = "缺陷描述不能为空") @Size(max = 300, message = "缺陷描述不能超过300个字符") String description,
+            Boolean archived
+    ) {}
 
     public record RelatedDeviceRequest(
             @NotBlank(message = "随附配件名称不能为空") @Size(max = 120) String name,

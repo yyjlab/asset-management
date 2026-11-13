@@ -11,6 +11,7 @@ import type { DisplayDraft } from '../assetBundle'
 import { NewDisplayEditor } from './NewDisplayEditor'
 import './AssetBundle.css'
 import { domainStatusOf, domainStatusOptions } from '../domainJoin'
+import { KnownDefectEditor } from './KnownDefects'
 import type { DomainJoinStatus } from '../types'
 
 interface Props {
@@ -41,7 +42,7 @@ const emptyPayload = (): AssetPayload => ({
   companyId: null, modelId: null, modelName: '', categoryId: null, statusId: null, locationId: null,
   purchasePrice: null, currentValue: null, checkedOut: false, assignedTo: '', assignedUserId: null,
   domainJoinStatus: 'UNKNOWN',
-  imageUrl: '', imageUrls: [], notes: '', boundDisplayIds: [], boundComputerId: null, relatedDevices: [], accessories: [], customParameters: [],
+  imageUrl: '', imageUrls: [], notes: '', knownDefects: [], boundDisplayIds: [], boundComputerId: null, relatedDevices: [], accessories: [], customParameters: [],
 })
 
 function fromAsset(asset: Asset | null, clone = false): AssetPayload {
@@ -64,6 +65,7 @@ function fromAsset(asset: Asset | null, clone = false): AssetPayload {
     imageUrl: asset.imageUrls?.[0] || asset.imageUrl || '',
     imageUrls: asset.imageUrls?.length ? [...asset.imageUrls] : asset.imageUrl ? [asset.imageUrl] : [],
     notes: asset.notes || '',
+    knownDefects: clone ? [] : (asset.knownDefects || []).map(item => ({ id: item.id, description: item.description, archived: Boolean(item.archivedAt) })),
     boundDisplayIds: clone ? [] : (asset.boundDisplays || []).map((item) => item.id),
     boundComputerId: clone ? null : asset.boundComputer?.id ?? null,
     relatedDevices: (asset.relatedDevices || []).filter(item => !clone || !item.stockId).map((item) => ({ ...item })),
@@ -432,11 +434,13 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
         </div>
       </section>
 
+      <KnownDefectEditor value={form.knownDefects || []} onChange={value => set('knownDefects', value)} />
+
       <section className="form-section">
-        <div className="form-section-head"><div><h3>图片与备注</h3><p>左右等宽，集中保存补充资料</p></div></div>
+        <div className="form-section-head"><div><h3>图片与备注</h3></div></div>
         <div className="symmetric-media-grid">
           <div><div className="asset-image-title"><span className="field-title">资产图片</span><b>{form.imageUrls.length} / 5</b></div><div className="asset-image-editor"><div className="asset-image-grid">{form.imageUrls.map((source, index) => <div className="asset-image-thumb" key={`${source.slice(-24)}-${index}`}><img src={source} alt={`${form.name || '资产'}图片${index + 1}`} /><span>{index === 0 ? '封面' : `图片${index + 1}`}</span><button type="button" title={`删除第${index + 1}张图片`} onClick={() => removeImage(index)}><TrashIcon /></button></div>)}{form.imageUrls.length < 5 && <button type="button" className="asset-image-add" onClick={() => cameraRef.current?.click()}><UploadIcon /><strong>拍照添加</strong><span>还可添加 {5 - form.imageUrls.length} 张</span></button>}</div><div className="asset-image-actions"><button type="button" onClick={() => cameraRef.current?.click()}>手机拍照</button><button type="button" onClick={() => galleryRef.current?.click()}>从相册或文件选择</button><span>第1张作为列表封面，大图自动压缩</span></div><input ref={cameraRef} hidden type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => { const input = event.currentTarget; void handleImages(Array.from(input.files || [])).finally(() => { input.value = '' }) }} /><input ref={galleryRef} hidden multiple type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const input = event.currentTarget; void handleImages(Array.from(input.files || [])).finally(() => { input.value = '' }) }} /></div>{imageError && <small className="field-error">{imageError}</small>}</div>
-          <label><span>备注</span><textarea maxLength={2000} rows={7} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="记录保修、附件或其他说明…" /></label>
+          <label><span>备注</span><textarea maxLength={2000} rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="保修或其他补充说明" /></label>
         </div>
       </section>
       </fieldset>

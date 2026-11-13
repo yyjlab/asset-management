@@ -222,6 +222,7 @@ public class AssetService {
         values.put("绑定电脑", asset.getBoundComputers().stream().findFirst().map(Asset::getAssetTag).orElse(""));
         values.put("图片", imageReferences(asset).stream().distinct().toList());
         values.put("备注", asset.getNotes());
+        values.put("设备已知缺陷", asset.getKnownDefects().stream().map(AssetResponse.KnownDefectResponse::from).toList());
         return values;
     }
 
@@ -357,6 +358,7 @@ public class AssetService {
         asset.setImageUrls(images);
         asset.setImageUrl(images.isEmpty() ? null : images.getFirst());
         asset.setNotes(clean(request.notes()));
+        applyKnownDefects(asset, request.knownDefects());
         asset.setRelatedDevices(request.relatedDevices() == null ? List.of() : request.relatedDevices().stream()
                 .map(device -> {var result=new RelatedDevice(device.name().trim(), clean(device.model()), clean(device.serialNumber()),
                         clean(device.orderNumber()), clean(device.specification()), device.quantity());result.setStockId(device.stockId());return result;})
@@ -371,6 +373,42 @@ public class AssetService {
         if (profile == AssetProfile.GENERAL) {
             category.setParameterTemplate(asset.getCustomParameters().stream().map(AssetCustomParameter::getName).toList());
         }
+    }
+
+    private void applyKnownDefects(Asset asset, List<AssetRequest.KnownDefectRequest> requests) {
+        // Older clients and CSV imports omit this field; they must not erase defect history.
+        if (requests == null) return;
+        if (requests.size() > 50) throw new ApiException(HttpStatus.BAD_REQUEST, "设备已知缺陷及历史记录最多50条");
+        Map<String, AssetKnownDefect> existing = new LinkedHashMap<>();
+        asset.getKnownDefects().forEach(defect -> existing.put(defect.getId(), defect));
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        String actor = authentication != null && authentication.getPrincipal() instanceof
+                com.acme.assetmanagement.security.AccountPrincipal principal ? principal.username() : "系统";
+        var now = java.time.LocalDateTime.now();
+        var seen = new LinkedHashSet<String>();
+        List<AssetKnownDefect> values = new ArrayList<>();
+        for (var request : requests) {
+            String description = request == null ? null : clean(request.description());
+            if (description == null || description.length() > 300 || description.chars().anyMatch(Character::isISOControl))
+                throw new ApiException(HttpStatus.BAD_REQUEST, "缺陷描述须为1至300个字符，不能包含控制字符");
+            String id = clean(request.id());
+            boolean archived = Boolean.TRUE.equals(request.archived());
+            if (id == null) {
+                if (archived) throw new ApiException(HttpStatus.BAD_REQUEST, "新增缺陷不能直接移入历史");
+                values.add(new AssetKnownDefect(java.util.UUID.randomUUID().toString(), description, actor, now, null, null));
+                continue;
+            }
+            AssetKnownDefect previous = existing.get(id);
+            if (previous == null || !seen.add(id))
+                throw new ApiException(HttpStatus.BAD_REQUEST, "缺陷记录不存在、重复或不属于当前资产，请刷新后重试");
+            boolean wasArchived = previous.getArchivedAt() != null;
+            values.add(new AssetKnownDefect(id, description, previous.getRecordedBy(), previous.getRecordedAt(),
+                    archived ? wasArchived ? previous.getArchivedBy() : actor : null,
+                    archived ? wasArchived ? previous.getArchivedAt() : now : null));
+        }
+        if (seen.size() != existing.size())
+            throw new ApiException(HttpStatus.BAD_REQUEST, "已有缺陷记录不能直接删除，请移入历史保留记录");
+        asset.setKnownDefects(values);
     }
 
     void bindByAssetTags(Long assetId, List<String> displayTags, String computerTag) {

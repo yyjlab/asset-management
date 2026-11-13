@@ -113,6 +113,11 @@ public class Asset {
     private String notes;
 
     @ElementCollection
+    @CollectionTable(name = "asset_known_defects", joinColumns = @JoinColumn(name = "asset_id"))
+    @OrderColumn(name = "sort_order")
+    private List<AssetKnownDefect> knownDefects = new ArrayList<>();
+
+    @ElementCollection
     @CollectionTable(name = "asset_related_devices", joinColumns = @JoinColumn(name = "asset_id"))
     @OrderColumn(name = "sort_order")
     private List<RelatedDevice> relatedDevices = new ArrayList<>();
@@ -227,6 +232,8 @@ public class Asset {
     public void setImageUrls(List<String> imageUrls) { this.imageUrls.clear(); this.imageUrls.addAll(imageUrls); }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+    public List<AssetKnownDefect> getKnownDefects() { return knownDefects; }
+    public void setKnownDefects(List<AssetKnownDefect> values) { this.knownDefects.clear(); this.knownDefects.addAll(values); }
     public List<RelatedDevice> getRelatedDevices() { return relatedDevices; }
     public void setRelatedDevices(List<RelatedDevice> relatedDevices) { this.relatedDevices.clear(); this.relatedDevices.addAll(relatedDevices); }
     public List<AssetAccessory> getAccessories() { return accessories; }

@@ -55,6 +55,7 @@ export interface Asset {
   imageUrl: string | null
   imageUrls: string[]
   notes: string | null
+  knownDefects?: KnownDefect[]
   boundDisplays: AssetLink[]
   boundComputer: AssetLink | null
   relatedDevices: RelatedDevice[]
@@ -93,11 +94,27 @@ export interface AssetPayload {
   imageUrl: string
   imageUrls: string[]
   notes: string
+  knownDefects?: KnownDefectInput[]
   boundDisplayIds: number[]
   boundComputerId: number | null
   relatedDevices: RelatedDevice[]
   accessories: AssetAccessory[]
   customParameters: CustomParameter[]
+}
+
+export interface KnownDefectInput {
+  id: string | null
+  description: string
+  archived: boolean
+}
+
+export interface KnownDefect {
+  id: string
+  description: string
+  recordedBy: string
+  recordedAt: string
+  archivedBy: string | null
+  archivedAt: string | null
 }
 
 export interface AssetBundlePayload {

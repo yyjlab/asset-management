@@ -94,6 +94,7 @@ export default function App() {
   const [avatarRevision, setAvatarRevision] = useState(() => Date.now())
   const [assetLoadError, setAssetLoadError] = useState('')
   const [domainFilter, setDomainFilter] = useState<DomainJoinStatus | ''>('')
+  const [defectsOnly, setDefectsOnly] = useState(false)
   const [creatingGroup, setCreatingGroup] = useState(false)
   const categoryCreationRef = useRef(false)
   const navigationRevision = useRef(0)
@@ -321,6 +322,7 @@ export default function App() {
       : null
 
   const visibleAssets = scopedAssets.filter((asset) => {
+    if (defectsOnly && !(asset.knownDefects || []).some(item => !item.archivedAt)) return false
     if (activeGroup.key === 'all' && computerOnly && asset.category.assetProfile !== 'COMPUTER') return false
     if (selectedCategoryFilter && String(asset.category.id) !== selectedCategoryFilter) return false
     if ((activeGroup.key === 'all' || activeGroup.profile === 'COMPUTER') && !matchesDomainStatus(asset, domainFilter)) return false
@@ -427,7 +429,7 @@ export default function App() {
   ]
 
   const openAssetGroup = (key: AssetGroupKey) => {
-    setFilter('all'); setCategoryFilter(''); setComputerOnly(false); setDomainFilter(''); setSearch('')
+    setFilter('all'); setCategoryFilter(''); setComputerOnly(false); setDomainFilter(''); setDefectsOnly(false); setSearch('')
     showView('assets', { name: 'list', assetGroup: key })
     if (search.trim() || assetLoadError) void load('')
   }
@@ -594,6 +596,7 @@ export default function App() {
               {domainStatusOptions.map(option => <option key={option.code} value={option.code}>{option.label}</option>)}
             </select><span className="category-filter-chevron"><ChevronIcon /></span>
           </label>}
+          <label className={`known-defect-filter${defectsOnly ? ' selected' : ''}`}><input type="checkbox" checked={defectsOnly} onChange={event => setDefectsOnly(event.target.checked)} />有已知缺陷</label>
           <form className="asset-search" role="search" aria-label="搜索资产" onSubmit={(event) => { event.preventDefault(); if (!loading) void load(search) }}>
             <div className="search-box">
               <input aria-label="搜索资产" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产" />

@@ -5,6 +5,7 @@ import { AssetImageLightbox } from './AssetImageLightbox'
 import { AssetHistoryPanel } from './AssetHistoryPanel'
 import { DomainJoinBadge } from './DomainJoinBadge'
 import { domainStatusOf } from '../domainJoin'
+import { KnownDefectBadge, KnownDefectDetails } from './KnownDefects'
 
 interface Props {
   asset: Asset | null
@@ -82,7 +83,7 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
           <header className="record-summary-head">
             <div className="record-summary-title">
               <span className="record-kicker">ASSET RECORD</span>
-              <div><h2>{asset.name}</h2><span className={`status-pill ${stateClass}`}>{state}</span></div>
+              <div><h2>{asset.name}</h2><span className={`status-pill ${stateClass}`}>{state}</span><KnownDefectBadge defects={asset.knownDefects} /></div>
               <p>资产编号 <strong>{asset.assetTag}</strong></p>
             </div>
             <a className="record-label-action" href={`/label-print?assetId=${asset.id}&assetTag=${encodeURIComponent(asset.assetTag)}`} target="_blank" rel="noopener" title="在新页面中查看并打印资产标签">
@@ -111,6 +112,8 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
           </div>
         </div>
 
+        <KnownDefectDetails defects={asset.knownDefects} onEdit={canEdit ? () => onEdit(asset) : undefined} />
+
         {profile !== 'GENERAL' && <section className="record-subsection">
           <div className="record-subsection-head"><div><h3>设备绑定</h3><span>{boundAssets.length} 项</span></div></div>
           <div className="record-item-table related-record-table">
@@ -129,10 +132,10 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
 
         <section className="record-subsection"><button className="button ghost" onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? '收起资产履历' : '查看资产履历'}</button>{historyOpen && <AssetHistoryPanel key={asset.id} assetId={asset.id} />}</section>
         <div className="record-bottom record-media-panel">
-          <div className="record-notes-media">
+          <div className={`record-notes-media${images.length ? '' : ' notes-only'}`}>
             {images.length
               ? <div className="record-image-gallery">{images.map((source, index) => <button className="record-image-preview" title={`查看第${index + 1}张图片`} onClick={() => setImagePreviewIndex(index)} key={`${source.slice(-24)}-${index}`}><img src={source} alt={`${asset.name}图片${index + 1}`} /><span>{index === 0 ? '封面' : `${index + 1} / ${images.length}`}</span></button>)}</div>
-              : <div className="record-placeholder record-large-placeholder">{asset.name.slice(0, 1)}</div>}
+              : null}
             <div className="record-notes"><span>备注</span><p>{asset.notes || '暂无备注'}</p></div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { KnownDefectBadge } from './KnownDefects'
 import { BackToTop } from './BackToTop'
 import type { Asset, AssetProfile } from '../types'
 import { CloneIcon, EditIcon } from './Icons'
@@ -84,7 +85,7 @@ export function AssetTable({ assets, loading, canEdit, canCreate, onSelect, onEd
              const assignee = asset.assignedTo?.trim() || ''
              return <tr key={asset.id} onClick={() => onSelect(asset)}>
                <td><span className="asset-tag">{asset.assetTag}</span></td>
-               <td><strong className="asset-name compact-text" title={asset.name}>{asset.name}</strong></td>
+               <td><strong className="asset-name compact-text" title={asset.name}>{asset.name}</strong><KnownDefectBadge defects={asset.knownDefects} /></td>
                <td>{primaryImage ? <button className="image-preview-trigger" title={`点击查看${asset.imageUrls?.length || 1}张图片`} onClick={(event) => { event.stopPropagation(); setPreviewAsset(asset) }}><img className="table-image" src={primaryImage} alt={asset.name} /></button> : <span className="no-image">{asset.name.slice(0, 1)}</span>}</td>
                <td><span className="configuration-value compact-text" title={asset.model.name}>{asset.model.name}</span></td>
                {visibleParameterIndexes.map((index) => {

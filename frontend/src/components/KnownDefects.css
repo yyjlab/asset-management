@@ -1,0 +1,39 @@
+.known-defect-badge { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; margin-top: 5px; padding: 3px 7px; border: 1px solid #f5c56e; border-radius: 5px; background: #fff4d9; color: #8a4b06; font-size: 12px; font-weight: 700; line-height: 1.4; white-space: normal; }
+.known-defect-badge svg { width: 13px; height: 13px; flex-shrink: 0; }
+.known-defect-filter { display: inline-flex; align-items: center; gap: 7px; padding: 10px 12px; border: 1px solid #e2e7ef; border-radius: 6px; color: #65748b; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.known-defect-filter input { width: 16px; height: 16px; margin: 0; accent-color: #ad6506; }
+.known-defect-filter.selected { background: #fff4d9; border-color: #f5c56e; color: #8a4b06; }
+.known-defect-editor h3,.known-defect-heading h3 { display: flex; align-items: center; gap: 8px; margin: 0; }
+.known-defect-editor h3 svg,.known-defect-heading h3 svg { width: 19px; height: 19px; color: #ad6506; flex-shrink: 0; }
+.known-defect-count { display: inline-flex; align-items: center; justify-content: center; min-width: 23px; min-height: 23px; padding: 1px 6px; border-radius: 5px; background: #ffdf99; color: #774004; font-size: 12px; }
+.known-defect-rows { display: grid; gap: 12px; }
+.known-defect-edit-row { display: flex; align-items: flex-end; gap: 12px; padding: 12px; border: 1px solid #f5d39b; border-left: 3px solid #d38a19; border-radius: 6px; background: #fffbf1; }
+.known-defect-edit-row label { flex: 1; min-width: 0; }
+.known-defect-edit-row .button,.known-defect-edit-row .icon-button { flex-shrink: 0; margin-bottom: 2px; }
+.known-defect-empty { margin: 8px 0 0; color: #79869a; font-size: 13px; }
+.known-defect-details { padding: 16px 0; }
+.known-defect-details.has-defects { padding: 16px; border: 1px solid #f2cc86; border-left: 4px solid #d38a19; border-radius: 6px; background: #fffbf1; }
+.known-defect-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.known-defect-list,.known-defect-history ul { list-style: none; margin: 12px 0 0; padding: 0; }
+.known-defect-list li { display: grid; gap: 4px; padding: 10px 0; overflow-wrap: anywhere; }
+.known-defect-list li + li { border-top: 1px solid #f3dfb7; }
+.known-defect-list strong { color: #854a05; font-size: 14px; line-height: 1.6; }
+.known-defect-list small,.known-defect-history small { display: block; color: #79869a; font-size: 12px; }
+.known-defect-history { margin-top: 14px; font-size: 13px; color: #6c7890; }
+.known-defect-history summary { cursor: pointer; width: fit-content; padding: 4px 0; }
+.known-defect-history li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid #e2e7ef; overflow-wrap: anywhere; }
+.known-defect-history li > span,.known-defect-history li > div { min-width: 0; }
+.known-defect-history .button { flex-shrink: 0; }
+[data-theme="dark"] .known-defect-badge,[data-theme="dark"] .known-defect-count { background: #493a20; color: #ffd790; border-color: #84602f; }
+[data-theme="dark"] .known-defect-filter { border-color: #465166; color: #bac6d7; }
+[data-theme="dark"] .known-defect-filter.selected { background: #493a20; color: #ffd790; border-color: #84602f; }
+[data-theme="dark"] .known-defect-edit-row,[data-theme="dark"] .known-defect-details.has-defects { background: #2c2a22; border-color: #84602f; border-left-color: #dfac50; }
+[data-theme="dark"] .known-defect-list strong,[data-theme="dark"] .known-defect-heading h3 svg,[data-theme="dark"] .known-defect-editor h3 svg { color: #ffd790; }
+[data-theme="dark"] .known-defect-list li + li,[data-theme="dark"] .known-defect-history li { border-color: #514735; }
+[data-theme="dark"] .known-defect-empty,[data-theme="dark"] .known-defect-list small,[data-theme="dark"] .known-defect-history { color: #aab4c3; }
+@media (max-width: 600px) {
+  .known-defect-editor .form-section-head { align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .known-defect-edit-row { flex-wrap: wrap; }
+  .known-defect-edit-row label { flex-basis: 100%; }
+  .known-defect-heading { flex-wrap: wrap; }
+}
