@@ -9,6 +9,18 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AssetRepository extends JpaRepository<Asset, Long> {
+    interface SummaryAsset {
+        String getStatusName(); boolean getCheckedOut(); String getDepartment();
+    }
+    @Query("""
+            select a.status.name as statusName, a.checkedOut as checkedOut, a.ownershipDepartment as department
+            from Asset a where
+            (:all = true or (:self = true and a.assignedUserId = :userId)
+              or (:department = true and a.ownershipDepartment in :departments))
+            """)
+    List<SummaryAsset> summaryScoped(boolean all, boolean self, Long userId,
+                                     boolean department, java.util.Set<String> departments);
+
     interface RosterAsset {
         Long getId(); String getAssetTag(); String getName(); String getAssignee();
         String getDepartment(); String getCategory(); String getStatus(); boolean getCheckedOut();

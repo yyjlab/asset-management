@@ -125,6 +125,7 @@ export interface AssetBundlePayload {
   computer: AssetPayload
   displays: AssetPayload[]
   existingDisplays: { id: number; version: number }[]
+  confirmAccessoryReturn?: boolean
 }
 export interface AssetBundleResult { computer: Asset; displays: Asset[]; replayed: boolean }
 export type AssetEntryDefaults = Pick<AssetPayload, 'companyId' | 'ownershipDepartment' | 'locationId' | 'categoryId'>
@@ -159,6 +160,7 @@ export interface CustomParameter {
 }
 
 export interface PublicAsset {
+  knownDefects?: KnownDefect[]
   version: number
   assetTag: string
   name: string

@@ -48,6 +48,27 @@ class AssetKnownDefectsApiTest {
     @Autowired com.acme.assetmanagement.audit.AuditLogRepository audit;
 
     @Test
+    void qrDetailsIncludeCurrentAndArchivedDefectsWithoutBypassingScope() throws Exception {
+        var body = base(); body.put("knownDefects", List.of(Map.of("description", "扫码核对缺陷")));
+        var created = create(body); String token = created.get("qrToken").asText();
+        mvc.perform(get("/api/public/assets/{token}", token).with(editor())).andExpect(status().isOk())
+                .andExpect(jsonPath("$.knownDefects[0].description").value("扫码核对缺陷"));
+        body.put("assetTag", created.get("assetTag").asText());
+        body.put("knownDefects", List.of(Map.of("id", created.at("/knownDefects/0/id").asText(),
+                "description", "扫码核对缺陷", "archived", true)));
+        update(created.get("id").asLong(), created.get("version").asLong(), body);
+        mvc.perform(get("/api/public/assets/{token}", token).with(editor())).andExpect(status().isOk())
+                .andExpect(jsonPath("$.knownDefects[0].archivedAt").isNotEmpty());
+        var restricted = new UserAccount(); restricted.setUsername("qr-defect-restricted"); restricted.setDisplayName("受限用户");
+        restricted.setPasswordHash("not-a-password"); restricted.setAccessConfigured(true);
+        restricted.setPermissions(java.util.Set.of(com.acme.assetmanagement.user.Permission.ASSET_VIEW));
+        restricted.setDataScope(com.acme.assetmanagement.user.DataScope.SELF); users.saveAndFlush(restricted);
+        mvc.perform(get("/api/public/assets/{token}", token).with(user(AccountPrincipal.from(restricted))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/assets/{token}", token)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void createsDefectsWithServerMetadataAndKeepsNotesSeparate() throws Exception {
         var body = base();
         body.put("knownDefects", List.of(Map.of("description", " P键失灵 ", "recordedBy", "伪造用户"),

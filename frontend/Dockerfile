@@ -10,7 +10,9 @@ COPY . .
 RUN pnpm build
 
 FROM nginx:1.30.4-alpine3.24
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ENV ASSET_TRUSTED_PROXY_CIDR=127.0.0.1/32 \
+    NGINX_ENVSUBST_FILTER="^ASSET_TRUSTED_PROXY_CIDR$"
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /workspace/dist /usr/share/nginx/html
 
 EXPOSE 80

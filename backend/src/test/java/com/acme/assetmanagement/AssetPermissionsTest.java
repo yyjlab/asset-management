@@ -32,6 +32,30 @@ class AssetPermissionsTest {
     @Autowired AssetRepository assets;
     @Autowired LookupRepository lookups;
     @Autowired PasswordEncoder encoder;
+    @Autowired jakarta.persistence.EntityManager em;
+
+    @Test void summaryKeepsScopeAndLifecycleCountsWithoutLoadingAssetCollections() throws Exception {
+        var employee = employee("summary-scope", Set.of(Permission.ASSET_VIEW));
+        employee.setDataScope(DataScope.DEPARTMENT); employee.setDepartments(Set.of("IT")); users.saveAndFlush(employee);
+        var own = seed(); own.setOwnershipDepartment("IT"); assets.saveAndFlush(own);
+        var repair = other("960000004001"); repair.setOwnershipDepartment("IT"); repair.setCheckedOut(true);
+        repair.setStatus(lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "维修中").orElseThrow()); assets.saveAndFlush(repair);
+        var scrap = other("960000004002"); scrap.setOwnershipDepartment("IT"); scrap.setCheckedOut(true);
+        scrap.setStatus(lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "已报废").orElseThrow()); assets.saveAndFlush(scrap);
+        var hidden = other("960000004003"); hidden.setOwnershipDepartment("it"); assets.saveAndFlush(hidden);
+        var principal = AccountPrincipal.from(employee); em.flush(); em.clear();
+        var statistics = em.getEntityManagerFactory().unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        boolean enabled = statistics.isStatisticsEnabled(); statistics.setStatisticsEnabled(true); statistics.clear();
+        try {
+            mvc.perform(get("/api/assets/summary").with(user(principal))).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.total").value(3)).andExpect(jsonPath("$.available").value(1))
+                    .andExpect(jsonPath("$.checkedOut").value(1)).andExpect(jsonPath("$.maintenance").value(1))
+                    .andExpect(jsonPath("$.scrapped").value(1));
+            assertEquals(0, statistics.getEntityStatistics(Asset.class.getName()).getLoadCount(),
+                    "summary must not load asset entities or their collections");
+            assertTrue(statistics.getPrepareStatementCount() <= 5, "summary query count must stay bounded");
+        } finally { statistics.setStatisticsEnabled(enabled); }
+    }
 
     @Test void selfScopeUsesAccountIdNotNamesAndChecksAllReadPaths() throws Exception {
         var employee = employee("scope-owner", Set.of(Permission.ASSET_VIEW));

@@ -89,6 +89,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      ASSET_TRUSTED_PROXY_CIDR: ${ASSET_TRUSTED_PROXY_CIDR:-127.0.0.1/32}
     ports:
       - "${HTTP_BIND_IP:-0.0.0.0}:${HTTP_PORT:-80}:80"
     networks:

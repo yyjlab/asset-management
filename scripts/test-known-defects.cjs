@@ -40,6 +40,9 @@ async function main() {
         asset = { ...asset, ...saved, version: 1, knownDefects: saved.knownDefects.map((item, index) => ({ ...item, id: item.id || `new-${index}`, recordedBy: 'admin', recordedAt: '2026-11-13T09:00:00', archivedAt: item.archived ? '2026-11-13T09:01:00' : null })) };
         data = asset;
       } else if (pathname === '/api/assets/10') data = asset;
+      else if (pathname === '/api/public/assets/defect-qr') data = { ...asset, assetProfile: 'COMPUTER',
+        computerModel: model.name, company: company.name, category: category.name, location: location.name,
+        status: status.name, knownDefects: asset.knownDefects };
       else if (!pathname.includes('domain-statuses') && pathname !== '/api/assignees' && !pathname.startsWith('/api/accessory-stock') && !pathname.startsWith('/api/foundation/')) {
         await route.fulfill({ status: 503, json: { message: 'Outside isolated defect test' } }); return;
       }
@@ -85,6 +88,15 @@ async function main() {
     assert.equal(saved.domainJoinStatus, 'JOINED');
     await page.getByRole('button', { name: '克隆资产', exact: true }).click();
     assert.equal(await page.locator('.known-defect-edit-row').count(), 0, 'clone must not inherit physical defects');
+    await page.goto(server.resolvedUrls.local[0] + '?qr=defect-qr');
+    const qrDetails = page.getByRole('region', { name: '设备已知缺陷', exact: true });
+    await qrDetails.getByText('Type-C不能充电', { exact: true }).waitFor();
+    assert.equal(await qrDetails.locator('.known-defect-list li').count(), 2);
+    assert.equal(await qrDetails.locator('.known-defect-history li').count(), 2);
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(await qrDetails.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
+    }
     assert.deepEqual(errors, []);
     console.log('PASS known defects: badges, filter, detail, compact notes, archive, add, save, clone isolation, light/dark desktop/mobile.');
   } finally { await browser?.close(); await server.httpServer.close(); }

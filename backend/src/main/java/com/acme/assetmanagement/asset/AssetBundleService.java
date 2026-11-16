@@ -43,7 +43,8 @@ public class AssetBundleService {
         }
         validate(request, scope);
         var computer = request.computerId() == null ? service.create(request.computer(), request.cloneSourceId())
-                : service.update(request.computerId(), request.computer(), request.computerVersion().toString());
+                : service.update(request.computerId(), request.computer(), request.computerVersion().toString(),
+                        Boolean.TRUE.equals(request.confirmAccessoryReturn()));
         var displayIds = new ArrayList<>(request.existingDisplays().stream().map(AssetBundleRequest.ExistingDisplay::id).toList());
         for (var display : request.displays()) {
             var created = service.create(display.withBindings(List.of(), computer.id()), null);

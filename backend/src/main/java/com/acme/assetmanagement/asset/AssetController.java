@@ -128,22 +128,6 @@ public class AssetController {
     @GetMapping("/summary")
     @PreAuthorize("hasAuthority('ASSET_VIEW')")
     public Map<String, Long> summary() {
-        List<AssetResponse> assets = service.list("");
-        return Map.of(
-                "total", (long) assets.size(),
-                "checkedOut", assets.stream().filter(asset -> asset.checkedOut() && !isScrapped(asset)).count(),
-                "available", assets.stream().filter(asset -> !asset.checkedOut() && !isMaintenance(asset) && !isScrapped(asset)).count(),
-                "maintenance", assets.stream().filter(AssetController::isMaintenance).count(),
-                "scrapped", assets.stream().filter(AssetController::isScrapped).count()
-        );
-    }
-
-    private static boolean isMaintenance(AssetResponse asset) {
-        String status = asset.status().name();
-        return status.contains("维修") || status.contains("维护");
-    }
-
-    private static boolean isScrapped(AssetResponse asset) {
-        return asset.status().name().contains("报废");
+        return service.summary();
     }
 }

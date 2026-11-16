@@ -16,16 +16,18 @@ async function main(){
     const stock={id:7,version:0,type:'鼠标',brand:'罗技',companyId:1,company:'微丰启',locationId:2,location:'公司',total:10,available:6,paired:1,used:3,scrapped:0};
     const stockRows=[stock];
     const asset={id:10,version:0,assetTag:'202611120001',name:'测试电脑',company,location,model,category,status,checkedOut:false,assignedTo:null,relatedDevices:[],accessories:[],imageUrls:[],customParameters:[],boundDisplays:[],domainJoinStatus:'UNKNOWN',createdAt:'2026-11-12T09:00:00',updatedAt:'2026-11-12T09:00:00'};
-    let saved=null;
+    const allAssets=[asset];
+    let saved=null,bundleSaved=null;
     await page.route('**/api/**',async route=>{
       const req=route.request(),url=new URL(req.url()),p=url.pathname;let data=[];
       if(p==='/api/auth/me')data={id:1,username:'admin',displayName:'admin',role:'SUPER_ADMIN',permissions:['ASSET_VIEW','ASSET_EDIT','ASSET_CREATE'],canManageUsers:true,dataScope:'ALL',departments:[],hasAvatar:false,dingtalkLogin:false};
       else if(p==='/api/auth/csrf')data={headerName:'X-CSRF-TOKEN',token:'test-only'};
       else if(p==='/api/dashboard')data=null;
       else if(p==='/api/assets/summary')data={total:1,available:1,checkedOut:0,maintenance:0,scrapped:0};
-      else if(p==='/api/assets')data=[asset];
+      else if(p==='/api/assets')data=allAssets;
       else if(p==='/api/lookups')data=[company,location,model,category,status];
       else if(p==='/api/assets/10'&&req.method()==='PUT'){saved=req.postDataJSON();data={...asset,...saved};}
+      else if(p==='/api/assets/bundles'&&req.method()==='POST'){bundleSaved=req.postDataJSON();data={computer:{...asset,...bundleSaved.computer},displays:[allAssets[1]],replayed:false};}
       else if(p==='/api/foundation/accessories/choices')data=[];
       else if(p==='/api/accessory-stock/choices'||p==='/api/accessory-stock')data=stockRows;
       else if(p==='/api/accessory-stock/7')data={allocations:[{assetId:10,assetTag:asset.assetTag,name:asset.name,assignedTo:'测试员工',quantity:3,checkedOut:true}],events:[{time:'2026-11-12T09:00:00',operator:'admin',summary:'配件入库',changes:'{"数量":10}'}]};
@@ -82,8 +84,25 @@ async function main(){
     assert.equal(await picker.locator('.accessory-choice').count(),1);
     await picker.getByRole('button',{name:'关闭配件选择',exact:true}).click();
     await page.getByRole('button',{name:'保存修改',exact:true}).click();
-    await page.waitForFunction(()=>!document.querySelector('.asset-form')) .catch(()=>{});
+    await page.locator('.symmetric-asset-form').waitFor({state:'hidden'});
     assert.equal(saved.relatedDevices[0].stockId,7);assert.equal(saved.relatedDevices[0].model,'罗技');
+    asset.relatedDevices=saved.relatedDevices;
+    const display={...asset,id:11,assetTag:'202611120002',name:'配套显示器',relatedDevices:[],category:{id:6,type:'CATEGORY',name:'显示器',assetProfile:'DISPLAY'},boundDisplays:[],boundComputer:{id:asset.id,assetTag:asset.assetTag,name:asset.name,model:model.name,category:category.name}};
+    asset.boundDisplays=[{id:display.id,assetTag:display.assetTag,name:display.name,model:model.name,category:display.category.name}];allAssets.push(display);
+    await page.goto(server.resolvedUrls.local[0]);
+    await page.locator('.asset-name').filter({hasText:'测试电脑'}).waitFor();
+    if(!await page.getByRole('button',{name:'全部资产',exact:true}).isVisible())await page.getByRole('button',{name:'资产',exact:true}).click();
+    await page.getByRole('button',{name:'全部资产',exact:true}).click();
+    await page.getByRole('button',{name:/编辑/}).first().click();
+    await page.getByRole('button',{name:'移除配件 鼠标',exact:true}).click();
+    let confirmations=0;
+    page.once('dialog',async dialog=>{confirmations++;assert.match(dialog.message(),/实际拆下/);await dialog.dismiss();});
+    await page.getByRole('button',{name:'保存整套设备',exact:true}).click();
+    assert.equal(confirmations,1);assert.equal(bundleSaved,null,'cancelled return must not submit a bundle');
+    page.once('dialog',async dialog=>{confirmations++;await dialog.accept();});
+    await page.getByRole('button',{name:'保存整套设备',exact:true}).click();
+    await page.locator('.bundle-result').waitFor();
+    assert.equal(confirmations,2);assert.equal(bundleSaved.confirmAccessoryReturn,true);assert.deepEqual(bundleSaved.computer.relatedDevices,[]);
     assert.deepEqual(errors,[]);
     console.log('PASS accessory inventory: menu, totals, restock, usage details, square picker desktop/mobile, saved stock identity.');
   }finally{await browser?.close();await server.httpServer.close();}

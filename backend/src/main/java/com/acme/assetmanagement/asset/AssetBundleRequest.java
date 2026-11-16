@@ -11,7 +11,9 @@ public record AssetBundleRequest(
         @Positive Long cloneSourceId,
         @NotNull @Valid AssetRequest computer,
         @NotNull @Size(max = 8) List<@NotNull @Valid AssetRequest> displays,
-        @NotNull @Size(max = 20) List<@NotNull @Valid ExistingDisplay> existingDisplays
+        @NotNull @Size(max = 20) List<@NotNull @Valid ExistingDisplay> existingDisplays,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        Boolean confirmAccessoryReturn
 ) {
     public record ExistingDisplay(@NotNull @Positive Long id, @NotNull @PositiveOrZero Long version) {}
 }

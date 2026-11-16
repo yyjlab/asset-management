@@ -165,6 +165,49 @@ class AssetBundleApiTest {
         data.put("assetTag", pc.get("assetTag").asText()); body.put("computer", data); long count = assets.count();
         save(body, 409); assertEquals(count, assets.count());
     }
+    @Test void editingBundleReturnsStockOnlyAfterExplicitConfirmationAndReplayDoesNotReturnTwice() throws Exception {
+        var body = bundle(1); var data = computer(body);
+        var stock = json.readTree(mvc.perform(post("/api/accessory-stock").with(admin()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(Map.of(
+                        "type", "鼠标", "brand", "BUNDLE-" + UUID.randomUUID(), "quantity", 3,
+                        "companyId", data.get("companyId"), "locationId", data.get("locationId")))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray());
+        data.put("relatedDevices", List.of(Map.of("name", "鼠标", "model", stock.get("brand").asText(),
+                "quantity", 1, "stockId", stock.get("id").asLong())));
+        var created = save(body, 200); var pc = created.get("computer"); var monitor = created.get("displays").get(0);
+        data.put("assetTag", pc.get("assetTag").asText()); data.put("relatedDevices", List.of());
+        data.put("boundDisplayIds", List.of(monitor.get("id").asLong()));
+        body.put("requestKey", UUID.randomUUID().toString()); body.put("computerId", pc.get("id").asLong());
+        body.put("computerVersion", pc.get("version").asLong()); body.put("displays", List.of());
+        body.put("existingDisplays", List.of(Map.of("id", monitor.get("id").asLong(), "version", monitor.get("version").asLong())));
+        save(body, 409);
+        assertEquals(1, getAsset(pc.get("id").asLong()).get("relatedDevices").size());
+        body.put("confirmAccessoryReturn", true);
+        var returned = save(body, 200); assertEquals(0, returned.get("computer").get("relatedDevices").size());
+        assertTrue(save(body, 200).get("replayed").asBoolean());
+        var inventory = json.readTree(mvc.perform(get("/api/accessory-stock").with(admin())).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        for (var row : inventory) if (row.get("id").equals(stock.get("id"))) assertEquals(3, row.get("available").asInt());
+        body.put("confirmAccessoryReturn", false); save(body, 409);
+    }
+    @Test void backupGuardRetainsSnapshotImagesAndRetriesCleanupAfterBackup() throws Exception {
+        var data = device(false); data.put("imageUrls", List.of(photo()));
+        var pc = create(data);
+        var directory = Path.of(System.getProperty("java.io.tmpdir"), "asset-bundle-test-images");
+        var image = directory.resolve(pc.get("imageUrl").asText().substring("/api/public/asset-images/".length()));
+        var guard = directory.resolve(".backup-in-progress");
+        Files.createDirectory(guard);
+        try {
+            data.put("assetTag", pc.get("assetTag").asText()); data.put("imageUrls", List.of());
+            mvc.perform(put("/api/assets/{id}", pc.get("id").asLong()).with(admin()).with(csrf())
+                    .header("If-Match", pc.get("version").asLong()).contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsBytes(data))).andExpect(status().isOk());
+            assertTrue(Files.isRegularFile(image), "database backup may still reference the removed image");
+            mvc.perform(get(pc.get("imageUrl").asText()).with(admin())).andExpect(status().isNotFound());
+        } finally { Files.delete(guard); }
+        create(device(false));
+        assertFalse(Files.exists(image), "the next asset write must recheck references and retry deferred cleanup");
+    }
     @Test void lateFailureWhileEditingPreservesOldComputerPhotoVersionAndAllOriginalFields() throws Exception {
         var data = device(false); data.put("imageUrls", List.of(photo())); data.put("notes", "原有生产档案的测试副本");
         var pc = create(data); var body = bundle(2); body.put("computerId", pc.get("id").asLong()); body.put("computerVersion", pc.get("version").asLong());

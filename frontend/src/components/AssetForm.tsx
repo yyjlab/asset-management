@@ -308,6 +308,12 @@ export function AssetForm({ asset, clone = false, lookups, bindableAssets, assig
     try {
       if (!bundleKey.current) bundleKey.current = newBundleKey()
       const payload = buildAssetBundle(computer, newDisplays, bindableAssets, bundleKey.current, asset, clone)
+      const returning = !clone && asset?.relatedDevices.some(item => item.stockId &&
+        computer.relatedDevices.filter(next => next.stockId === item.stockId).reduce((sum, next) => sum + next.quantity, 0) < item.quantity)
+      if (returning) {
+        if (!window.confirm('已减少或移除库存配件。请确认这些配件已实际拆下，保存后退回可用库存。损坏配件退库后请在配件库存中报废。')) return
+        payload.confirmAccessoryReturn = true
+      }
       await submitBundle(payload)
     } catch (reason) { setBundleError(reason instanceof Error ? reason.message : '请检查整套设备信息') }
   }

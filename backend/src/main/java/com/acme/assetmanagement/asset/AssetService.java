@@ -58,6 +58,32 @@ public class AssetService {
     }
 
     @Transactional(readOnly = true)
+    public Map<String, Long> summary() {
+        var scope = access.scope();
+        var rows = assetRepository.summaryScoped(
+                scope.type() == com.acme.assetmanagement.user.DataScope.ALL,
+                scope.type() == com.acme.assetmanagement.user.DataScope.SELF, scope.userId(),
+                scope.type() == com.acme.assetmanagement.user.DataScope.DEPARTMENT,
+                scope.departments().isEmpty() ? java.util.Set.of("") : scope.departments());
+        long total = 0, checkedOut = 0, available = 0, maintenance = 0, scrapped = 0;
+        for (var row : rows) {
+            // Preserve the exact department boundary even with a case-insensitive database collation.
+            if (scope.type() == com.acme.assetmanagement.user.DataScope.DEPARTMENT
+                    && (row.getDepartment() == null || !scope.departments().contains(row.getDepartment()))) continue;
+            String status = row.getStatusName();
+            boolean isMaintenance = status.contains("维修") || status.contains("维护");
+            boolean isScrapped = status.contains("报废");
+            total++;
+            if (row.getCheckedOut() && !isScrapped) checkedOut++;
+            if (!row.getCheckedOut() && !isMaintenance && !isScrapped) available++;
+            if (isMaintenance) maintenance++;
+            if (isScrapped) scrapped++;
+        }
+        return Map.of("total", total, "checkedOut", checkedOut, "available", available,
+                "maintenance", maintenance, "scrapped", scrapped);
+    }
+
+    @Transactional(readOnly = true)
     public AssetResponse get(Long id) {
         return response(findAsset(id));
     }

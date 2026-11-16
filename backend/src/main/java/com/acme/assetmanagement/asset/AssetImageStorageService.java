@@ -32,6 +32,7 @@ public class AssetImageStorageService {
     private final AssetRepository repository;
     private final AssetTagSequenceRepository sequenceRepository;
     private final java.util.concurrent.locks.ReentrantLock imageChanges = new java.util.concurrent.locks.ReentrantLock();
+    private final java.util.Set<String> deferredDeletes = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public AssetImageStorageService(@Value("${app.asset-images.directory:./data/asset-images}") String directory,
                                    AssetRepository repository, AssetTagSequenceRepository sequenceRepository) {
@@ -135,8 +136,9 @@ public class AssetImageStorageService {
     }
 
     public void removeAfterCommit(List<String> references) {
-        var candidates = references.stream().filter(java.util.Objects::nonNull)
-                .filter(value -> value.startsWith(PUBLIC_URL_PREFIX)).distinct().toList();
+        var candidates = java.util.stream.Stream.concat(
+                references.stream().filter(java.util.Objects::nonNull).filter(value -> value.startsWith(PUBLIC_URL_PREFIX)),
+                deferredDeletes.stream().map(name -> PUBLIC_URL_PREFIX + name)).distinct().toList();
         if (candidates.isEmpty()) return;
         lockImageChanges();
         org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
@@ -146,6 +148,7 @@ public class AssetImageStorageService {
                         repository.flush();
                         candidates.forEach(reference -> {
                             if (repository.countImageReferences(reference) == 0) unused.add(reference);
+                            else deferredDeletes.remove(reference.substring(PUBLIC_URL_PREFIX.length()));
                         });
                     }
                     @Override public void afterCommit() {
@@ -156,8 +159,19 @@ public class AssetImageStorageService {
 
     private void deleteFile(String fileName) {
         if (!STORED_FILE_NAME.matcher(fileName).matches()) return;
-        try { Files.deleteIfExists(directory.resolve(fileName)); }
+        // The backup creates this guard before opening its database snapshot. A deletion which
+        // passed this check earlier belongs to an already committed transaction, so that snapshot
+        // cannot reference it. Image contents are immutable; new images need no deletion guard.
+        if (Files.exists(directory.resolve(".backup-in-progress"))) {
+            deferredDeletes.add(fileName);
+            return;
+        }
+        try {
+            Files.deleteIfExists(directory.resolve(fileName));
+            deferredDeletes.remove(fileName);
+        }
         catch (IOException exception) {
+            deferredDeletes.add(fileName);
             org.slf4j.LoggerFactory.getLogger(getClass()).warn("Unable to remove unreferenced asset image {}", fileName, exception);
         }
     }

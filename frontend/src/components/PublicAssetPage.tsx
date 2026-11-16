@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, api } from '../api'
 import App from '../App'
 import type { AuthUser, PublicAsset } from '../types'
+import { KnownDefectDetails } from './KnownDefects'
 import { BoxesIcon, CheckIcon, CloseIcon, ReturnIcon, UserIcon } from './Icons'
 
 interface Props { qrToken: string }
@@ -133,6 +134,8 @@ export function PublicAssetPage({ qrToken }: Props) {
         <div><span>ASSET RECORD</span><h1>{asset.name}</h1><p>资产编号 <strong>{asset.assetTag}</strong></p></div>
         <b className={`public-status ${stateTone(asset)}`}>{stateLabel(asset)}</b>
       </header>
+
+      <KnownDefectDetails defects={asset.knownDefects} />
 
       {images.length > 0 && <div className="public-asset-gallery">{images.map((source, index) => <img src={source} alt={`${asset.name}图片${index + 1}`} key={`${source.slice(-24)}-${index}`} />)}</div>}
 

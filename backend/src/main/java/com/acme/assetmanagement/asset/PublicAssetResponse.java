@@ -30,7 +30,8 @@ public record PublicAssetResponse(
         PublicAssetLink boundComputer,
         List<PublicRelatedDevice> relatedDevices,
         LocalDateTime updatedAt,
-        long version
+        long version,
+        List<AssetResponse.KnownDefectResponse> knownDefects
 ) {
     public static PublicAssetResponse from(Asset asset) {
         return from(asset, ignored -> true);
@@ -61,7 +62,8 @@ public record PublicAssetResponse(
                 asset.isCheckedOut(), asset.getAssignedTo(), images.isEmpty() ? null : images.getFirst(), images,
                 asset.getBoundDisplays().stream().filter(visible).map(PublicAssetLink::from).toList(),
                 asset.getBoundComputers().stream().filter(visible).findFirst().map(PublicAssetLink::from).orElse(null),
-                List.copyOf(devices), asset.getUpdatedAt(), asset.getVersion()
+                List.copyOf(devices), asset.getUpdatedAt(), asset.getVersion(),
+                asset.getKnownDefects().stream().map(AssetResponse.KnownDefectResponse::from).toList()
         );
     }
 

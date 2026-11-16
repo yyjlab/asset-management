@@ -40,7 +40,27 @@ if [[ -z "$(docker compose ps -q backend)" ]]; then
   exit 1
 fi
 
-trap 'rm -f "$TEMP_FILE" "$IMAGE_TEMP_FILE"' EXIT
+BACKUP_GUARD_CREATED=false
+cleanup() {
+  local status=$?
+  trap - EXIT
+  if [[ "$BACKUP_GUARD_CREATED" == true ]]; then
+    if ! docker compose exec -T backend sh -c 'rmdir /app/data/asset-images/.backup-in-progress'; then
+      echo "错误：图片备份保护标记未能移除；请确认备份进程已结束后人工检查。图片不会被自动删除。" >&2
+      status=1
+    fi
+  fi
+  rm -f -- "$TEMP_FILE" "$IMAGE_TEMP_FILE"
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Defer physical image deletion until both snapshots are complete; asset edits remain available.
+# An existing guard fails closed, including a guard left by an interrupted backup.
+docker compose exec -T backend sh -c 'mkdir -p /app/data/asset-images; mkdir /app/data/asset-images/.backup-in-progress'
+BACKUP_GUARD_CREATED=true
 
 docker compose exec -T mysql sh -c \
   'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --quick --routines --triggers --events --hex-blob --default-character-set=utf8mb4 --set-gtid-purged=OFF --no-tablespaces "$MYSQL_DATABASE"' \
@@ -48,7 +68,7 @@ docker compose exec -T mysql sh -c \
 
 test -s "$TEMP_FILE"
 gzip -t "$TEMP_FILE"
-docker compose exec -T backend sh -c 'mkdir -p /app/data/asset-images; tar -czf - -C /app/data asset-images' > "$IMAGE_TEMP_FILE"
+docker compose exec -T backend sh -c 'tar --exclude=asset-images/.backup-in-progress -czf - -C /app/data asset-images' > "$IMAGE_TEMP_FILE"
 gzip -t "$IMAGE_TEMP_FILE"
 tar -tzf "$IMAGE_TEMP_FILE" >/dev/null
 mv "$IMAGE_TEMP_FILE" "$IMAGE_FILE"
