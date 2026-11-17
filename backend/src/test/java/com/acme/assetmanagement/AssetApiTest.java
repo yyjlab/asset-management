@@ -232,13 +232,24 @@ class AssetApiTest {
     }
 
     @Test
-    void qrAssetRecordRequiresAuthenticationAndHidesSensitiveFields() throws Exception {
+    void qrAssetRecordAllowsAnonymousBasicReadButHidesSensitiveFields() throws Exception {
         var asset = assetRepository.findAll().stream()
                 .filter(item -> "202609010001".equals(item.getAssetTag()))
                 .findFirst().orElseThrow();
 
         mockMvc.perform(get("/api/public/assets/{qrToken}", asset.getQrToken()))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assetTag").value(asset.getAssetTag()))
+                .andExpect(jsonPath("$.computerModel").isNotEmpty())
+                .andExpect(jsonPath("$.assignedTo").doesNotExist())
+                .andExpect(jsonPath("$.company").doesNotExist())
+                .andExpect(jsonPath("$.ownershipDepartment").doesNotExist())
+                .andExpect(jsonPath("$.location").doesNotExist())
+                .andExpect(jsonPath("$.manufacturerSerialNumber").doesNotExist())
+                .andExpect(jsonPath("$.orderNumber").doesNotExist())
+                .andExpect(jsonPath("$.relatedDevices").isEmpty())
+                .andExpect(jsonPath("$.boundDisplays").isEmpty())
+                .andExpect(jsonPath("$.knownDefects").isEmpty());
         mockMvc.perform(get("/api/public/assets/{qrToken}", asset.getQrToken()).with(assetUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assetTag").value("202609010001"))
@@ -255,6 +266,45 @@ class AssetApiTest {
 
         mockMvc.perform(get("/api/assets"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/assets/qr/{qrToken}/return-info", asset.getQrToken()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/public/assets"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/public/assets/{qrToken}", asset.getQrToken()).with(csrf()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void qrPhotosAreRestrictedToTheScannedAssetAndDoNotOpenTheImageDirectory() throws Exception {
+        var asset = assetRepository.findByAssetTagIgnoreCase("202609010001").orElseThrow();
+        String name = "abcdef0123456789abcdef0123456789.png";
+        var directory = java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "asset-management-test-images");
+        java.nio.file.Files.createDirectories(directory);
+        var file = directory.resolve(name);
+        byte[] png = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT1sAAAAASUVORK5CYII=");
+        java.nio.file.Files.write(file, png);
+        try {
+            asset.setImageUrl("/api/public/asset-images/" + name);
+            asset.getImageUrls().clear();
+            asset.getImageUrls().add("https://example.invalid/private?secret=do-not-share");
+            asset.getImageUrls().add(asset.getImageUrl());
+            assetRepository.saveAndFlush(asset);
+            mockMvc.perform(get("/api/public/assets/{token}", asset.getQrToken()))
+                    .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.imageUrls.length()").value(1))
+                    .andExpect(jsonPath("$.imageUrls[0]").value("/api/public/assets/" + asset.getQrToken() + "/images/0"));
+            mockMvc.perform(get("/api/public/assets/{token}/images/0", asset.getQrToken()))
+                    .andExpect(status().isOk()).andExpect(content().contentType(MediaType.IMAGE_PNG))
+                    .andExpect(header().string("Cache-Control", "no-store")).andExpect(content().bytes(png));
+            for (String index : java.util.List.of("-1", "1", name)) {
+                mockMvc.perform(get("/api/public/assets/{token}/images/{index}", asset.getQrToken(), index))
+                        .andExpect(status().is4xxClientError());
+            }
+            mockMvc.perform(get("/api/public/assets/not-a-real-token/images/0")).andExpect(status().isNotFound());
+            mockMvc.perform(get("/api/public/asset-images/" + name)).andExpect(status().isUnauthorized());
+            asset.getImageUrls().clear(); asset.setImageUrl(null); assetRepository.saveAndFlush(asset);
+            mockMvc.perform(get("/api/public/assets/{token}/images/0", asset.getQrToken())).andExpect(status().isNotFound());
+        } finally { java.nio.file.Files.deleteIfExists(file); }
     }
 
     @Test

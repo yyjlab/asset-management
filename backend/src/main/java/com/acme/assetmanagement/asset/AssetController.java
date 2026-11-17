@@ -118,6 +118,12 @@ public class AssetController {
         return service.returnAssetByQrToken(qrToken, version);
     }
 
+    @GetMapping("/qr/{qrToken}/return-info")
+    @PreAuthorize("hasAuthority('ASSET_RETURN')")
+    public ResponseEntity<PublicAssetResponse> returnInfo(@PathVariable String qrToken) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.getPublicByQrToken(qrToken));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ASSET_DELETE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)

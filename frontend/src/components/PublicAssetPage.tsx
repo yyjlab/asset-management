@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, api } from '../api'
-import App from '../App'
 import type { AuthUser, PublicAsset } from '../types'
 import { KnownDefectDetails } from './KnownDefects'
 import { BoxesIcon, CheckIcon, CloseIcon, ReturnIcon, UserIcon } from './Icons'
@@ -22,13 +21,13 @@ export function PublicAssetPage({ qrToken }: Props) {
   const [error, setError] = useState('')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
-  const [needsLogin, setNeedsLogin] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loginLoading, setLoginLoading] = useState(false)
   const [returning, setReturning] = useState(false)
+  const [checkingReturn, setCheckingReturn] = useState(false)
   const [actionError, setActionError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -37,7 +36,7 @@ export function PublicAssetPage({ qrToken }: Props) {
 
   useEffect(() => {
     refreshAsset()
-      .catch((reason) => { setNeedsLogin(reason instanceof ApiError && reason.status === 401); setError(reason instanceof Error ? reason.message : '无法读取资产档案') })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : '无法读取资产档案'))
     api.me().then(setAuthUser).catch(() => setAuthUser(null)).finally(() => setAuthReady(true))
   }, [qrToken])
 
@@ -52,13 +51,27 @@ export function PublicAssetPage({ qrToken }: Props) {
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [loginLoading, returning])
 
-  const requestReturn = () => {
-    if (!authReady) return
+  const prepareReturn = async () => {
+    setCheckingReturn(true)
+    try {
+      const details = await api.getQrReturnInfo(qrToken)
+      setAsset(details)
+      if (!details.checkedOut) { setActionError('资产已归还，无需重复操作'); return }
+      setLoginOpen(false)
+      setConfirmOpen(true)
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 401) { setAuthUser(null); setLoginOpen(true) }
+      setActionError(reason instanceof Error ? reason.message : '无法核对归还信息')
+    } finally { setCheckingReturn(false) }
+  }
+
+  const requestReturn = async () => {
+    if (!authReady || checkingReturn) return
     setActionError('')
     setSuccess('')
     if (!authUser) { setLoginOpen(true); return }
     if (!canReturn(authUser)) { setActionError('当前登录账号没有资产归还权限'); return }
-    setConfirmOpen(true)
+    await prepareReturn()
   }
 
   const loginForReturn = async (event: FormEvent) => {
@@ -73,8 +86,7 @@ export function PublicAssetPage({ qrToken }: Props) {
         setActionError('登录成功，但该账号没有资产归还权限')
         return
       }
-      setLoginOpen(false)
-      setConfirmOpen(true)
+      await prepareReturn()
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : '登录失败，请稍后重试')
     } finally {
@@ -102,7 +114,6 @@ export function PublicAssetPage({ qrToken }: Props) {
     }
   }
 
-  if (needsLogin) return <App />
   if (error) return <main className="public-asset-state"><div><BoxesIcon /><h1>无法打开资产档案</h1><p>{error}</p><small>请确认有此资产的查看权限，或联系资产管理员。</small></div></main>
   if (!asset) return <main className="public-asset-state"><div><span className="spinner" /><h1>正在读取设备信息</h1><p>请稍候…</p></div></main>
 
@@ -122,8 +133,8 @@ export function PublicAssetPage({ qrToken }: Props) {
     ...deviceFields,
     ['资产分类', value(asset.category)], ['所属公司', value(asset.company)],
     ['归属部门', value(asset.ownershipDepartment)],
-    ['存放位置', value(asset.location)], ['领用人', asset.checkedOut ? value(asset.assignedTo) : '暂未领用'],
-  ]
+    ['存放位置', value(asset.location)], ['领用人', asset.assignedTo ? asset.assignedTo : '—'],
+  ].filter(([label, content]) => content !== '—' || !['订单号', '所属公司', '归属部门', '存放位置', '领用人'].includes(label))
   const boundAssets = asset.assetProfile === 'COMPUTER' ? asset.boundDisplays : asset.boundComputer ? [asset.boundComputer] : []
   const images = asset.imageUrls?.length ? asset.imageUrls : asset.imageUrl ? [asset.imageUrl] : []
 
@@ -143,7 +154,7 @@ export function PublicAssetPage({ qrToken }: Props) {
         {fields.map(([label, content]) => <div key={label}><span>{label}</span><strong>{content}</strong></div>)}
       </section>
 
-      {asset.assetProfile !== 'GENERAL' && <section className="public-related-section">
+      {boundAssets.length > 0 && asset.assetProfile !== 'GENERAL' && <section className="public-related-section">
         <div className="public-section-title"><h2>设备绑定</h2><span>{boundAssets.length} 项</span></div>
         {boundAssets.length === 0
           ? <p className="public-empty">{asset.assetProfile === 'DISPLAY' ? '暂未绑定电脑' : asset.assetProfile === 'COMPUTER' ? '暂未绑定显示器' : '通用设备无需绑定'}</p>
@@ -155,7 +166,7 @@ export function PublicAssetPage({ qrToken }: Props) {
             </div>)}</div>}
       </section>}
 
-      <section className="public-related-section public-accessory-section">
+      {asset.relatedDevices.length > 0 && <section className="public-related-section public-accessory-section">
         <div className="public-section-title"><h2>随附配件</h2><span>{asset.relatedDevices.length} 项</span></div>
         {asset.relatedDevices.length === 0
           ? <p className="public-empty">暂无随附配件</p>
@@ -165,24 +176,24 @@ export function PublicAssetPage({ qrToken }: Props) {
               <div><span>序列号</span><strong>{value(device.serialNumber)}</strong></div>
               <b>×{device.quantity}</b>
             </div>)}</div>}
-      </section>
+      </section>}
 
       <section className="public-action-shell" aria-label="资产业务操作">
         <div className={`public-action-panel ${asset.checkedOut ? 'can-return' : 'is-available'}`}>
           <div className="public-action-copy">
             <span>{asset.checkedOut ? 'MOBILE RETURN' : 'ASSET AVAILABLE'}</span>
             <h2>{asset.checkedOut ? '确认设备无误后，可直接用手机归还' : '该资产当前无需归还'}</h2>
-            <p>{asset.checkedOut ? `当前领用人：${value(asset.assignedTo)}。实际归还前需要登录并再次确认。` : '资产当前没有领用记录，系统不会重复执行归还。'}</p>
+            <p>{asset.checkedOut ? '归还需要登录，并在核对设备后再次确认。' : '资产当前没有领用记录，系统不会重复执行归还。'}</p>
           </div>
           {asset.checkedOut
-            ? <button className="public-return-cta" type="button" disabled={!authReady} onClick={requestReturn}><span>{authReady ? '归还资产' : '正在验证权限'}</span><b><ReturnIcon /></b></button>
+            ? <button className="public-return-cta" type="button" disabled={!authReady || checkingReturn} onClick={() => void requestReturn()}><span>{checkingReturn ? '正在核对设备' : authReady ? '归还资产' : '正在验证权限'}</span><b><ReturnIcon /></b></button>
             : <div className="public-action-complete"><CheckIcon /><span>{stateLabel(asset)}</span></div>}
         </div>
         {success && <div className="public-action-message success" role="status"><CheckIcon /><span>{success}</span></div>}
         {actionError && !loginOpen && !confirmOpen && <div className="public-action-message error" role="alert"><span>{actionError}</span></div>}
       </section>
 
-      <footer className="public-asset-foot"><span>数据更新时间</span><strong>{time(asset.updatedAt)}</strong><small>资产档案仅供授权账号查看，业务操作需要再次确认</small></footer>
+      <footer className="public-asset-foot"><span>数据更新时间</span><strong>{time(asset.updatedAt)}</strong><small>扫码可查看设备基本信息，归还需要登录并具备归还权限</small></footer>
     </article>
 
     {loginOpen && <div className="public-action-backdrop" onMouseDown={(event) => event.target === event.currentTarget && !loginLoading && setLoginOpen(false)}>

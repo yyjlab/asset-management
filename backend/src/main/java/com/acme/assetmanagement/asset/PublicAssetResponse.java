@@ -33,6 +33,30 @@ public record PublicAssetResponse(
         long version,
         List<AssetResponse.KnownDefectResponse> knownDefects
 ) {
+    // A QR token grants basic read access, not access to staff, procurement or internal records.
+    public static PublicAssetResponse shared(Asset asset) {
+        List<String> images = java.util.stream.IntStream.range(0, storedImages(asset).size())
+                .mapToObj(index -> "/api/public/assets/" + asset.getQrToken() + "/images/" + index).toList();
+        return new PublicAssetResponse(asset.getAssetTag(), asset.getName(), null,
+                asset.getModel() == null ? null : asset.getModel().getName(),
+                asset.getCpu(), asset.getMemory(), asset.getStorage(), asset.getGraphicsCard(),
+                asset.getScreenSize(), asset.getDisplayResolution(), asset.getDisplayInterface(),
+                null, null, null,
+                asset.getCategory() == null ? null : asset.getCategory().getName(),
+                asset.getCategory() == null || asset.getCategory().getAssetProfile() == null
+                        ? "GENERAL" : asset.getCategory().getAssetProfile().name(),
+                asset.getStatus() == null ? null : asset.getStatus().getName(),
+                null, asset.isCheckedOut(), null, images.isEmpty() ? null : images.getFirst(), images,
+                List.of(), null, List.of(), asset.getUpdatedAt(), asset.getVersion(), List.of());
+    }
+
+    static List<String> storedImages(Asset asset) {
+        List<String> images = asset.getImageUrls().isEmpty()
+                ? asset.getImageUrl() == null ? List.of() : List.of(asset.getImageUrl()) : asset.getImageUrls();
+        // Never proxy external URLs or expose their embedded tokens to anonymous visitors.
+        return images.stream().filter(image -> image.startsWith(AssetImageStorageService.PUBLIC_URL_PREFIX)).toList();
+    }
+
     public static PublicAssetResponse from(Asset asset) {
         return from(asset, ignored -> true);
     }

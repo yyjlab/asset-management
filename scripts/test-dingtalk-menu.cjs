@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  const bundleFiles = ['assetBundle.ts', 'assetGroups.ts', 'featureVisibility.ts', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
+  const bundleFiles = ['assetBundle.ts', 'assetGroups.ts', 'featureVisibility.ts', 'components/KnownDefects.tsx', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
   compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx', 'components/AccessoryOptions.tsx', 'components/AssetAccessories.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',

@@ -49,6 +49,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/csrf", "/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/public/assets/{qrToken}", "/api/public/assets/{qrToken}/images/{index}",
                                 "/api/v1/auth/dingtalk/status", "/api/v1/auth/dingtalk/login",
                                 "/api/v1/auth/dingtalk/callback").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/auth/dingtalk/qr").permitAll()

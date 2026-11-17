@@ -180,6 +180,7 @@ export const api = {
   updateUserAccess: (id: number, payload: AccessPayload) => mutate<ManagedUser>(`/api/users/${id}/access`, { method: 'PUT', body: JSON.stringify(payload) }),
   getAsset: (id: number) => request<Asset>(`/api/assets/${id}`),
   getPublicAsset: (qrToken: string) => request<PublicAsset>(`/api/public/assets/${encodeURIComponent(qrToken)}`),
+  getQrReturnInfo: (qrToken: string) => request<PublicAsset>(`/api/assets/qr/${encodeURIComponent(qrToken)}/return-info`),
   me: () => request<AuthUser>('/api/auth/me'),
   dingtalkStatus: () => request<{ enabled: boolean; bound: boolean }>('/api/v1/auth/dingtalk/status'),
   beginDingtalkQr: () => mutate<DingTalkQrAuthorization>('/api/v1/auth/dingtalk/qr', { method: 'POST' }),

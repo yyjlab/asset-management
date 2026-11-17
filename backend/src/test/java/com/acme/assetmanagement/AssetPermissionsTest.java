@@ -68,7 +68,9 @@ class AssetPermissionsTest {
                 .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value(own.getId()));
         mvc.perform(get("/api/assets/{id}", other.getId()).session(session)).andExpect(status().isNotFound());
         mvc.perform(get("/api/assets/{id}/qr", other.getId()).session(session)).andExpect(status().isNotFound());
-        mvc.perform(get("/api/public/assets/{token}", other.getQrToken()).session(session)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/assets/{token}", other.getQrToken()).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedTo").doesNotExist()).andExpect(jsonPath("$.ownershipDepartment").doesNotExist());
+        mvc.perform(get("/api/assets/qr/{token}/return-info", other.getQrToken()).session(session)).andExpect(status().isForbidden());
         mvc.perform(get("/api/public/asset-images/hidden-test.png").session(session)).andExpect(status().isNotFound());
         mvc.perform(get("/api/public/assets/{token}", own.getQrToken()).session(session)).andExpect(status().isOk());
         mvc.perform(get("/api/assets/summary").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
@@ -88,11 +90,16 @@ class AssetPermissionsTest {
         own.setStatus(lookups.findByTypeAndNameIgnoreCase(LookupType.STATUS, "在用").orElseThrow());
         assets.saveAndFlush(own);
         var session = login(employee);
+        mvc.perform(get("/api/assets/qr/{token}/return-info", own.getQrToken()).session(session))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.assignedTo").value(employee.getDisplayName()));
         mvc.perform(post("/api/assets/qr/{token}/return", own.getQrToken()).session(session).with(csrf()).header("If-Match", own.getVersion()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.checkedOut").value(false))
                 .andExpect(jsonPath("$.assignedUserId").doesNotExist());
-        mvc.perform(get("/api/public/assets/{token}", own.getQrToken()).session(session))
+        mvc.perform(get("/api/assets/qr/{token}/return-info", own.getQrToken()).session(session))
                 .andExpect(status().isNotFound());
+        mvc.perform(get("/api/public/assets/{token}", own.getQrToken()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.checkedOut").value(false));
         assertFalse(assets.findById(own.getId()).orElseThrow().isCheckedOut());
     }
 

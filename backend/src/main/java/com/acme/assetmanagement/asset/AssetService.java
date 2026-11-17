@@ -89,6 +89,23 @@ public class AssetService {
     }
 
     @Transactional(readOnly = true)
+    public PublicAssetResponse getSharedByQrToken(String qrToken) {
+        return PublicAssetResponse.shared(findSharedAsset(qrToken));
+    }
+
+    @Transactional(readOnly = true)
+    public String getSharedImage(String qrToken, int index) {
+        var images = PublicAssetResponse.storedImages(findSharedAsset(qrToken));
+        if (index < 0 || index >= images.size()) throw new ApiException(HttpStatus.NOT_FOUND, "图片不存在");
+        return images.get(index).substring(AssetImageStorageService.PUBLIC_URL_PREFIX.length());
+    }
+
+    private Asset findSharedAsset(String qrToken) {
+        return assetRepository.findByQrToken(qrToken)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "二维码对应的资产不存在或已被删除"));
+    }
+
+    @Transactional(readOnly = true)
     public PublicAssetResponse getPublicByQrToken(String qrToken) {
         Asset asset = assetRepository.findByQrToken(qrToken)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "二维码对应的资产不存在或已被删除"));
