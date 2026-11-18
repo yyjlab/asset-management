@@ -133,20 +133,25 @@ export function PublicAssetPage({ qrToken }: Props) {
     ...deviceFields,
     ['资产分类', value(asset.category)], ['所属公司', value(asset.company)],
     ['归属部门', value(asset.ownershipDepartment)],
-    ['存放位置', value(asset.location)], ['领用人', asset.assignedTo ? asset.assignedTo : '—'],
-  ].filter(([label, content]) => content !== '—' || !['订单号', '所属公司', '归属部门', '存放位置', '领用人'].includes(label))
+    ['存放位置', value(asset.location)],
+  ].filter(([, content]) => content !== '—')
   const boundAssets = asset.assetProfile === 'COMPUTER' ? asset.boundDisplays : asset.boundComputer ? [asset.boundComputer] : []
   const images = asset.imageUrls?.length ? asset.imageUrls : asset.imageUrl ? [asset.imageUrl] : []
+  const assignee = asset.checkedOut ? asset.assignedTo?.trim() : ''
 
   return <main className="public-asset-page">
     <article className="public-asset-card">
       <header className="public-asset-head">
         <div className="public-asset-mark"><BoxesIcon /></div>
-        <div><span>ASSET RECORD</span><h1>{asset.name}</h1><p>资产编号 <strong>{asset.assetTag}</strong></p></div>
-        <b className={`public-status ${stateTone(asset)}`}>{stateLabel(asset)}</b>
+        <div className="public-asset-title"><h1>{asset.name}</h1><p>资产编号 <strong>{asset.assetTag}</strong></p>
+          <div className="public-asset-ownership">
+            <b className={`public-status ${stateTone(asset)}`}>{stateLabel(asset)}</b>
+            <div className={`public-assignee ${assignee ? 'has-holder' : 'no-holder'}`}><span>领用人</span><strong>{asset.checkedOut ? assignee || '领用人待补充' : '暂未领用'}</strong></div>
+          </div>
+        </div>
       </header>
 
-      <KnownDefectDetails defects={asset.knownDefects} />
+      {Boolean(asset.knownDefects?.length) && <KnownDefectDetails defects={asset.knownDefects} />}
 
       {images.length > 0 && <div className="public-asset-gallery">{images.map((source, index) => <img src={source} alt={`${asset.name}图片${index + 1}`} key={`${source.slice(-24)}-${index}`} />)}</div>}
 
@@ -156,39 +161,28 @@ export function PublicAssetPage({ qrToken }: Props) {
 
       {boundAssets.length > 0 && asset.assetProfile !== 'GENERAL' && <section className="public-related-section">
         <div className="public-section-title"><h2>设备绑定</h2><span>{boundAssets.length} 项</span></div>
-        {boundAssets.length === 0
-          ? <p className="public-empty">{asset.assetProfile === 'DISPLAY' ? '暂未绑定电脑' : asset.assetProfile === 'COMPUTER' ? '暂未绑定显示器' : '通用设备无需绑定'}</p>
-          : <div className="public-related-list">{boundAssets.map((device) => <div className="public-related-item" key={device.assetTag}>
+        <div className="public-related-list">{boundAssets.map((device) => <div className="public-related-item" key={device.assetTag}>
               <div><strong>{device.name}</strong><span>{device.assetTag}</span></div>
               <div><span>分类</span><strong>{value(device.category)}</strong></div>
               <div><span>型号</span><strong>{value(device.model)}</strong></div>
               <b>×1</b>
-            </div>)}</div>}
+            </div>)}</div>
       </section>}
 
       {asset.relatedDevices.length > 0 && <section className="public-related-section public-accessory-section">
         <div className="public-section-title"><h2>随附配件</h2><span>{asset.relatedDevices.length} 项</span></div>
-        {asset.relatedDevices.length === 0
-          ? <p className="public-empty">暂无随附配件</p>
-          : <div className="public-related-list">{asset.relatedDevices.map((device, index) => <div className="public-related-item" key={`${device.name}-${index}`}>
-              <div><strong>{device.name}</strong><span>{value(device.model)}</span></div>
-              <div><span>规格</span><strong>{value(device.specification)}</strong></div>
-              <div><span>序列号</span><strong>{value(device.serialNumber)}</strong></div>
+        <div className="public-related-list">{asset.relatedDevices.map((device, index) => <div className="public-related-item" key={`${device.name}-${index}`}>
+              <div><strong>{device.name}</strong>{device.model && <span>{device.model}</span>}</div>
+              {device.specification && <div><span>规格</span><strong>{device.specification}</strong></div>}
+              {device.serialNumber && <div><span>序列号</span><strong>{device.serialNumber}</strong></div>}
               <b>×{device.quantity}</b>
-            </div>)}</div>}
+            </div>)}</div>
       </section>}
 
       <section className="public-action-shell" aria-label="资产业务操作">
-        <div className={`public-action-panel ${asset.checkedOut ? 'can-return' : 'is-available'}`}>
-          <div className="public-action-copy">
-            <span>{asset.checkedOut ? 'MOBILE RETURN' : 'ASSET AVAILABLE'}</span>
-            <h2>{asset.checkedOut ? '确认设备无误后，可直接用手机归还' : '该资产当前无需归还'}</h2>
-            <p>{asset.checkedOut ? '归还需要登录，并在核对设备后再次确认。' : '资产当前没有领用记录，系统不会重复执行归还。'}</p>
-          </div>
-          {asset.checkedOut
+        {asset.checkedOut
             ? <button className="public-return-cta" type="button" disabled={!authReady || checkingReturn} onClick={() => void requestReturn()}><span>{checkingReturn ? '正在核对设备' : authReady ? '归还资产' : '正在验证权限'}</span><b><ReturnIcon /></b></button>
-            : <div className="public-action-complete"><CheckIcon /><span>{stateLabel(asset)}</span></div>}
-        </div>
+            : <div className="public-action-complete"><CheckIcon /><span>当前无需归还</span></div>}
         {success && <div className="public-action-message success" role="status"><CheckIcon /><span>{success}</span></div>}
         {actionError && !loginOpen && !confirmOpen && <div className="public-action-message error" role="alert"><span>{actionError}</span></div>}
       </section>

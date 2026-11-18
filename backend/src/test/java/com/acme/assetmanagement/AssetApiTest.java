@@ -241,7 +241,7 @@ class AssetApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assetTag").value(asset.getAssetTag()))
                 .andExpect(jsonPath("$.computerModel").isNotEmpty())
-                .andExpect(jsonPath("$.assignedTo").doesNotExist())
+                .andExpect(jsonPath("$.assignedTo").value(asset.isCheckedOut() ? asset.getAssignedTo() : null))
                 .andExpect(jsonPath("$.company").doesNotExist())
                 .andExpect(jsonPath("$.ownershipDepartment").doesNotExist())
                 .andExpect(jsonPath("$.location").doesNotExist())
@@ -272,6 +272,65 @@ class AssetApiTest {
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/public/assets/{qrToken}", asset.getQrToken()).with(csrf()))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void qrSharesHolderAndDirectEquipmentWithoutPrivateFieldsOrChangingTheLedger() throws Exception {
+        var asset = assetRepository.findByAssetTagIgnoreCase("202609010001").orElseThrow();
+        var display = new com.acme.assetmanagement.asset.Asset();
+        display.setAssetTag("960000009881"); display.setName("AOC显示器");
+        display.setCompany(asset.getCompany()); display.setModel(asset.getModel());
+        display.setCategory(lookupRepository.findByTypeOrderByNameAsc(LookupType.CATEGORY).stream()
+                .filter(category -> category.getAssetProfile() == AssetProfile.DISPLAY).findFirst().orElseThrow());
+        display.setStatus(asset.getStatus()); display.setLocation(asset.getLocation());
+        display.setAssignedTo("另一设备的领用人"); display.setNotes("显示器内部备注");
+        assetRepository.saveAndFlush(display);
+        asset.setCheckedOut(true); asset.setAssignedTo("扫码领用人");
+        asset.setCpu("13th Gen Intel(R) Core(TM) i5-13420H"); asset.setMemory("15.53 GiB");
+        asset.setStorage("UMIS RPEYJ1T24MKN2QWY 953.87 GiB (NVMe)");
+        asset.setNotes("电脑内部备注");
+        asset.getBoundDisplays().add(display);
+        asset.getRelatedDevices().clear();
+        asset.getRelatedDevices().add(new com.acme.assetmanagement.asset.RelatedDevice(
+                "键盘", "K120", "PRIVATE-SERIAL", "PRIVATE-ORDER", "USB有线", 2));
+        asset.getAccessories().clear();
+        asset.getAccessories().add(new com.acme.assetmanagement.asset.AssetAccessory("鼠标", "无线", 1));
+        assetRepository.saveAndFlush(asset);
+        long version = asset.getVersion();
+        mockMvc.perform(get("/api/public/assets/{token}", asset.getQrToken()))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.assignedTo").value("扫码领用人"))
+                .andExpect(jsonPath("$.cpu").value(asset.getCpu())).andExpect(jsonPath("$.memory").value(asset.getMemory()))
+                .andExpect(jsonPath("$.storage").value(asset.getStorage()))
+                .andExpect(jsonPath("$.boundDisplays.length()").value(1))
+                .andExpect(jsonPath("$.boundDisplays[0].assetTag").value(display.getAssetTag()))
+                .andExpect(jsonPath("$.boundDisplays[0].name").value("AOC显示器"))
+                .andExpect(jsonPath("$.boundDisplays[0].model").value(display.getModel().getName()))
+                .andExpect(jsonPath("$.boundDisplays[0].qrToken").doesNotExist())
+                .andExpect(jsonPath("$.boundDisplays[0].assignedTo").doesNotExist())
+                .andExpect(jsonPath("$.boundDisplays[0].purchasePrice").doesNotExist())
+                .andExpect(jsonPath("$.boundDisplays[0].notes").doesNotExist())
+                .andExpect(jsonPath("$.relatedDevices.length()").value(2))
+                .andExpect(jsonPath("$.relatedDevices[0].name").value("键盘"))
+                .andExpect(jsonPath("$.relatedDevices[0].model").value("K120"))
+                .andExpect(jsonPath("$.relatedDevices[0].specification").value("USB有线"))
+                .andExpect(jsonPath("$.relatedDevices[0].quantity").value(2))
+                .andExpect(jsonPath("$.relatedDevices[0].serialNumber").doesNotExist())
+                .andExpect(jsonPath("$.relatedDevices[0].orderNumber").doesNotExist())
+                .andExpect(jsonPath("$.relatedDevices[0].stockId").doesNotExist())
+                .andExpect(jsonPath("$.relatedDevices[1].name").value("鼠标"))
+                .andExpect(jsonPath("$.assignedUserId").doesNotExist())
+                .andExpect(jsonPath("$.notes").doesNotExist());
+        assertEquals(version, assetRepository.findById(asset.getId()).orElseThrow().getVersion());
+        assertEquals("PRIVATE-SERIAL", asset.getRelatedDevices().getFirst().getSerialNumber());
+        assertEquals("PRIVATE-ORDER", asset.getRelatedDevices().getFirst().getOrderNumber());
+        assertEquals("电脑内部备注", asset.getNotes());
+        assertEquals(1, asset.getBoundDisplays().size());
+        String displayToken = display.getQrToken();
+        entityManager.clear();
+        mockMvc.perform(get("/api/public/assets/{token}", displayToken)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.boundComputer.assetTag").value(asset.getAssetTag()))
+                .andExpect(jsonPath("$.boundComputer.qrToken").doesNotExist());
     }
 
     @Test

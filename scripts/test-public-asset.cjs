@@ -12,17 +12,19 @@ async function main() {
   let browser;
   try {
     browser = await chromium.launch({ channel: 'msedge', headless: true });
-    for (const width of [1440, 390]) {
+    for (const width of [1440, 390, 320]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       const page = await context.newPage();
       const errors = [], returns = [], reads = [], unexpected = [];
       page.on('pageerror', error => errors.push(error.message));
       let signedIn = false, allowed = true, detailStatus = 200, returnStatus = 200;
       const user = () => ({ id: 1, username: 'qr-tester', role: 'USER', permissions: allowed ? ['ASSET_RETURN'] : [] });
-      const shared = { assetTag: 'TEST-QR-001', name: '测试笔记本', computerModel: 'ThinkPad L13', cpu: 'i5', memory: '16G', storage: '512G',
-        assetProfile: 'COMPUTER', category: '笔记本电脑', status: '在用', checkedOut: true, assignedTo: null, company: null,
+      const shared = { assetTag: 'TEST-QR-001', name: 'LENOVO ThinkBook 14 G6 IRL', computerModel: 'ThinkBook 14 G6 IRL', cpu: '13th Gen Intel(R) Core(TM) i5-13420H', memory: '15.53 GiB', storage: 'UMIS RPEYJ1T24MKN2QWY 953.87 GiB (NVMe)', graphicsCard: 'Intel(R) Iris(R) Xe Graphics + OrayIddDriver Device',
+        assetProfile: 'COMPUTER', category: '笔记本电脑', status: '在用', checkedOut: true, assignedTo: '测试员工', company: null,
         ownershipDepartment: null, location: null, orderNumber: null, imageUrls: ['/api/public/assets/test-token/images/0'],
-        boundDisplays: [], boundComputer: null, relatedDevices: [], knownDefects: [], version: 4, updatedAt: '2026-11-17T09:00:00' };
+        boundDisplays: [{ assetTag: 'DISPLAY-001', name: 'AOC显示器', model: 'AOC 27寸 2K', category: '显示器' }, { assetTag: 'DISPLAY-002', name: 'Dell显示器', model: 'P2422H', category: '显示器' }],
+        boundComputer: null, relatedDevices: [{ name: '键盘', model: 'K120', serialNumber: null, specification: 'USB有线', quantity: 1 }, { name: '鼠标', model: null, serialNumber: null, specification: '无线', quantity: 2 }],
+        knownDefects: [], version: 4, updatedAt: '2026-11-17T09:00:00' };
       const details = { ...shared, assignedTo: '测试员工', location: '仓库', version: 5 };
       await page.route('**/api/**', async route => {
         const req = route.request(), pathname = new URL(req.url()).pathname;
@@ -42,12 +44,34 @@ async function main() {
       });
       const open = async () => {
         await page.goto(server.resolvedUrls.local[0] + '?qr=test-token');
-        await page.getByRole('heading', { name: '测试笔记本', exact: true }).waitFor();
+        await page.getByRole('heading', { name: shared.name, exact: true }).waitFor();
         await page.getByRole('button', { name: '归还资产', exact: true }).waitFor();
       };
       await open();
       assert.equal(await page.getByRole('dialog').count(), 0);
-      assert.equal(await page.getByText('测试员工', { exact: true }).count(), 0);
+      await page.locator('.public-assignee').getByText('测试员工', { exact: true }).waitFor();
+      assert.equal(await page.getByRole('region', { name: '设备已知缺陷', exact: true }).count(), 0);
+      assert.equal(await page.getByText('暂无已知缺陷', { exact: true }).count(), 0);
+      assert.equal(await page.locator('.public-action-panel').count(), 0);
+      assert.equal(await page.getByText('MOBILE RETURN', { exact: true }).count(), 0);
+      const bindings = page.locator('.public-related-section').filter({ has: page.getByRole('heading', { name: '设备绑定' }) });
+      assert.equal(await bindings.locator('.public-related-item').count(), 2);
+      await bindings.getByText('DISPLAY-001', { exact: true }).waitFor();
+      await bindings.getByText('AOC 27寸 2K', { exact: true }).waitFor();
+      const accessories = page.locator('.public-accessory-section');
+      await accessories.getByText('键盘', { exact: true }).waitFor();
+      await accessories.getByText('鼠标', { exact: true }).waitFor();
+      await accessories.getByText('×2', { exact: true }).waitFor();
+      assert.equal(await accessories.getByText('序列号', { exact: true }).count(), 0);
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
+        assert.equal(await page.locator('.public-asset-card').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+        const fields = page.locator('.public-asset-fields');
+        for (const text of [shared.cpu, shared.memory, shared.storage, shared.graphicsCard]) await fields.getByText(text, { exact: true }).waitFor();
+        const cells = await fields.locator(':scope > div').evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, bottom: r.bottom }; }));
+        assert.ok(cells.every((cell, index) => !index || Math.abs(cell.x - cells[0].x) < 1 && cell.y >= cells[index - 1].bottom - 1), 'configuration must stay in one column');
+      }
+      if (process.argv.includes('--preview') && width === 390) console.log('SCREENSHOT:' + (await page.screenshot({ type: 'jpeg', quality: 65, fullPage: true })).toString('base64'));
       assert.equal(reads.length, 0); assert.equal(returns.length, 0);
       assert.equal(await page.locator('.public-asset-gallery img').evaluate(image => image.complete && image.naturalWidth > 0), true);
       assert.equal(await page.locator('.public-asset-card').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
@@ -70,6 +94,7 @@ async function main() {
       await page.getByRole('button', { name: '确认归还', exact: true }).click();
       await page.getByText('资产已经归还，领用人已清空，状态：当前可用', { exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: '归还资产', exact: true }).count(), 0);
+      await page.locator('.public-assignee').getByText('暂未领用', { exact: true }).waitFor();
       const count = returns.length;
       allowed = false; await open();
       await page.getByRole('button', { name: '归还资产', exact: true }).click();
@@ -79,8 +104,16 @@ async function main() {
       await page.getByRole('button', { name: '归还资产', exact: true }).click();
       await page.getByText('资产不存在或无权访问', { exact: true }).waitFor();
       assert.equal(await page.getByRole('alertdialog').count(), 0); assert.equal(returns.length, count);
+      shared.assignedTo = '<img src=x onerror=alert(1)>这是一个较长的员工显示姓名'; await open();
+      await page.locator('.public-assignee').getByText(shared.assignedTo, { exact: true }).waitFor();
+      assert.equal(await page.locator('.public-assignee img').count(), 0);
+      assert.equal(await page.locator('.public-asset-card').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+      shared.assignedTo = '   '; await open();
+      await page.locator('.public-assignee').getByText('领用人待补充', { exact: true }).waitFor();
+      shared.checkedOut = false; await page.reload();
+      await page.locator('.public-assignee').getByText('暂未领用', { exact: true }).waitFor();
       assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-      console.log(`PASS QR ${width}px: anonymous details/photo, private-field isolation, login, permissions, scope, confirmation, cancellation, version, CSRF, conflict and successful return.`);
+      console.log(`PASS QR ${width}px: holder and attached equipment, raw single-column configuration, light/dark layout, privacy, login, permissions, scope, confirmation, cancellation, version, CSRF, conflict and successful return.`);
       await context.close();
     }
   } finally { await browser?.close(); await server.httpServer.close(); }

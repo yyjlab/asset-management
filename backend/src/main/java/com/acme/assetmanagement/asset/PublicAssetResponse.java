@@ -33,7 +33,7 @@ public record PublicAssetResponse(
         long version,
         List<AssetResponse.KnownDefectResponse> knownDefects
 ) {
-    // A QR token grants basic read access, not access to staff, procurement or internal records.
+    // The QR view exposes the current holder's name and directly attached equipment summaries only.
     public static PublicAssetResponse shared(Asset asset) {
         List<String> images = java.util.stream.IntStream.range(0, storedImages(asset).size())
                 .mapToObj(index -> "/api/public/assets/" + asset.getQrToken() + "/images/" + index).toList();
@@ -46,8 +46,20 @@ public record PublicAssetResponse(
                 asset.getCategory() == null || asset.getCategory().getAssetProfile() == null
                         ? "GENERAL" : asset.getCategory().getAssetProfile().name(),
                 asset.getStatus() == null ? null : asset.getStatus().getName(),
-                null, asset.isCheckedOut(), null, images.isEmpty() ? null : images.getFirst(), images,
-                List.of(), null, List.of(), asset.getUpdatedAt(), asset.getVersion(), List.of());
+                null, asset.isCheckedOut(), asset.isCheckedOut() ? asset.getAssignedTo() : null,
+                images.isEmpty() ? null : images.getFirst(), images,
+                asset.getBoundDisplays().stream().map(PublicAssetLink::from).toList(),
+                asset.getBoundComputers().stream().findFirst().map(PublicAssetLink::from).orElse(null),
+                sharedRelatedDevices(asset), asset.getUpdatedAt(), asset.getVersion(), List.of());
+    }
+
+    private static List<PublicRelatedDevice> sharedRelatedDevices(Asset asset) {
+        List<PublicRelatedDevice> devices = new java.util.ArrayList<>();
+        asset.getRelatedDevices().forEach(device -> devices.add(new PublicRelatedDevice(
+                device.getName(), device.getModel(), null, device.getSpecification(), device.getQuantity())));
+        asset.getAccessories().forEach(device -> devices.add(new PublicRelatedDevice(
+                device.getName(), null, null, device.getSpecification(), device.getQuantity())));
+        return List.copyOf(devices);
     }
 
     static List<String> storedImages(Asset asset) {
