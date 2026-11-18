@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ApiError, api } from '../api'
 import type { AuthUser, PublicAsset } from '../types'
 import { KnownDefectDetails } from './KnownDefects'
@@ -30,6 +30,8 @@ export function PublicAssetPage({ qrToken }: Props) {
   const [checkingReturn, setCheckingReturn] = useState(false)
   const [actionError, setActionError] = useState('')
   const [success, setSuccess] = useState('')
+  const [dingtalkEnabled, setDingtalkEnabled] = useState(false)
+  const resumedReturn = useRef(false)
 
   const refreshAsset = () => api.getPublicAsset(qrToken)
     .then((result) => { setAsset(result); document.title = `${result.assetTag} · 资产档案`; return result })
@@ -38,6 +40,7 @@ export function PublicAssetPage({ qrToken }: Props) {
     refreshAsset()
       .catch((reason) => setError(reason instanceof Error ? reason.message : '无法读取资产档案'))
     api.me().then(setAuthUser).catch(() => setAuthUser(null)).finally(() => setAuthReady(true))
+    api.dingtalkStatus().then(status => setDingtalkEnabled(status.enabled)).catch(() => {})
   }, [qrToken])
 
   useEffect(() => {
@@ -72,6 +75,28 @@ export function PublicAssetPage({ qrToken }: Props) {
     if (!authUser) { setLoginOpen(true); return }
     if (!canReturn(authUser)) { setActionError('当前登录账号没有资产归还权限'); return }
     await prepareReturn()
+  }
+
+  useEffect(() => {
+    if (!asset || !authReady || resumedReturn.current) return
+    const url = new URL(window.location.href)
+    const loginError = url.searchParams.get('dingtalkError')
+    if (!loginError && url.searchParams.get('qrReturn') !== '1') return
+    // Consume once under StrictMode; arrival only opens confirmation, never submits a return.
+    resumedReturn.current = true
+    url.searchParams.delete('qrReturn')
+    url.searchParams.delete('dingtalkError')
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+    if (loginError) { setActionError(loginError); return }
+    if (!authUser) { setLoginOpen(true); return }
+    if (!canReturn(authUser)) { setActionError('当前登录账号没有资产归还权限，请联系管理员授权'); return }
+    void prepareReturn()
+  }, [asset, authReady, authUser, qrToken])
+
+  const loginWithDingtalk = () => {
+    if (loginLoading) return
+    setLoginLoading(true)
+    window.location.assign(`/api/v1/auth/dingtalk/login?qrToken=${encodeURIComponent(qrToken)}`)
   }
 
   const loginForReturn = async (event: FormEvent) => {
@@ -198,8 +223,9 @@ export function PublicAssetPage({ qrToken }: Props) {
           <span className="public-modal-eyebrow">IDENTITY CHECK</span>
           <h2 id="public-login-title">登录后继续归还</h2>
           <p>登录只用于验证操作人身份，登录成功后还会再次显示资产确认信息。</p>
+          {dingtalkEnabled && <div className="dingtalk-login"><button type="button" className="button primary" disabled={loginLoading} onClick={loginWithDingtalk}>钉钉登录并继续</button></div>}
           <form className="public-login-form" onSubmit={loginForReturn}>
-            <label><span>账号</span><input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="请输入管理账号" /></label>
+            <label><span>账号</span><input autoFocus={!dingtalkEnabled} autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="请输入管理账号" /></label>
             <label><span>密码</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="请输入登录密码" /></label>
             {actionError && <div className="public-modal-error" role="alert">{actionError}</div>}
             <button className="public-modal-primary" type="submit" disabled={loginLoading || !username.trim() || !password}><span>{loginLoading ? '正在登录…' : '登录并继续'}</span><b>→</b></button>

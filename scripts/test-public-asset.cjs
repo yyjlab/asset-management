@@ -18,6 +18,7 @@ async function main() {
       const errors = [], returns = [], reads = [], unexpected = [];
       page.on('pageerror', error => errors.push(error.message));
       let signedIn = false, allowed = true, detailStatus = 200, returnStatus = 200;
+      let dingtalkAvailable = true, oauthError = '';
       const user = () => ({ id: 1, username: 'qr-tester', role: 'USER', permissions: allowed ? ['ASSET_RETURN'] : [] });
       const shared = { assetTag: 'TEST-QR-001', name: 'LENOVO ThinkBook 14 G6 IRL', computerModel: 'ThinkBook 14 G6 IRL', cpu: '13th Gen Intel(R) Core(TM) i5-13420H', memory: '15.53 GiB', storage: 'UMIS RPEYJ1T24MKN2QWY 953.87 GiB (NVMe)', graphicsCard: 'Intel(R) Iris(R) Xe Graphics + OrayIddDriver Device',
         assetProfile: 'COMPUTER', category: '笔记本电脑', status: '在用', checkedOut: true, assignedTo: '测试员工', company: null,
@@ -34,6 +35,13 @@ async function main() {
           await route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT1sAAAAASUVORK5CYII=', 'base64') }); return;
         } else if (pathname === '/api/auth/me') { data = signedIn ? user() : { message: '请先登录' }; status = signedIn ? 200 : 401; }
         else if (pathname === '/api/auth/csrf') data = { headerName: 'X-CSRF-TOKEN', token: 'mock-csrf' };
+        else if (pathname === '/api/v1/auth/dingtalk/status') data = { enabled: dingtalkAvailable, bound: false };
+        else if (pathname === '/api/v1/auth/dingtalk/login') {
+          assert.equal(new URL(req.url()).searchParams.get('qrToken'), 'test-token');
+          signedIn = !oauthError;
+          const target = '/?qr=test-token' + (oauthError ? '&dingtalkError=' + encodeURIComponent(oauthError) : '&qrReturn=1');
+          await route.fulfill({ status: 302, headers: { location: target } }); return;
+        }
         else if (pathname === '/api/auth/login') { signedIn = true; data = user(); }
         else if (pathname === '/api/assets/qr/test-token/return-info') { reads.push(pathname); data = detailStatus === 200 ? details : { message: '资产不存在或无权访问' }; status = detailStatus; }
         else if (pathname === '/api/assets/qr/test-token/return') {
@@ -77,6 +85,8 @@ async function main() {
       assert.equal(await page.locator('.public-asset-card').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
       await page.getByRole('button', { name: '归还资产', exact: true }).click();
       await page.getByRole('heading', { name: '登录后继续归还' }).waitFor();
+      assert.equal(await page.getByLabel('账号', { exact: true }).evaluate(node => node === document.activeElement), false);
+      assert.equal(await page.getByRole('dialog').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
       assert.equal(returns.length, 0); assert.equal(reads.length, 0);
       await page.getByLabel('账号', { exact: true }).fill('qr-tester');
       await page.getByLabel('密码', { exact: true }).fill('test-not-a-secret');
@@ -104,6 +114,37 @@ async function main() {
       await page.getByRole('button', { name: '归还资产', exact: true }).click();
       await page.getByText('资产不存在或无权访问', { exact: true }).waitFor();
       assert.equal(await page.getByRole('alertdialog').count(), 0); assert.equal(returns.length, count);
+      // Simulate the provider callback; backend tests exercise the real state and redirect validation.
+      signedIn = false; detailStatus = 200; await open();
+      await page.getByRole('button', { name: '归还资产', exact: true }).click();
+      const beforeResume = reads.length;
+      await page.getByRole('button', { name: '钉钉登录并继续', exact: true }).click();
+      await page.getByRole('alertdialog').waitFor();
+      assert.equal(reads.length - beforeResume, 1, 'StrictMode callback must be consumed once');
+      assert.equal(returns.length, count, 'OAuth callback must never return equipment automatically');
+      assert.equal(new URL(page.url()).searchParams.get('qr'), 'test-token');
+      assert.equal(new URL(page.url()).searchParams.has('qrReturn'), false);
+      await page.getByRole('alertdialog').getByRole('button', { name: '取消', exact: true }).click();
+      await page.reload(); await page.getByRole('button', { name: '归还资产', exact: true }).waitFor();
+      assert.equal(await page.getByRole('alertdialog').count(), 0);
+      assert.equal(reads.length - beforeResume, 1, 'refresh must not repeat callback confirmation');
+      signedIn = false; allowed = false; await open();
+      await page.getByRole('button', { name: '归还资产', exact: true }).click();
+      await page.getByRole('button', { name: '钉钉登录并继续', exact: true }).click();
+      await page.getByText('当前登录账号没有资产归还权限，请联系管理员授权', { exact: true }).waitFor();
+      assert.equal(await page.getByRole('alertdialog').count(), 0); assert.equal(returns.length, count);
+      signedIn = false; allowed = true; oauthError = '钉钉授权未完成，请重试'; await open();
+      await page.getByRole('button', { name: '归还资产', exact: true }).click();
+      await page.getByRole('button', { name: '钉钉登录并继续', exact: true }).click();
+      await page.getByText(oauthError, { exact: true }).waitFor();
+      assert.equal(new URL(page.url()).searchParams.get('qr'), 'test-token');
+      assert.equal(new URL(page.url()).searchParams.has('dingtalkError'), false);
+      assert.equal(returns.length, count);
+      oauthError = ''; dingtalkAvailable = false; await open();
+      await page.getByRole('button', { name: '归还资产', exact: true }).click();
+      await page.getByRole('heading', { name: '登录后继续归还' }).waitFor();
+      assert.equal(await page.getByRole('button', { name: '钉钉登录并继续', exact: true }).count(), 0);
+      assert.equal(await page.getByLabel('密码', { exact: true }).count(), 1);
       shared.assignedTo = '<img src=x onerror=alert(1)>这是一个较长的员工显示姓名'; await open();
       await page.locator('.public-assignee').getByText(shared.assignedTo, { exact: true }).waitFor();
       assert.equal(await page.locator('.public-assignee img').count(), 0);
@@ -113,7 +154,7 @@ async function main() {
       shared.checkedOut = false; await page.reload();
       await page.locator('.public-assignee').getByText('暂未领用', { exact: true }).waitFor();
       assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-      console.log(`PASS QR ${width}px: holder and attached equipment, raw single-column configuration, light/dark layout, privacy, login, permissions, scope, confirmation, cancellation, version, CSRF, conflict and successful return.`);
+      console.log(`PASS QR ${width}px: holder and attached equipment, raw single-column configuration, light/dark layout, DingTalk resume/cancellation/no-permission, password fallback, scope, confirmation, version, CSRF, conflict and successful return.`);
       await context.close();
     }
   } finally { await browser?.close(); await server.httpServer.close(); }

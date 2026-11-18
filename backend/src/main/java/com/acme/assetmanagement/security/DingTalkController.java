@@ -52,10 +52,14 @@ public class DingTalkController {
     }
 
     @GetMapping("/login")
-    public void login(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    public void login(@RequestParam(required = false) String qrToken,
+                      HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
-        response.sendRedirect(begin(request, null, false).authorizationUrl());
+        if (qrToken != null && !qrToken.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "设备二维码无效，请重新扫码");
+        }
+        response.sendRedirect(begin(request, null, false, qrToken).authorizationUrl());
     }
 
     @PostMapping("/qr")
@@ -72,12 +76,16 @@ public class DingTalkController {
     }
 
     private QrAuthorization begin(HttpServletRequest request, AccountPrincipal principal, boolean embedded) {
+        return begin(request, principal, embedded, null);
+    }
+
+    private QrAuthorization begin(HttpServletRequest request, AccountPrincipal principal, boolean embedded, String qrToken) {
         if (!properties.enabled()) throw new ApiException(HttpStatus.NOT_FOUND, "钉钉登录未启用");
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         String state = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         var pending = new Pending(state, Instant.now().getEpochSecond(),
-                principal == null ? null : principal.id(), principal == null ? null : principal.password());
+                principal == null ? null : principal.id(), principal == null ? null : principal.password(), qrToken);
         var session = request.getSession(true);
         synchronized (session) { session.setAttribute(PENDING, pending); }
         var url = UriComponentsBuilder.fromUriString("https://login.dingtalk.com/oauth2/auth")
@@ -98,9 +106,10 @@ public class DingTalkController {
                          HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
+        Pending pending = null;
         try {
             if (!properties.enabled()) throw new ApiException(HttpStatus.NOT_FOUND, "钉钉登录未启用");
-            Pending pending = consume(request, state);
+            pending = consume(request, state);
             if (pending.userId() != null && (current == null || !pending.userId().equals(current.id()))) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "绑定会话已失效，请重新登录");
             }
@@ -118,12 +127,15 @@ public class DingTalkController {
             request.getSession().setAttribute(AuthController.DINGTALK_LOGIN, true);
             audit.authenticationSuccess(principal, AuditAction.LOGIN_SUCCESS,
                     pending.userId() == null ? "钉钉登录系统" : "账号绑定钉钉身份");
-            response.sendRedirect(pending.userId() == null ? "/" : "/?dingtalk=bound");
+            response.sendRedirect(pending.qrToken() != null ? qrTarget(pending) + "&qrReturn=1"
+                    : pending.userId() == null ? "/" : "/?dingtalk=bound");
         } catch (ApiException exception) {
             audit.authenticationFailure("钉钉登录", "钉钉登录或绑定失败");
-            response.sendRedirect("/?dingtalkError=" + java.net.URLEncoder.encode(exception.getMessage(), StandardCharsets.UTF_8));
+            response.sendRedirect(qrTarget(pending) + (pending != null && pending.qrToken() != null ? "&" : "?")
+                    + "dingtalkError=" + java.net.URLEncoder.encode(exception.getMessage(), StandardCharsets.UTF_8));
         } catch (DataIntegrityViolationException exception) {
-            response.sendRedirect("/?dingtalkError=" + java.net.URLEncoder.encode("钉钉身份已被绑定，请重新登录后检查", StandardCharsets.UTF_8));
+            response.sendRedirect(qrTarget(pending) + (pending != null && pending.qrToken() != null ? "&" : "?")
+                    + "dingtalkError=" + java.net.URLEncoder.encode("钉钉身份已被绑定，请重新登录后检查", StandardCharsets.UTF_8));
         }
     }
 
@@ -146,6 +158,15 @@ public class DingTalkController {
         return pending;
     }
 
-    record Pending(String state, long createdAt, Long userId, String passwordHash) implements Serializable {}
+    private static String qrTarget(Pending pending) {
+        return pending == null || pending.qrToken() == null ? "/"
+                : "/?qr=" + java.net.URLEncoder.encode(pending.qrToken(), StandardCharsets.UTF_8);
+    }
+
+    record Pending(String state, long createdAt, Long userId, String passwordHash, String qrToken) implements Serializable {
+        Pending(String state, long createdAt, Long userId, String passwordHash) {
+            this(state, createdAt, userId, passwordHash, null);
+        }
+    }
     public record QrAuthorization(String authorizationUrl, String redirectUri, String state, long expiresAt) {}
 }

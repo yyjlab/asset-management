@@ -45,6 +45,68 @@ class DingTalkLoginTest {
     @Autowired DingTalkAccountService accounts;
     @Autowired ObjectMapper json;
     @MockitoBean DingTalkClient provider;
+    @Autowired com.acme.assetmanagement.asset.AssetRepository assets;
+
+    @Test void qrReturnLoginResumesTheSameDeviceWithoutReturningItOrChangingPermissions() throws Exception {
+        var account = create("qr-return-operator");
+        account.setPermissions(java.util.Set.of(com.acme.assetmanagement.user.Permission.ASSET_VIEW,
+                com.acme.assetmanagement.user.Permission.ASSET_RETURN));
+        account.setDataScope(com.acme.assetmanagement.user.DataScope.ALL); users.saveAndFlush(account);
+        accounts.resolve("qr-return-identity", account.getId(), account.getPasswordHash());
+        when(provider.unionId("qr-return-code")).thenReturn("qr-return-identity");
+        var asset = assets.findAll().getFirst();
+        long version = asset.getVersion(); boolean checkedOut = asset.isCheckedOut(); String assignee = asset.getAssignedTo();
+        var start = mvc.perform(get(ROOT + "/login").param("qrToken", asset.getQrToken())
+                .param("returnUrl", "https://example.invalid/steal")).andExpect(status().isFound()).andReturn();
+        var browser = session(start); String before = browser.getId();
+        // A callback parameter must never replace the token saved with this authorization state.
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state(start)).param("code", "qr-return-code")
+                        .param("qrToken", "https://example.invalid/steal"))
+                .andExpect(redirectedUrl("/?qr=" + asset.getQrToken() + "&qrReturn=1"));
+        assertNotEquals(before, browser.getId());
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value(account.getUsername())).andExpect(jsonPath("$.dingtalkLogin").value(true));
+        mvc.perform(get("/api/assets/qr/{token}/return-info", asset.getQrToken()).session(browser)).andExpect(status().isOk());
+        var unchanged = assets.findById(asset.getId()).orElseThrow();
+        assertEquals(version, unchanged.getVersion()); assertEquals(checkedOut, unchanged.isCheckedOut());
+        assertEquals(assignee, unchanged.getAssignedTo());
+        assertEquals(2, users.findById(account.getId()).orElseThrow().getPermissions().size());
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state(start)).param("code", "qr-return-code"))
+                .andExpect(redirectedUrlPattern("/?dingtalkError=*"));
+        verify(provider, times(1)).unionId("qr-return-code");
+    }
+
+    @Test void newDingtalkAccountResumesQrButDoesNotGainReturnPermission() throws Exception {
+        when(provider.unionId("qr-new-code")).thenReturn("qr-new-identity");
+        when(provider.employeeName("qr-new-identity")).thenReturn("扫码员工");
+        var asset = assets.findAll().getFirst();
+        var start = mvc.perform(get(ROOT + "/login").param("qrToken", asset.getQrToken())).andReturn();
+        var browser = session(start);
+        mvc.perform(get(ROOT + "/callback").session(browser).param("state", state(start)).param("code", "qr-new-code"))
+                .andExpect(redirectedUrl("/?qr=" + asset.getQrToken() + "&qrReturn=1"));
+        mvc.perform(get("/api/auth/me").session(browser)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.permissions.length()").value(1)).andExpect(jsonPath("$.permissions[0]").value("ASSET_VIEW"));
+        mvc.perform(get("/api/assets/qr/{token}/return-info", asset.getQrToken()).session(browser)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/assets/qr/{token}/return", asset.getQrToken()).session(browser).with(csrf())
+                .header("If-Match", asset.getVersion())).andExpect(status().isForbidden());
+    }
+
+    @Test void cancelledQrAuthorizationReturnsToTheDeviceWithoutStartingReturn() throws Exception {
+        var asset = assets.findAll().getFirst();
+        var start = mvc.perform(get(ROOT + "/login").param("qrToken", asset.getQrToken())).andReturn();
+        mvc.perform(get(ROOT + "/callback").session(session(start)).param("state", state(start)).param("error", "access_denied"))
+                .andExpect(redirectedUrlPattern("/?qr=" + asset.getQrToken() + "&dingtalkError=*"));
+        mvc.perform(get("/api/auth/me").session(session(start))).andExpect(status().isUnauthorized());
+        verifyNoInteractions(provider);
+    }
+
+    @Test void qrReturnTargetsRejectExternalUrlsAndMalformedTokensBeforeCreatingSession() throws Exception {
+        for (String token : java.util.List.of("", "https://example.invalid", "//example.invalid", "../admin", "token&qrReturn=1", "a".repeat(200))) {
+            var result = mvc.perform(get(ROOT + "/login").param("qrToken", token)).andExpect(status().isBadRequest()).andReturn();
+            assertNull(result.getRequest().getSession(false));
+        }
+        verifyNoInteractions(provider);
+    }
 
     @Test void statusDoesNotExposeCredentials() throws Exception {
         mvc.perform(get(ROOT + "/status")).andExpect(status().isOk())
