@@ -47,6 +47,42 @@ class AssetKnownDefectsApiTest {
     @Autowired EntityManager em;
     @Autowired com.acme.assetmanagement.audit.AuditLogRepository audit;
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"COMPUTER", "DISPLAY"})
+    void anonymousQrShowsOnlyActiveDescriptionsAndNeverChangesDefectRecords(String profile) throws Exception {
+        var body = base();
+        body.put("categoryId", lookups.findByTypeOrderByNameAsc(LookupType.CATEGORY).stream()
+                .filter(category -> category.getAssetProfile() != null && category.getAssetProfile().name().equals(profile))
+                .findFirst().orElseThrow().getId());
+        body.put("knownDefects", List.of(Map.of("description", "屏幕有亮点"), Map.of("description", "接口接触不良")));
+        var created = create(body);
+        body.put("assetTag", created.get("assetTag").asText());
+        body.put("knownDefects", List.of(Map.of("id", created.at("/knownDefects/0/id").asText(),
+                "description", "屏幕有亮点", "archived", true), Map.of("id", created.at("/knownDefects/1/id").asText(),
+                "description", "接口接触不良", "archived", false)));
+        update(created.get("id").asLong(), created.get("version").asLong(), body);
+        var before = assets.findById(created.get("id").asLong()).orElseThrow();
+        long version = before.getVersion(); long auditCount = audit.count();
+        mvc.perform(get("/api/public/assets/{token}", created.get("qrToken").asText())).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.assetProfile").value(profile))
+                .andExpect(jsonPath("$.knownDefects.length()").value(1))
+                .andExpect(jsonPath("$.knownDefects[0].description").value("接口接触不良"))
+                .andExpect(jsonPath("$.knownDefects[0].id").doesNotExist())
+                .andExpect(jsonPath("$.knownDefects[0].recordedBy").doesNotExist())
+                .andExpect(jsonPath("$.knownDefects[0].recordedAt").doesNotExist())
+                .andExpect(jsonPath("$.knownDefects[0].archivedBy").doesNotExist())
+                .andExpect(jsonPath("$.knownDefects[0].archivedAt").doesNotExist())
+                .andExpect(jsonPath("$.notes").doesNotExist());
+        mvc.perform(get("/api/assets/qr/{token}/return-info", created.get("qrToken").asText()).with(editor()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.knownDefects.length()").value(2))
+                .andExpect(jsonPath("$.knownDefects[0].archivedAt").isNotEmpty())
+                .andExpect(jsonPath("$.knownDefects[1].recordedBy").value("defect-tester"));
+        assertEquals(version, assets.findById(before.getId()).orElseThrow().getVersion());
+        assertEquals(auditCount, audit.count());
+        assertEquals(2, before.getKnownDefects().size());
+    }
+
     @Test
     void qrDetailsIncludeCurrentAndArchivedDefectsWithoutBypassingScope() throws Exception {
         var body = base(); body.put("knownDefects", List.of(Map.of("description", "扫码核对缺陷")));

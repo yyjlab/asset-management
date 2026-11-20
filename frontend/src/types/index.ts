@@ -117,6 +117,15 @@ export interface KnownDefect {
   archivedAt: string | null
 }
 
+export interface PublicKnownDefect {
+  description: string
+  id?: string | null
+  recordedBy?: string | null
+  recordedAt?: string | null
+  archivedBy?: string | null
+  archivedAt?: string | null
+}
+
 export interface AssetBundlePayload {
   requestKey: string
   computerId?: number
@@ -160,7 +169,7 @@ export interface CustomParameter {
 }
 
 export interface PublicAsset {
-  knownDefects?: KnownDefect[]
+  knownDefects?: PublicKnownDefect[]
   version: number
   assetTag: string
   name: string

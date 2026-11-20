@@ -153,6 +153,30 @@ async function main() {
       await page.locator('.public-assignee').getByText('领用人待补充', { exact: true }).waitFor();
       shared.checkedOut = false; await page.reload();
       await page.locator('.public-assignee').getByText('暂未领用', { exact: true }).waitFor();
+      shared.checkedOut = true;
+      const activeDescription = '<img src=x onerror=alert(1)>屏幕左上角有亮点' + '，需要核对'.repeat(25);
+      const history = { id: 'private-history', description: '不应公开的历史缺陷', recordedBy: '内部记录人', recordedAt: '2026-11-20T09:00:00', archivedAt: '2026-11-20T10:00:00', archivedBy: '内部处理人' };
+      for (const profile of ['COMPUTER', 'DISPLAY']) {
+        shared.assetProfile = profile; shared.name = profile === 'DISPLAY' ? '缺陷测试显示器' : '缺陷测试电脑';
+        shared.knownDefects = [{ id: null, description: activeDescription, recordedBy: null, recordedAt: null, archivedAt: null },
+          { id: null, description: '接口接触不良', recordedBy: null, recordedAt: null, archivedAt: null }, history];
+        await open();
+        const defects = page.getByRole('region', { name: '设备已知缺陷', exact: true });
+        await defects.getByText(activeDescription, { exact: true }).waitFor();
+        assert.equal(await defects.locator('.known-defect-list li').count(), 2);
+        assert.equal(await defects.locator('img,small,.known-defect-history').count(), 0);
+        assert.equal(await defects.getByText(history.description, { exact: true }).count(), 0);
+        for (const theme of ['light', 'dark']) {
+          await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
+          assert.equal(await defects.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+          assert.equal(await page.locator('.public-asset-card').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+        }
+      }
+      shared.knownDefects = [history]; await open();
+      assert.equal(await page.getByRole('region', { name: '设备已知缺陷', exact: true }).count(), 0);
+      shared.knownDefects = []; await open();
+      assert.equal(await page.getByRole('region', { name: '设备已知缺陷', exact: true }).count(), 0);
+      assert.equal(await page.getByText('暂无已知缺陷', { exact: true }).count(), 0);
       assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
       console.log(`PASS QR ${width}px: holder and attached equipment, raw single-column configuration, light/dark layout, DingTalk resume/cancellation/no-permission, password fallback, scope, confirmation, version, CSRF, conflict and successful return.`);
       await context.close();

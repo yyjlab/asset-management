@@ -92,7 +92,8 @@ async function main() {
     const qrDetails = page.getByRole('region', { name: '设备已知缺陷', exact: true });
     await qrDetails.getByText('Type-C不能充电', { exact: true }).waitFor();
     assert.equal(await qrDetails.locator('.known-defect-list li').count(), 2);
-    assert.equal(await qrDetails.locator('.known-defect-history li').count(), 2);
+    assert.equal(await qrDetails.locator('.known-defect-history li').count(), 0, 'public QR view must not show internal defect history');
+    assert.equal(await qrDetails.locator('small').count(), 0, 'public QR view must not show staff metadata');
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 });
       assert.equal(await qrDetails.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);

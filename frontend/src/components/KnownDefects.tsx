@@ -1,4 +1,4 @@
-import type { KnownDefect, KnownDefectInput } from '../types'
+import type { KnownDefect, KnownDefectInput, PublicKnownDefect } from '../types'
 import { ArchiveIcon, BellIcon, PlusIcon, ReturnIcon, TrashIcon } from './Icons'
 import './KnownDefects.css'
 
@@ -28,13 +28,15 @@ export function KnownDefectEditor({ value, onChange }: { value: KnownDefectInput
   </section>
 }
 
-export function KnownDefectDetails({ defects = [], onEdit }: { defects?: KnownDefect[]; onEdit?: () => void }) {
+export function KnownDefectDetails({ defects = [], onEdit, publicView = false }: { defects?: PublicKnownDefect[]; onEdit?: () => void; publicView?: boolean }) {
   const current = defects.filter(item => !item.archivedAt)
   const history = defects.filter(item => item.archivedAt)
-  const metadata = (item: KnownDefect) => `${item.recordedBy} · ${new Date(item.recordedAt).toLocaleString('zh-CN', { hour12: false })}`
+  if (publicView && !current.length) return null
+  const metadata = (item: PublicKnownDefect) => item.recordedAt
+    ? `${item.recordedBy || ''} · ${new Date(item.recordedAt).toLocaleString('zh-CN', { hour12: false })}` : item.recordedBy || ''
   return <section className={`record-subsection known-defect-details${current.length ? ' has-defects' : ''}`} aria-label="设备已知缺陷">
     <div className="known-defect-heading"><h3><BellIcon />设备已知缺陷{current.length > 0 && <b className="known-defect-count">{current.length}</b>}</h3>{onEdit && <button type="button" className="button ghost" onClick={onEdit}>{current.length ? '编辑记录' : '记录缺陷'}</button>}</div>
-    {current.length ? <ul className="known-defect-list">{current.map(item => <li key={item.id}><strong>{item.description}</strong><small>{metadata(item)}</small></li>)}</ul> : <p className="known-defect-empty">暂无已知缺陷</p>}
-    {history.length > 0 && <details className="known-defect-history"><summary>历史记录（{history.length}）</summary><ul>{history.map(item => <li key={item.id}><div><span>{item.description}</span><small>{metadata(item)} · {item.archivedBy} 移入历史</small></div></li>)}</ul></details>}
+    {current.length ? <ul className="known-defect-list">{current.map((item, index) => <li key={item.id || index}><strong>{item.description}</strong>{!publicView && <small>{metadata(item)}</small>}</li>)}</ul> : <p className="known-defect-empty">暂无已知缺陷</p>}
+    {!publicView && history.length > 0 && <details className="known-defect-history"><summary>历史记录（{history.length}）</summary><ul>{history.map(item => <li key={item.id}><div><span>{item.description}</span><small>{metadata(item)} · {item.archivedBy} 移入历史</small></div></li>)}</ul></details>}
   </section>
 }

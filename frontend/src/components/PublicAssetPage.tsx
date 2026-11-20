@@ -176,7 +176,7 @@ export function PublicAssetPage({ qrToken }: Props) {
         </div>
       </header>
 
-      {Boolean(asset.knownDefects?.length) && <KnownDefectDetails defects={asset.knownDefects} />}
+      <KnownDefectDetails defects={asset.knownDefects} publicView />
 
       {images.length > 0 && <div className="public-asset-gallery">{images.map((source, index) => <img src={source} alt={`${asset.name}图片${index + 1}`} key={`${source.slice(-24)}-${index}`} />)}</div>}
 

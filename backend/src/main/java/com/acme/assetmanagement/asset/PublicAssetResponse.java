@@ -50,7 +50,10 @@ public record PublicAssetResponse(
                 images.isEmpty() ? null : images.getFirst(), images,
                 asset.getBoundDisplays().stream().map(PublicAssetLink::from).toList(),
                 asset.getBoundComputers().stream().findFirst().map(PublicAssetLink::from).orElse(null),
-                sharedRelatedDevices(asset), asset.getUpdatedAt(), asset.getVersion(), List.of());
+                sharedRelatedDevices(asset), asset.getUpdatedAt(), asset.getVersion(),
+                asset.getKnownDefects().stream().filter(defect -> defect.getArchivedAt() == null)
+                        .map(defect -> new AssetResponse.KnownDefectResponse(null, defect.getDescription(), null, null, null, null))
+                        .toList());
     }
 
     private static List<PublicRelatedDevice> sharedRelatedDevices(Asset asset) {

@@ -89,6 +89,26 @@ test('administrator keeps the settings menu with either login method', () => {
   }
 });
 
+test('public defect details show descriptions without internal metadata or history', () => {
+  const { KnownDefectDetails } = load('components/KnownDefects.tsx');
+  const markup = renderToStaticMarkup(React.createElement(KnownDefectDetails, { publicView: true, defects: [
+    { id: null, description: '<img src=x>屏幕亮点', recordedAt: null, recordedBy: null },
+    { id: null, description: '接口松动', recordedAt: null, recordedBy: null },
+    { id: 'history', description: '历史缺陷不公开', recordedBy: '内部用户', recordedAt: '2026-11-20T09:00:00', archivedAt: '2026-11-20T10:00:00' },
+  ] }));
+  assert.match(markup, /&lt;img src=x&gt;屏幕亮点/); assert.match(markup, /接口松动/);
+  assert.ok(!/<small|<img|内部用户|历史缺陷不公开|Invalid Date|undefined/.test(markup));
+  assert.equal([...markup.matchAll(/<li/g)].length, 2);
+});
+
+test('empty or archived-only public defects leave no blank section while private records remain available', () => {
+  const { KnownDefectDetails } = load('components/KnownDefects.tsx');
+  const history = { id: 'history', description: '历史缺陷', recordedBy: '内部用户', recordedAt: '2026-11-20T09:00:00', archivedAt: '2026-11-20T10:00:00', archivedBy: '管理员' };
+  for (const defects of [[], [history]]) assert.equal(renderToStaticMarkup(React.createElement(KnownDefectDetails, { publicView: true, defects })), '');
+  const privateMarkup = renderToStaticMarkup(React.createElement(KnownDefectDetails, { defects: [history] }));
+  assert.match(privateMarkup, /历史记录/); assert.match(privateMarkup, /内部用户/); assert.match(privateMarkup, /管理员/);
+});
+
 test('every visible DingTalk menu navigates to its own section', () => {
   const sections = [];
   const filters = [];
