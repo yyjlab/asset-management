@@ -25,11 +25,14 @@ public class HandoverLedger {
     private final WorkflowAccess access;
     private final AuditLogService audit;
     private final jakarta.persistence.EntityManager entityManager;
+    private final AssetPreparationService preparations;
 
     public HandoverLedger(OperationRepository operations, AssetRepository assets, UserRepository users,
-            LookupRepository lookups, WorkflowAccess access, AuditLogService audit, jakarta.persistence.EntityManager entityManager) {
+            LookupRepository lookups, WorkflowAccess access, AuditLogService audit, jakarta.persistence.EntityManager entityManager,
+            AssetPreparationService preparations) {
         this.operations = operations; this.assets = assets; this.users = users;
         this.lookups = lookups; this.access = access; this.audit = audit; this.entityManager = entityManager;
+        this.preparations = preparations;
     }
 
     public record Reservation(Long operationId, long assetVersion) {}
@@ -76,6 +79,7 @@ public class HandoverLedger {
         var asset = lockedAsset(operation.assetId); version(asset, operation.assetVersion);
         validateAsset(asset, operation.kind, employeeId, Boolean.TRUE.equals(operation.handoverLegacyReturn));
         Map<String, Object> before = custody(asset);
+        String previousHolder = asset.getAssignedTo();
         if ("ISSUE".equals(operation.kind)) {
             asset.setAssignedUserId(employeeId); asset.setAssignedTo(owner.getDisplayName());
             asset.setCheckedOut(true); asset.setStatus(status("已经领出", "在用"));
@@ -84,6 +88,7 @@ public class HandoverLedger {
             if (!asset.isInMaintenanceOrScrapped()) asset.setStatus(status("当前可用", "可领用"));
         }
         assets.saveAndFlush(asset);
+        if ("RETURN".equals(operation.kind)) preparations.recordReturn(asset, previousHolder);
         operation.state = "COMPLETED"; operation.reservedAssetId = null; operation.updatedAt = LocalDateTime.now();
         operation.events.add(new OperationTask.Event(actor.getDisplayName(), "交接单 #" + handoverId + " 完结并写入资产台账"));
         operations.saveAndFlush(operation);

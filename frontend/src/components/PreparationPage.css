@@ -1,0 +1,19 @@
+.preparation-page { display: grid; gap: 18px; }
+.preparation-header,.preparation-actions,.preparation-tabs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.preparation-header { justify-content: space-between; }.preparation-header h2,.preparation-header h3 { margin: 0; }
+.preparation-card { min-width: 0; padding: 18px; border-radius: 14px; background: var(--surface); box-shadow: 0 4px 20px #25395309; }
+.preparation-card p { color: var(--muted); overflow-wrap: anywhere; }
+.preparation-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 14px; }
+.preparation-detail { display: grid; gap: 16px; }.preparation-detail fieldset { border: 0; margin: 18px 0 0; padding: 0; min-width: 0; }
+.preparation-check { display: grid; grid-template-columns: minmax(130px,1fr) minmax(180px,2fr); gap: 12px; margin: 14px 0; }
+.preparation-check label,.preparation-note,.preparation-search { display: grid; gap: 7px; min-width: 0; }
+.preparation-note { margin-bottom: 16px; }.preparation-note textarea { min-height: 80px; }
+.preparation-events { padding-left: 22px; }.preparation-events li { margin: 14px 0; display: grid; gap: 6px; overflow-wrap: anywhere; }.preparation-events small { color: var(--muted); }
+.preparation-error { color: #bd3f34; }.preparation-badge { display: inline-flex; padding: 5px 9px; border-radius: 7px; background: #edf1f7; color: #65748a; font-size: 12px; white-space: nowrap; }
+.preparation-ready { background: #e3f7ee; color: #087653; }.preparation-pending,.preparation-in_progress { background: #fff1da; color: #995500; }
+.preparation-blocked,.preparation-retirement_pending { background: #ffebe9; color: #ac3b32; }
+.invoice-asset-table col.preparation-cell { width: 150px; }.preparation-reason { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 5px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+[data-theme="dark"] .preparation-badge { background: #263447; color: #bac7d9; }[data-theme="dark"] .preparation-ready { background: #183f34; color: #77dbb6; }
+[data-theme="dark"] .preparation-pending,[data-theme="dark"] .preparation-in_progress { background: #493a20; color: #ffd790; }
+[data-theme="dark"] .preparation-blocked,[data-theme="dark"] .preparation-retirement_pending { background: #482c2c; color: #ffb4ab; }
+@media(max-width:600px) { .preparation-check { grid-template-columns: minmax(0,1fr); }.preparation-card { padding: 14px; }.preparation-tabs .button { padding: 8px 11px; } }

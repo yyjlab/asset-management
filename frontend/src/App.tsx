@@ -40,6 +40,9 @@ import { DingTalkOaPage } from './components/DingTalkOaPage'
 import { FoundationData } from './components/FoundationData'
 import { domainStatusOptions, matchesDomainStatus } from './domainJoin'
 import type { DomainJoinStatus } from './types'
+import { PreparationPage } from './components/PreparationPage'
+import { preparationLabels, preparationOf } from './preparation'
+import type { PreparationOverview, PreparationState } from './preparation'
 
 type Page = ({ name: 'list'; taskId?: number; review?: boolean; oa?: boolean } | { name: 'form'; asset: Asset | null; clone?: boolean; defaults?: AssetEntryDefaults; fresh?: string } | { name: 'detail'; asset: Asset }) & { assetGroup?: AssetGroupKey }
 type AppHistoryState = { assetManagement: true; section: AppSection; page: Page; depth: number }
@@ -96,13 +99,15 @@ export default function App() {
   const [domainFilter, setDomainFilter] = useState<DomainJoinStatus | ''>('')
   const [defectsOnly, setDefectsOnly] = useState(false)
   const [creatingGroup, setCreatingGroup] = useState(false)
+  const [preparationRecords, setPreparationRecords] = useState<PreparationOverview[] | null>(null)
+  const [preparationFilter, setPreparationFilter] = useState<PreparationState | ''>('')
   const categoryCreationRef = useRef(false)
   const navigationRevision = useRef(0)
   const dataRevision = useRef(0)
   const accessKey = authUser ? `${authUser.id}:${authUser.dataScope}:${[...authUser.permissions].sort().join(',')}:${[...authUser.departments].sort().join(',')}` : ''
 
   useEffect(() => {
-    setAssets([]); setSuggestionAssets([]); setPage({ name: 'list' }); setDomainFilter('')
+    setAssets([]); setSuggestionAssets([]); setPreparationRecords(null); setPreparationFilter(''); setPage({ name: 'list' }); setDomainFilter('')
   }, [accessKey])
 
   const showView = (nextSection: AppSection, nextPage: Page, mode: 'push' | 'replace' = 'push') => {
@@ -147,17 +152,19 @@ export default function App() {
       const canView = authUser?.permissions.includes('ASSET_VIEW')
       const assetRequest = canView ? api.listAssets(term) : Promise.resolve([])
       const suggestionRequest = canView && term.trim() ? api.listAssets('') : assetRequest
-      const [assetData, lookupData, summaryData, suggestionData, dashboardData, assigneeData] = await Promise.all([
+      const [assetData, lookupData, summaryData, suggestionData, dashboardData, assigneeData, preparationData] = await Promise.all([
         assetRequest, canView || authUser?.canManageUsers ? api.listLookups() : Promise.resolve([]),
         canView ? api.summary() : Promise.resolve({ total: 0, available: 0, checkedOut: 0, maintenance: 0, scrapped: 0 }),
         suggestionRequest, api.dashboard(), authUser?.permissions.includes('ASSET_CHECKOUT') ? api.assignees() : Promise.resolve([]),
+        canView ? Promise.resolve().then(() => api.listPreparations()).catch(() => null) : Promise.resolve([]),
       ])
       if (revision !== dataRevision.current) return
       setAssets(assetData); setSuggestionAssets(suggestionData); setLookups(lookupData); setSummary(summaryData)
       setOverview(dashboardData); setAssignees(assigneeData)
+      setPreparationRecords(preparationData)
     } catch (error) {
       if (revision !== dataRevision.current) return
-      setAssets([]); setSuggestionAssets([])
+      setAssets([]); setSuggestionAssets([]); setPreparationRecords(null)
       setAssetLoadError(error instanceof Error ? error.message : '读取数据失败')
       notify(error instanceof Error ? error.message : '读取数据失败', 'error')
       if (error instanceof ApiError && [401, 403].includes(error.status)) {
@@ -322,6 +329,7 @@ export default function App() {
       : null
 
   const visibleAssets = scopedAssets.filter((asset) => {
+    if (preparationFilter && preparationOf(asset, preparationRecords).state !== preparationFilter) return false
     if (defectsOnly && !(asset.knownDefects || []).some(item => !item.archivedAt)) return false
     if (activeGroup.key === 'all' && computerOnly && asset.category.assetProfile !== 'COMPUTER') return false
     if (selectedCategoryFilter && String(asset.category.id) !== selectedCategoryFilter) return false
@@ -429,7 +437,7 @@ export default function App() {
   ]
 
   const openAssetGroup = (key: AssetGroupKey) => {
-    setFilter('all'); setCategoryFilter(''); setComputerOnly(false); setDomainFilter(''); setDefectsOnly(false); setSearch('')
+    setFilter('all'); setCategoryFilter(''); setComputerOnly(false); setDomainFilter(''); setDefectsOnly(false); setPreparationFilter(''); setSearch('')
     showView('assets', { name: 'list', assetGroup: key })
     if (search.trim() || assetLoadError) void load('')
   }
@@ -469,7 +477,7 @@ export default function App() {
     ? { users: '用户', logs: '日志', settings: '设置', foundation: '基础资料' }[section]
     : section === 'transfer' && !(hasPermission('ASSET_EXPORT') || (hasPermission('ASSET_IMPORT') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_CHECKOUT') && authUser.dataScope === 'ALL'))
       ? '数据'
-      : section === 'assets' && !hasPermission('ASSET_VIEW') ? '资产' : null
+      : (section === 'assets' || section === 'preparations') && !hasPermission('ASSET_VIEW') ? '资产' : null
 
   if (restrictedSection) return <div className="app-shell">
     <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
@@ -534,6 +542,11 @@ export default function App() {
     {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
   </div>
 
+  if (section === 'preparations') return <div className="app-shell">
+    <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
+    <main className="main-content">{topbar}<div className="content"><PreparationPage key={accessKey} assets={suggestionAssets} records={preparationRecords} initialAssetId={page.name === 'list' ? page.taskId : undefined} canManage={hasPermission('ASSET_EDIT')} onNotify={notify} onRefresh={() => load('')} onOpenAsset={asset => showView('assets', { name: 'detail', asset })} /></div></main>
+    {toast && <div className={`toast ${toast.kind}`}>{toast.text}</div>}
+  </div>
   if (section === 'assets' && activeGroup.key === 'mouse' && page.name === 'list') return <div className="app-shell">
     <Sidebar {...assetNavigation} section={section} canManageUsers={authUser.canManageUsers} dingtalkLogin={authUser.dingtalkLogin} permissions={authUser.permissions} onFilter={setFilter} onSection={(next) => showView(next, { name: 'list' })} />
     <main className="main-content">{topbar}<div className="content">{authUser.role === 'SUPER_ADMIN' ? <AccessoryInventory lookups={lookups} onNotify={notify}/> : <p role="alert">配件库存由超级管理员管理。</p>}</div></main>
@@ -597,6 +610,7 @@ export default function App() {
             </select><span className="category-filter-chevron"><ChevronIcon /></span>
           </label>}
           <label className={`known-defect-filter${defectsOnly ? ' selected' : ''}`}><input type="checkbox" checked={defectsOnly} onChange={event => setDefectsOnly(event.target.checked)} />有已知缺陷</label>
+          <label className="category-filter"><select aria-label="筛选配发状态" value={preparationFilter} onChange={event => setPreparationFilter(event.target.value as PreparationState | '')}><option value="">全部配发状态</option>{Object.entries(preparationLabels).filter(([key]) => key !== 'CHECKED_OUT').map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><span className="category-filter-chevron"><ChevronIcon /></span></label>
           <form className="asset-search" role="search" aria-label="搜索资产" onSubmit={(event) => { event.preventDefault(); if (!loading) void load(search) }}>
             <div className="search-box">
               <input aria-label="搜索资产" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索资产" />
@@ -609,7 +623,7 @@ export default function App() {
         </div>
         {hasPermission('ASSET_CREATE') && <button className="button primary" disabled={creatingGroup || loading} onClick={() => void createInGroup()}><PlusIcon />{creatingGroup ? '准备中…' : `新增${activeGroup.key === 'all' ? '资产' : activeGroup.label}`}</button>}
       </div>
-      <AssetTable assets={visibleAssets} loading={loading} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} parameterProfile={tableParameterProfile} categoryView={activeGroup.key !== 'all'} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} />
+      <AssetTable preparations={preparationRecords} assets={visibleAssets} loading={loading} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} parameterProfile={tableParameterProfile} categoryView={activeGroup.key !== 'all'} onSelect={(asset) => showView('assets', { name: 'detail', asset })} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} />
       <div className="panel-foot"><span>共 {visibleAssets.length} 条{selectedCategoryFilter ? categoryOptions.find((category) => String(category.id) === selectedCategoryFilter)?.name ?? '分类资产' : activeGroup.key !== 'all' ? activeGroup.label : filter === 'all' ? '资产' : filterLabels[filter]}</span><span>点击资产行查看完整档案</span></div>
     </section></div>
   </section>
@@ -617,7 +631,7 @@ export default function App() {
   const assetPage = page.name === 'form' && (page.clone || !page.asset ? hasPermission('ASSET_CREATE') : hasPermission('ASSET_EDIT'))
     ? <AssetForm key={`${page.clone ? 'clone' : 'form'}-${page.asset?.id ?? 'new'}-${activeGroup.key}-${page.fresh ?? ''}`} asset={page.asset} clone={page.clone} entryDefaults={page.defaults} entryLabel={activeGroup.key === 'all' ? undefined : activeGroup.label} categoryScope={activeGroup.key === 'all' ? undefined : activeCategories.map(value => value.id)} lookups={lookups} assignees={assignees} canAssign={hasPermission('ASSET_CHECKOUT')} bindableAssets={suggestionAssets} saving={saving} createdLookup={createdLookup} onCancel={returnToPreviousView} onSave={saveAsset} canCreateRelated={hasPermission('ASSET_VIEW') && hasPermission('ASSET_CREATE') && hasPermission('ASSET_EDIT')} onSaveBundle={saveAssetBundle} onContinueBundle={defaults => showView('assets', { name: 'form', asset: null, defaults, fresh: newBundleKey() }, 'replace')} onBundleRecovered={() => void load('')} onDeleteLookup={deleteLookup} onNewLookup={(type) => { setCreatedLookup(null); setLookupType(type) }} />
     : page.name === 'detail'
-      ? <AssetDetail asset={page.asset} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} canReturn={hasPermission('ASSET_RETURN')} canDelete={hasPermission('ASSET_DELETE')} onClose={returnToPreviousView} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} onReturn={setReturnTarget} onDelete={(asset) => void deleteAsset(asset)} />
+      ? <AssetDetail asset={page.asset} canEdit={hasPermission('ASSET_EDIT')} canCreate={hasPermission('ASSET_CREATE')} canReturn={hasPermission('ASSET_RETURN')} canDelete={hasPermission('ASSET_DELETE')} onClose={returnToPreviousView} onEdit={(asset) => showView('assets', { name: 'form', asset })} onClone={(asset) => showView('assets', { name: 'form', asset, clone: true })} onReturn={setReturnTarget} onDelete={(asset) => void deleteAsset(asset)} onPreparation={asset => showView('preparations', { name: 'list', taskId: asset.id })} />
       : listPage
 
   return <div className="app-shell">

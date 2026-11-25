@@ -14,7 +14,7 @@ let compiled;
 before(async () => {
   const { build } = await import(pathToFileURL(frontendRequire.resolve('vite')).href);
   // Reuse Vite's TSX compiler entirely in memory; no test framework or build files are added.
-  const bundleFiles = ['assetBundle.ts', 'assetGroups.ts', 'featureVisibility.ts', 'components/KnownDefects.tsx', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
+  const bundleFiles = ['preparation.ts', 'components/PreparationBadge.tsx', 'components/PreparationPage.tsx', 'components/ConfirmDialog.tsx', 'assetBundle.ts', 'assetGroups.ts', 'featureVisibility.ts', 'components/KnownDefects.tsx', 'components/NewDisplayEditor.tsx', 'components/AssetLabelPrintPreview.tsx'];
   compiled = Object.fromEntries(await Promise.all(['App.tsx', 'api.ts', 'components/HandoverPage.tsx', 'components/SelfServicePage.tsx', 'components/Sidebar.tsx', 'components/Icons.tsx', 'components/OperationPage.tsx', 'components/InventoryPage.tsx', 'components/ConsumablePage.tsx', 'components/RegistrationPage.tsx', 'components/WorkflowNotifications.tsx', 'components/ManagementShared.tsx', 'components/WorkbenchPage.tsx', 'components/EquipmentKitPage.tsx', 'components/AssetSupportPage.tsx', 'components/ManagementReportPage.tsx', 'components/ProcurementPage.tsx', 'components/AssetHistoryPanel.tsx', 'components/AssetDetail.tsx', 'components/LoginPage.tsx', 'components/DingTalkQrLogin.tsx', 'components/DingTalkOaPage.tsx', 'domainJoin.ts', 'components/DomainJoinBadge.tsx', 'components/AssetTable.tsx', 'components/AssetForm.tsx', 'components/FoundationData.tsx', 'components/ModelOptions.tsx', 'components/EditableCombobox.tsx', 'components/AccessoryOptions.tsx', 'components/AssetAccessories.tsx'].map(async file => {
     const result = await build({
       root: frontend, configFile: false, logLevel: 'silent',
@@ -146,7 +146,7 @@ function appMarkup(section, overrides = {}, initialPage = { name: 'list' }, opti
   const visibility = load('featureVisibility.ts'); visibility.featureVisibility.businessWorkflows = options.businessWorkflows ?? true;
   const sidebar = load('components/Sidebar.tsx', { './Icons': icons, '../featureVisibility': visibility });
   const rendered = [];
-  const componentNames = ['AccessoryInventory', 'RegistrationRoster', 'AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'DeploymentIntakes', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
+  const componentNames = ['PreparationPage', 'AccessoryInventory', 'RegistrationRoster', 'AssetDetail', 'AssetForm', 'AssetTable', 'LookupModal', 'LoginPage', 'UserManagement', 'SystemSettings', 'DeploymentIntakes', 'FoundationData', 'ConfirmDialog', 'AuditLogPage', 'AvatarEditor', 'AssetLabelPrintPreview', 'ComputerDashboard', 'AssetTransfer', 'HandoverPage', 'SelfServicePage', 'OperationPage', 'InventoryPage', 'ConsumablePage', 'WorkbenchPage', 'EquipmentKitPage', 'AssetSupportPage', 'ManagementReportPage', 'ProcurementPage', 'RegistrationPage', 'DingTalkOaPage'];
   const mocks = { react, './featureVisibility': visibility, './components/Icons': icons, './components/Sidebar': sidebar, './api': { api: options.api || {}, ApiError: class extends Error {} } };
   for (const name of componentNames) mocks[`./components/${name}`] = { [name]: props => {
     rendered.push(name);
@@ -1109,7 +1109,7 @@ test('domain status has its own aligned column between custody status and assign
   const assets = [domainAsset({ domainJoinStatus: 'JOINED', cpu: 'i7' }), domainAsset({ id: 2, domainJoinStatus: 'NOT_JOINED' })];
   const before = JSON.stringify(assets);
   const markup = assetTableMarkup(assets);
-  assert.match(markup, /<th>状态<\/th><th scope="col" class="asset-domain-cell">入域状态<\/th><th>领用人<\/th>/);
+  assert.match(markup, /<th>状态<\/th><th>配发状态<\/th><th scope="col" class="asset-domain-cell">入域状态<\/th><th>领用人<\/th>/);
   assert.ok(!markup.includes('当前价值')); assert.ok(!markup.includes('2,000.00'));
   assert.match(markup, /采购价格/); assert.match(markup, /3,000.00/);
   assert.match(markup, /domain-joined/); assert.match(markup, /domain-not_joined/);
@@ -1636,12 +1636,12 @@ test('roster is administrator-only and independent from the asset ledger', () =>
   assert.ok(!sidebarMarkup({ section: 'registrationRoster' }).includes('aria-label="登记核对"'));
 });
 
-test('asset submenu exposes five separate choices and closes after a mobile selection', () => {
+test('asset submenu exposes device choices plus preparation and closes after a mobile selection', () => {
   let index = 0; const updates = [], selected = [];
   const { Sidebar } = load('components/Sidebar.tsx', { react: { useEffect() {}, useState: () => { const i = index++; return [i === 1, value => updates.push({ i, value })]; } } }, false, { window: { matchMedia: () => ({ matches: true }) } });
   const tree = Sidebar({ section: 'assets', canManageUsers: false, dingtalkLogin: false, permissions: ['ASSET_VIEW'], assetGroup: 'display', onAssetGroup: key => selected.push(key), onSection() {}, onFilter() {} });
   const choices = treeElements(tree).filter(item => item.props.className?.includes('asset-subitem'));
-  assert.deepEqual(choices.map(item => item.props['aria-label']), ['全部资产', '笔记本电脑', '台式电脑', '显示器', '配件']);
+  assert.deepEqual(choices.map(item => item.props['aria-label']), ['全部资产', '笔记本电脑', '台式电脑', '显示器', '配件', '整备清单']);
   assert.equal(choices[3].props['aria-current'], 'page');
   choices[4].props.onClick(); assert.deepEqual(selected, ['mouse']);
   assert.ok(updates.some(update => update.i === 1 && update.value === false));
@@ -1841,4 +1841,23 @@ test('batch label URL validation rejects invalid or duplicate IDs and preserves 
   const tree = treeElements(labelHarness('?assetId=9&assetTag=202610280009').render());
   assert.equal(tree.find(item => item.type === 'a').props.download, 'asset-202610280009-label.png');
   assert.equal(tree.find(item => item.type === 'img').props.src, '/api/assets/9/qr');
+});
+
+test('readiness never treats a missing response, stale check, checked-out or damaged asset as ready', () => {
+  const { preparationOf } = load('preparation.ts');
+  const asset = domainAsset({ id: 9, version: 5, checkedOut: false, assignedUserId: null, knownDefects: [], status: { name: '当前可用' } });
+  const record = { assetId: 9, assetVersion: 5, version: 1, state: 'READY', reason: '已检查' };
+  assert.equal(preparationOf(asset, null).state, 'UNAVAILABLE');
+  assert.equal(preparationOf(asset, []).state, 'UNVERIFIED');
+  assert.equal(preparationOf(asset, [record]).state, 'READY');
+  assert.equal(preparationOf({ ...asset, version: 6 }, [record]).state, 'UNVERIFIED');
+  assert.equal(preparationOf({ ...asset, checkedOut: true }, [record]).state, 'CHECKED_OUT');
+  assert.equal(preparationOf({ ...asset, knownDefects: [{ description: '损坏' }] }, [record]).state, 'BLOCKED');
+  assert.equal(preparationOf({ ...asset, status: { name: '已报废' } }, [record]).state, 'SCRAPPED');
+});
+
+test('preparation menu stays available while unfinished workflows remain hidden and access stays permission-based', () => {
+  assert.match(sidebarMarkup({ section: 'preparations' }), /aria-label="整备清单" aria-current="page"/);
+  assert.deepEqual(appMarkup('preparations', { permissions: ['ASSET_VIEW'] }, { name: 'list' }, { businessWorkflows: false }).rendered, ['PreparationPage']);
+  assert.deepEqual(appMarkup('preparations', { permissions: [] }, { name: 'list' }, { businessWorkflows: false }).rendered, []);
 });

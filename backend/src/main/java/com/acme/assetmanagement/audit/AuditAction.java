@@ -9,6 +9,7 @@ public enum AuditAction {
     ASSET_CLONE("资产", "克隆资产"),
     ASSET_UPDATE("资产", "编辑资产"),
     ASSET_RETURN("资产", "归还资产"),
+    ASSET_PREPARATION("资产", "资产整备"),
     ASSET_DELETE("资产", "删除资产"),
     LOOKUP_CREATE("选项", "新建选项"),
     LOOKUP_DELETE("选项", "删除选项"),

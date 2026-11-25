@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class HandoverLedgerTransactionTest {
     @Autowired MockMvc mvc;
     @Autowired AssetRepository assets;
+    @Autowired AssetPreparationRepository preparations;
     @Autowired UserRepository users;
     @Autowired LookupRepository lookups;
     @Autowired HandoverRepository handovers;
@@ -100,6 +101,29 @@ class HandoverLedgerTransactionTest {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.task.state").value("HANDOVER_PENDING"));
         }
         action(task, "/cancel", admin(), Map.of("note", "重新核对变更后的设备"), 200);
+    }
+
+    @Test void failedMultiDeviceReturnRollsBackFirstChecklistAlongWithCustody() throws Exception {
+        var f = fixture();
+        var versions = new TransactionTemplate(transactions).execute(tx -> {
+            var result = new LinkedHashMap<Long, Long>();
+            for (Long id : f.ids()) {
+                var a = assets.findById(id).orElseThrow(); a.setCheckedOut(true); a.setAssignedTo(f.employee().getDisplayName());
+                a.setAssignedUserId(f.employee().getId()); assets.saveAndFlush(a); result.put(id, a.getVersion());
+            }
+            return result;
+        });
+        var body = new LinkedHashMap<>(request(f)); body.put("kind", "OFFBOARDING"); body.put("assetVersions", versions);
+        var task = create(body, 201);
+        for (int index = 0; index < 2; index++) {
+            task = action(task, "/items/" + index + "/check", admin(), Map.of("checked", true), 200);
+            task = action(task, "/items/" + index + "/confirm", f.employee(), Map.of("offline", false), 200);
+        }
+        changeSecond(f); action(task, "/complete", admin(), Map.of("confirmed", true), 409);
+        for (Long id : f.ids()) {
+            assertTrue(assets.findById(id).orElseThrow().isCheckedOut());
+            assertFalse(preparations.findByAssetId(id).isPresent(), "rolled-back returns must not create preparation rows");
+        }
     }
 
     @Test void failedCreationDoesNotLeaveParentOrReservationAndRetryKeyDoesNotDuplicateChildren() throws Exception {

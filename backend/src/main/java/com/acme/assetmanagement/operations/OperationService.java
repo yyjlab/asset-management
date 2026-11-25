@@ -24,10 +24,13 @@ public class OperationService {
     private final WorkflowAccess access;
     private final TaskNotifications notifications;
     private final AuditLogService audit;
+    private final AssetPreparationService preparations;
     public OperationService(OperationRepository tasks, AssetRepository assets, UserRepository users,
-            LookupRepository lookups, WorkflowAccess access, TaskNotifications notifications, AuditLogService audit) {
+            LookupRepository lookups, WorkflowAccess access, TaskNotifications notifications, AuditLogService audit,
+            AssetPreparationService preparations) {
         this.tasks = tasks; this.assets = assets; this.users = users; this.lookups = lookups;
         this.access = access; this.notifications = notifications; this.audit = audit;
+        this.preparations = preparations;
     }
     public static boolean canManage(UserAccount user) {
         return user.getDataScope() == DataScope.ALL && user.effectivePermissions().containsAll(
@@ -136,6 +139,7 @@ public class OperationService {
                 manager(); requireState(t, "CONFIRMED"); requireNote(note);
                 if (!Boolean.TRUE.equals(request.confirmed()) || request.assetVersion() == null) throw fail(HttpStatus.BAD_REQUEST, "请确认将本次结果写入台账并提供资产版本");
                 var a = lockedAsset(t.assetId); version(a, t.assetVersion); version(a, request.assetVersion());
+                String previousHolder = a.getAssignedTo();
                 enabled(t.ownerId); enabled(t.targetId);
                 if ("ISSUE".equals(t.kind)) { available(a); a.setAssignedUserId(t.ownerId); a.setAssignedTo(enabled(t.ownerId).getDisplayName()); a.setCheckedOut(true); a.setStatus(status("已经领出")); }
                 else {
@@ -153,6 +157,7 @@ public class OperationService {
                     }
                 }
                 assets.saveAndFlush(a); t.state = "COMPLETED";
+                if ("RETURN".equals(t.kind)) preparations.recordReturn(a, previousHolder);
                 audit.success(AuditAction.ASSET_UPDATE, "ASSET", a.getId(), a.getAssetTag(),
                         "明确确认工单 #" + t.id + "（" + t.kind + "）并写入台账", Map.of("工单ID", t.id, "处理说明", note));
             }
@@ -172,6 +177,7 @@ public class OperationService {
             throw fail(HttpStatus.CONFLICT, "OA 办理条件不满足");
         var a = lockedAsset(t.assetId); version(a, t.assetVersion);
         var owner = enabled(t.ownerId);
+        String previousHolder = a.getAssignedTo();
         if (!Objects.equals(t.oaIdentity, owner.getDingtalkIdentity())) throw fail(HttpStatus.CONFLICT, "员工钉钉绑定已改变，请核对身份后重新申请");
         if ("ISSUE".equals(t.kind)) {
             available(a); a.setAssignedUserId(owner.getId()); a.setAssignedTo(owner.getDisplayName());
@@ -183,6 +189,7 @@ public class OperationService {
             if (!a.isInMaintenanceOrScrapped()) a.setStatus(status("当前可用"));
         }
         assets.saveAndFlush(a); t.state = "COMPLETED"; t.oaState = "APPLIED"; t.reservedAssetId = null;
+        if ("RETURN".equals(t.kind)) preparations.recordReturn(a, previousHolder);
         t.events.add(new OperationTask.Event("钉钉 OA", "审批通过并自动写入台账；实物审批人 userid：" + approver));
         t.updatedAt = LocalDateTime.now();
         audit.success(AuditAction.ASSET_UPDATE, "ASSET", a.getId(), a.getAssetTag(),

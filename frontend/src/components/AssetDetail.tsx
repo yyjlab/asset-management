@@ -18,12 +18,13 @@ interface Props {
   onClone: (asset: Asset) => void
   onReturn: (asset: Asset) => void
   onDelete: (asset: Asset) => void
+  onPreparation?: (asset: Asset) => void
 }
 
 const money = (value: number | null) => value == null ? '—' : `¥ ${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}`
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
 const isMaintenance = (asset: Asset) => asset.status.name.includes('维修') || asset.status.name.includes('维护')
-export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, onClose, onEdit, onClone, onReturn, onDelete }: Props) {
+export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, onClose, onEdit, onClone, onReturn, onDelete, onPreparation }: Props) {
   const [qrUnavailable, setQrUnavailable] = useState(false)
   const [imagePreviewIndex, setImagePreviewIndex] = useState<number | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -144,6 +145,7 @@ export function AssetDetail({ asset, canEdit, canCreate, canReturn, canDelete, o
       <div className="record-actions danger-zone">
         <div>{canDelete && <button className="button danger-button" onClick={() => onDelete(asset)}><TrashIcon />删除资产</button>}</div>
         <div>
+          {onPreparation && <button className="button ghost" onClick={() => onPreparation(asset)}>整备记录</button>}
           {canReturn && asset.checkedOut && <button className="button return-button" onClick={() => onReturn(asset)}><ReturnIcon />归还资产</button>}
           {canCreate && <button className="button clone-button" onClick={() => onClone(asset)}><CloneIcon />克隆资产</button>}
           {canEdit && <button className="button warm" onClick={() => onEdit(asset)}><EditIcon />编辑资产</button>}

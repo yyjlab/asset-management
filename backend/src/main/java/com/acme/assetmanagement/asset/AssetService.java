@@ -30,11 +30,13 @@ public class AssetService {
     private final com.acme.assetmanagement.user.UserRepository users;
     private final AssetTagSequenceRepository sequences;
     private final AccessoryStockService accessoryStock;
+    private final AssetPreparationService preparations;
 
     public AssetService(AssetRepository assetRepository, LookupRepository lookupRepository,
                         AuditLogService auditLogService, AssetTagGenerator assetTagGenerator,
                         AssetImageStorageService assetImageStorageService, AssetAccess access,
-                        com.acme.assetmanagement.user.UserRepository users, AssetTagSequenceRepository sequences,AccessoryStockService accessoryStock) {
+                        com.acme.assetmanagement.user.UserRepository users, AssetTagSequenceRepository sequences,AccessoryStockService accessoryStock,
+                        AssetPreparationService preparations) {
         this.assetRepository = assetRepository;
         this.lookupRepository = lookupRepository;
         this.auditLogService = auditLogService;
@@ -44,6 +46,7 @@ public class AssetService {
         this.users = users;
         this.sequences = sequences;
         this.accessoryStock=accessoryStock;
+        this.preparations = preparations;
     }
 
     @Transactional(readOnly = true)
@@ -174,6 +177,8 @@ public class AssetService {
         String previousName = asset.getName();
         String previousDepartment = asset.getOwnershipDepartment();
         String previousGraphicsCard = asset.getGraphicsCard();
+        boolean wasCheckedOut = asset.isCheckedOut();
+        String previousHolder = asset.getAssignedTo();
         Map<String, Object> before = snapshot(asset);
         if (!asset.getAssetTag().equals(assetTag)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "已创建资产的编号不能修改，以免与已打印标签不一致");
@@ -184,6 +189,7 @@ public class AssetService {
         rememberChangedSuggestions(previousName, previousDepartment, previousGraphicsCard, asset);
         applyBindings(asset, request.boundDisplayIds(), request.boundComputerId());
         Asset saved = assetRepository.saveAndFlush(asset);
+        if (wasCheckedOut && !saved.isCheckedOut()) preparations.recordReturn(saved, previousHolder);
         auditLogService.success(AuditAction.ASSET_UPDATE, "ASSET", saved.getId(), assetLabel(saved),
                 "编辑资产“" + saved.getName() + "”", auditLogService.diff(before, snapshot(saved)));
         return response(saved);
@@ -209,6 +215,7 @@ public class AssetService {
         if (!asset.isCheckedOut()) {
             throw new ApiException(HttpStatus.CONFLICT, "该资产当前未领出，无需归还");
         }
+        String previousHolder = asset.getAssignedTo();
         asset.setCheckedOut(false);
         asset.setAssignedTo(null);
         asset.setAssignedUserId(null);
@@ -216,6 +223,7 @@ public class AssetService {
                 .or(() -> lookupRepository.findByTypeAndNameIgnoreCase(LookupType.STATUS, "可领用"))
                 .ifPresent(asset::setStatus);
         Asset saved = assetRepository.saveAndFlush(asset);
+        preparations.recordReturn(saved, previousHolder);
         auditLogService.success(AuditAction.ASSET_RETURN, "ASSET", saved.getId(), assetLabel(saved),
                 "归还资产并清空领用人", auditLogService.diff(before, snapshot(saved)));
         return response(saved);
@@ -223,6 +231,7 @@ public class AssetService {
 
     public void delete(Long id) {
         Asset asset = findAsset(id);
+        if (preparations.hasHistory(id)) throw new ApiException(HttpStatus.CONFLICT, "资产已有整备历史，请保留档案；无法使用的设备可登记报废");
         if(asset.getRelatedDevices().stream().anyMatch(d->d.getStockId()!=null))throw new ApiException(HttpStatus.CONFLICT,"资产仍有库存配件，请先确认拆下并退库，再删除资产");
         assetImageStorageService.removeAfterCommit(imageReferences(asset));
         Map<String, Object> before = snapshot(asset);

@@ -776,7 +776,8 @@ class AssetApiTest {
                 .andExpect(jsonPath("$.updatedAt").exists());
 
         mockMvc.perform(delete("/api/assets/{id}", assetId).with(assetUser()).with(csrf()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", org.hamcrest.Matchers.containsString("整备历史")));
     }
 
     @Test
