@@ -21,6 +21,9 @@ async function main() {
       checkedOut: false, assignedTo: null, relatedDevices: [], accessories: [], imageUrls: [], customParameters: [], boundDisplays: [],
       domainJoinStatus: 'JOINED', knownDefects: [], createdAt: '2026-11-25T09:00:00', updatedAt: '2026-11-25T09:00:00' }));
     let records = assets.map(a => ({ assetId: a.id, version: a.id === 10 ? -1 : 0, assetVersion: 0, state: a.id === 10 ? 'UNVERIFIED' : a.id === 11 ? 'PENDING' : 'READY', reason: a.id === 12 ? '检查完成，可配发' : '尚未检查', previousHolder: '原员工', updatedAt: null }));
+    const loaned = { ...assets[0], id: 13, assetTag: '2026112513', name: '电脑13', checkedOut: true, assignedTo: '领用员工', status: { id: 6, type: 'STATUS', name: '已经领出' } };
+    assets.push(loaned);
+    records.push({ assetId: 13, version: -1, assetVersion: 0, state: 'CHECKED_OUT', reason: '设备仍在领用中', previousHolder: null, updatedAt: null });
     let checks = Object.fromEntries(['DATA', 'SYSTEM', 'DOMAIN', 'HARDWARE'].map(key => [key, { result: 'UNCHECKED', note: '' }]));
     let events = [], posts = 0, rejectNext = false, readOnly = false;
     await page.route('**/api/**', async route => {
@@ -29,7 +32,7 @@ async function main() {
       if (pathname === '/api/auth/me') data = { id: 1, username: 'admin', displayName: 'admin', role: 'SUPER_ADMIN', permissions: readOnly ? ['ASSET_VIEW'] : ['ASSET_VIEW', 'ASSET_EDIT'], canManageUsers: true, dataScope: 'ALL', departments: [], hasAvatar: false };
       else if (pathname === '/api/auth/csrf') data = { headerName: 'X-CSRF-TOKEN', token: 'test' };
       else if (pathname === '/api/dashboard') data = null;
-      else if (pathname === '/api/assets/summary') data = { total: 3, available: 3, checkedOut: 0, maintenance: 0, scrapped: 0 };
+      else if (pathname === '/api/assets/summary') data = { total: 4, available: loaned.checkedOut ? 3 : 4, checkedOut: loaned.checkedOut ? 1 : 0, maintenance: 0, scrapped: 0 };
       else if (pathname === '/api/assets') data = assets;
       else if (pathname === '/api/lookups') data = [company, location, model, category, status];
       else if (pathname === '/api/asset-preparations') data = records;
@@ -49,9 +52,23 @@ async function main() {
     await page.getByRole('button', { name: '资产', exact: true }).click();
     await page.getByRole('button', { name: '全部资产', exact: true }).click();
     await page.locator('.asset-name').first().waitFor();
+    assert.equal(await page.locator('.asset-name').filter({ hasText: /^电脑13$/ }).count(), 1);
     await page.getByLabel('筛选配发状态').selectOption('READY'); assert.equal(await page.locator('.asset-name').count(), 1);
     assert.equal(await page.locator('.asset-name').innerText(), '电脑12');
     await page.getByRole('button', { name: '整备清单', exact: true }).click();
+    await page.getByRole('button', { name: '全部 3', exact: true }).waitFor();
+    assert.equal(await page.locator('.preparation-cards article').count(), 3);
+    const search = page.getByLabel('搜索设备或原领用人');
+    await search.fill(loaned.assetTag);
+    await page.getByText('暂无符合条件的设备', { exact: true }).waitFor();
+    Object.assign(loaned, { checkedOut: false, status, assignedTo: null, version: 1 });
+    records = records.map(r => r.assetId === loaned.id ? { ...r, assetVersion: 1, version: 0, state: 'PENDING', reason: '归还后尚未整备', previousHolder: '领用员工' } : r);
+    await page.getByRole('button', { name: '刷新', exact: true }).click();
+    await page.getByRole('button', { name: '全部 4', exact: true }).waitFor();
+    await page.getByRole('button', { name: '待整备 2', exact: true }).click();
+    await page.locator('.preparation-cards article').filter({ hasText: '电脑13' }).waitFor();
+    await page.getByRole('button', { name: '全部 4', exact: true }).click();
+    await search.clear();
     const card = page.locator('.preparation-cards article').filter({ hasText: '电脑11' });
     await card.getByRole('button', { name: '查看／处理' }).click();
     for (const label of ['资料与账号', '系统与软件', '入域与网络', '硬件与配件']) await page.getByLabel(label, { exact: true }).selectOption('PASS');
@@ -73,7 +90,7 @@ async function main() {
     await page.locator('.preparation-cards article').first().getByRole('button', { name: '查看记录' }).click();
     assert.equal(await page.getByRole('button', { name: '确认可配发', exact: true }).isDisabled(), true);
     assert.deepEqual(errors, []);
-    console.log('PASS preparations: readiness filter, checklist navigation, confirmation, conflict preservation, CSRF, history, read-only, light/dark 1440/390/320 layouts.');
+    console.log('PASS preparations: hide checked-out assets until return, readiness filter, navigation, confirmation, conflict preservation, CSRF, history, read-only, light/dark 1440/390/320 layouts.');
   } finally { await browser?.close(); await server.httpServer.close(); }
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

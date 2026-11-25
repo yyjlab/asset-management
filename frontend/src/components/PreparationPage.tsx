@@ -51,8 +51,12 @@ export function PreparationPage({ assets, records, initialAssetId, canManage, on
     } catch (e) { setError(message(e)) }
     finally { mutation.current = false; setBusy(false) }
   }
-  const rows = assets.map(asset => ({ asset, value: preparationOf(asset, records) })).filter(({ asset, value }) =>
-    (tab === 'ALL' || value.state === tab) && [asset.assetTag, asset.name, asset.model.name, value.previousHolder || ''].join(' ').toLowerCase().includes(search.trim().toLowerCase()))
+  const unissuedRows = assets
+    .filter(asset => !asset.checkedOut)
+    .map(asset => ({ asset, value: preparationOf(asset, records) }))
+  const searchTerm = search.trim().toLowerCase()
+  const rows = unissuedRows.filter(({ asset, value }) =>
+    (tab === 'ALL' || value.state === tab) && [asset.assetTag, asset.name, asset.model.name, value.previousHolder || ''].join(' ').toLowerCase().includes(searchTerm))
   return <section className="preparation-page">
     <header className="preparation-header"><h2>整备清单</h2><div className="preparation-actions"><button className="button ghost" disabled={busy} onClick={() => { void onRefresh().then(() => { if (selectedId !== null) void open(selectedId) }).catch(e => setError(message(e))) }}>刷新</button>{selectedId !== null && <button className="button ghost" disabled={busy} onClick={() => { revision.current++; setSelectedId(null); setSelected(null); setError('') }}>返回清单</button>}</div></header>
     {error && <p className="preparation-error" role="alert">{error}</p>}
@@ -69,7 +73,14 @@ export function PreparationPage({ assets, records, initialAssetId, canManage, on
       </section>
       <section className="preparation-card"><h3>整备记录</h3>{selected.events.length ? <ol className="preparation-events">{[...selected.events].reverse().map((event, index) => <li key={index}><strong>第 {event.cycle} 轮 · {event.actor}</strong><span>{event.description}</span><small>{new Date(event.occurredAt).toLocaleString('zh-CN')}</small></li>)}</ol> : <p>尚无整备记录</p>}</section>
     </div> : selectedId !== null ? <p>{busy ? '正在读取整备记录…' : '无法读取，请刷新或返回清单。'}</p> : <>
-      <div className="preparation-tabs">{(['ALL', 'PENDING', 'IN_PROGRESS', 'READY', 'BLOCKED', 'RETIREMENT_PENDING', 'UNVERIFIED', 'SCRAPPED'] as const).map(value => <button className={`button ${tab === value ? 'primary' : 'ghost'}`} key={value} onClick={() => setTab(value)}>{value === 'ALL' ? '全部' : preparationLabels[value]} {assets.filter(asset => value === 'ALL' || preparationOf(asset, records).state === value).length}</button>)}</div>
+      <div className="preparation-tabs">
+        {(['ALL', 'PENDING', 'IN_PROGRESS', 'READY', 'BLOCKED', 'RETIREMENT_PENDING', 'UNVERIFIED', 'SCRAPPED'] as const).map(state => {
+          const count = state === 'ALL' ? unissuedRows.length : unissuedRows.filter(row => row.value.state === state).length
+          return <button className={`button ${tab === state ? 'primary' : 'ghost'}`} key={state} onClick={() => setTab(state)}>
+            {state === 'ALL' ? '全部' : preparationLabels[state]} {count}
+          </button>
+        })}
+      </div>
       <label className="preparation-search"><span>搜索设备或原领用人</span><input value={search} onChange={event => setSearch(event.target.value)} /></label>
       <div className="preparation-cards">{rows.map(({ asset, value }) => <article className="preparation-card" key={asset.id}><div className="preparation-header"><strong>{asset.assetTag} · {asset.name}</strong><PreparationBadge value={value} /></div><p>{asset.model.name}</p><p>{value.reason}</p><button className="button ghost" onClick={() => void open(asset.id)}>{canManage ? '查看／处理' : '查看记录'}</button></article>)}</div>
       {!rows.length && <p>暂无符合条件的设备</p>}
