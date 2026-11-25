@@ -30,7 +30,16 @@ const initiallyCollapsed = () => {
 export function Sidebar({ section, canManageUsers, canReviewDeployment = false, dingtalkLogin, permissions, onFilter, onSection, assetGroup = 'all', onAssetGroup }: Props) {
   const [collapsed, setCollapsed] = useState(initiallyCollapsed)
   const [assetsOpen, setAssetsOpen] = useState(section === 'assets' || section === 'registrationRoster' || section === 'preparations')
-  useEffect(() => { if (section === 'assets' || section === 'registrationRoster' || section === 'preparations') setAssetsOpen(true) }, [section])
+  useEffect(() => {
+    if (section === 'preparations') {
+      const narrowScreen = window.matchMedia?.('(max-width: 768px)')
+      const syncMenu = () => setAssetsOpen(!narrowScreen?.matches)
+      syncMenu()
+      narrowScreen?.addEventListener?.('change', syncMenu)
+      return () => narrowScreen?.removeEventListener?.('change', syncMenu)
+    }
+    if (section === 'assets' || section === 'registrationRoster') setAssetsOpen(true)
+  }, [section])
   const toggleSidebar = () => setCollapsed((current) => {
     const next = !current
     try { window.localStorage.setItem(sidebarStorageKey, String(next)) } catch { /* Browser storage may be unavailable. */ }
